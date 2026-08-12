@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1400" role="img" aria-labelledby="title desc">
+<title id="title">The Literature Foundation</title>
+<desc id="desc">A dove rising from an open book beneath a gold halo and star.</desc>
+<defs>
+  <linearGradient id="teal" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#39A9B8"/>
+    <stop offset="1" stop-color="#0A4B72"/>
+  </linearGradient>
+</defs>
+
+<!-- Halo -->
+<path d="M285 515 A330 330 0 0 1 505 210" fill="none" stroke="#C9962A" stroke-width="11" stroke-linecap="round"/>
+<path d="M695 210 A330 330 0 0 1 915 515" fill="none" stroke="#C9962A" stroke-width="11" stroke-linecap="round"/>
+
+<!-- Star -->
+<path d="M600 105 L617 154 L666 171 L617 188 L600 237 L583 188 L534 171 L583 154 Z" fill="#C9962A"/>
+
+<!-- Dove -->
+<g fill="url(#teal)">
+  <!-- body/head -->
+  <path d="M595 520 C590 430 608 338 680 294 C731 263 786 270 824 301
+           C777 300 744 315 720 348 C699 377 689 420 686 469
+           C683 527 703 566 744 610 C694 597 650 570 620 535 Z"/>
+  <!-- left wing -->
+  <path d="M612 468 C531 412 462 325 455 206
+           C511 256 555 318 579 390
+           C561 291 580 196 624 121
+           C653 233 646 347 612 468 Z"/>
+  <path d="M575 421 C518 382 478 329 468 272 C512 302 546 342 575 421 Z" opacity=".78"/>
+  <path d="M587 369 C544 326 519 281 514 232 C551 265 576 308 587 369 Z" opacity=".58"/>
+  <!-- tail -->
+  <path d="M619 518 C575 554 520 588 447 611 C514 611 568 599 610 579 Z"/>
+  <path d="M646 531 C615 579 590 624 586 675 C626 635 650 596 661 552 Z"/>
+</g>
+
+<!-- Open book -->
+<g fill="none" stroke="#0B2D45" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M250 680 C360 632 492 640 600 714 C708 640 840 632 950 680
+           L914 875 C806 834 704 844 600 908 C496 844 394 834 286 875 Z"
+        fill="#FFFFFF" stroke-width="14"/>
+  <path d="M600 714 L600 908" stroke-width="12"/>
+  <path d="M286 726 C395 690 500 701 574 750" stroke-width="9"/>
+  <path d="M278 774 C392 739 493 748 567 790" stroke-width="9"/>
+  <path d="M275 823 C388 790 487 797 558 831" stroke-width="9"/>
+  <path d="M914 726 C805 690 700 701 626 750" stroke-width="9"/>
+  <path d="M922 774 C808 739 707 748 633 790" stroke-width="9"/>
+  <path d="M925 823 C812 790 713 797 642 831" stroke-width="9"/>
+</g>
+
+<!-- Wordmark -->
+<g text-anchor="middle">
+  <line x1="255" y1="1000" x2="475" y2="1000" stroke="#C9962A" stroke-width="8"/>
+  <line x1="725" y1="1000" x2="945" y2="1000" stroke="#C9962A" stroke-width="8"/>
+  <text x="600" y="1030" font-family="Georgia, 'Times New Roman', serif" font-size="92" fill="#0B2D45" letter-spacing="10">THE</text>
+  <text x="600" y="1170" font-family="Georgia, 'Times New Roman', serif" font-size="120" fill="#0B2D45" letter-spacing="8">LITERATURE</text>
+  <text x="600" y="1290" font-family="Georgia, 'Times New Roman', serif" font-size="72" fill="#C9962A" letter-spacing="18">FOUNDATION</text>
+</g>
+</svg>

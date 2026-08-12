@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title">
+<title id="title">The Literature Foundation icon</title>
+<defs>
+  <linearGradient id="teal" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#39A9B8"/>
+    <stop offset="1" stop-color="#0A4B72"/>
+  </linearGradient>
+</defs>
+<path d="M225 480 A290 290 0 0 1 425 205" fill="none" stroke="#C9962A" stroke-width="16" stroke-linecap="round"/>
+<path d="M599 205 A290 290 0 0 1 799 480" fill="none" stroke="#C9962A" stroke-width="16" stroke-linecap="round"/>
+<path d="M512 96 L528 142 L574 158 L528 174 L512 220 L496 174 L450 158 L496 142 Z" fill="#C9962A"/>
+<g fill="url(#teal)">
+  <path d="M508 500 C503 420 520 345 582 305 C626 276 674 282 708 309 C667 309 639 322 619 351 C601 377 592 414 590 456 C587 506 604 540 640 578 C596 567 559 544 532 514 Z"/>
+  <path d="M523 454 C452 406 392 330 386 227 C435 270 473 324 494 387 C479 300 495 218 533 151 C558 249 552 349 523 454 Z"/>
+  <path d="M529 498 C491 529 443 558 379 578 C438 578 485 568 521 551 Z"/>
+  <path d="M551 510 C524 552 503 592 500 637 C534 602 555 567 565 529 Z"/>
+</g>
+<g fill="none" stroke="#0B2D45" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M185 646 C280 605 398 612 512 680 C626 612 744 605 839 646
+           L812 824 C715 789 619 798 512 853 C405 798 309 789 212 824 Z"
+        fill="#FFFFFF" stroke-width="18"/>
+  <path d="M512 680 L512 853" stroke-width="15"/>
+  <path d="M220 694 C316 664 406 671 487 717" stroke-width="12"/>
+  <path d="M216 746 C310 717 400 722 480 760" stroke-width="12"/>
+  <path d="M804 694 C708 664 618 671 537 717" stroke-width="12"/>
+  <path d="M808 746 C714 717 624 722 544 760" stroke-width="12"/>
+</g>
+</svg>
