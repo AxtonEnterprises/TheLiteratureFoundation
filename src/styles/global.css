@@ -750,7 +750,237 @@ body {
   .foundation-footer-new { flex-direction: column; }
   .foundation-footer-links { flex-wrap: wrap; }
 }
+/* ==================================================
+   THE LITERATURE FOUNDATION
+   Header + Hero Logo Fix
+   ================================================== */
 
+.foundation-site {
+  --foundation-navy: #06345a;
+  --foundation-teal: #169bc2;
+  --foundation-gold: #dda728;
+  --foundation-cream: #fffdf7;
+  --foundation-paper: #faf7ef;
+}
+
+/* ---------- HEADER ---------- */
+
+.foundation-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  width: 100%;
+  min-height: 92px;
+  padding: 0.75rem clamp(1.25rem, 4vw, 4rem);
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+
+  background: rgba(255, 253, 247, 0.97);
+  border-bottom: 1px solid rgba(6, 52, 90, 0.12);
+
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.foundation-brand {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/*
+ * The new web logo is tightly cropped, so its
+ * visible artwork can fill the available height.
+ */
+.foundation-header-logo {
+  display: block;
+  width: auto;
+  height: 66px;
+  max-width: min(460px, 48vw);
+  object-fit: contain;
+}
+
+.foundation-nav {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: clamp(0.75rem, 2vw, 1.75rem);
+
+  color: var(--foundation-navy);
+  font-weight: 700;
+}
+
+.foundation-nav > a:not(.foundation-support-link) {
+  transition:
+    color 160ms ease,
+    opacity 160ms ease;
+}
+
+.foundation-nav > a:not(.foundation-support-link):hover {
+  color: var(--foundation-teal);
+}
+
+.foundation-support-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 48px;
+  padding: 0.7rem 1.35rem;
+
+  border: 1.5px solid var(--foundation-gold);
+  border-radius: 999px;
+
+  color: var(--foundation-navy);
+  background: transparent;
+
+  font-weight: 800;
+
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.foundation-support-link:hover {
+  background: var(--foundation-gold);
+  color: #071f32;
+  transform: translateY(-1px);
+}
+
+
+/* ---------- HERO ---------- */
+
+.foundation-hero {
+  background: var(--foundation-cream);
+}
+
+.foundation-logo-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+
+  background: var(--foundation-paper);
+  border: 1px solid rgba(6, 52, 90, 0.1);
+  border-radius: 32px;
+
+  box-shadow:
+    0 24px 70px rgba(6, 52, 90, 0.08);
+}
+
+.foundation-logo-card img {
+  display: block;
+  width: 100%;
+  max-width: 620px;
+  height: auto;
+  object-fit: contain;
+}
+
+
+/* ---------- FOUNDATION BUTTONS ---------- */
+
+.foundation-button {
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+.foundation-button:hover {
+  transform: translateY(-1px);
+}
+
+.foundation-button.primary {
+  background: var(--foundation-navy);
+  color: #fff;
+}
+
+.foundation-button.primary:hover {
+  box-shadow: 0 8px 24px rgba(6, 52, 90, 0.2);
+}
+
+.foundation-button.secondary {
+  color: var(--foundation-navy);
+  background: transparent;
+  border-color: var(--foundation-navy);
+}
+
+.foundation-button.gold {
+  background: var(--foundation-gold);
+  color: #071f32;
+}
+
+
+/* ---------- MOBILE ---------- */
+
+@media (max-width: 760px) {
+
+  .foundation-header {
+    min-height: 78px;
+    padding: 0.55rem 1rem;
+    gap: 0.75rem;
+  }
+
+  .foundation-header-logo {
+    height: 54px;
+    max-width: 225px;
+  }
+
+  /*
+   * Hide the secondary navigation links on phones.
+   * Keep the brand and donation CTA prominent.
+   */
+  .foundation-nav > a:not(.foundation-support-link) {
+    display: none;
+  }
+
+  .foundation-nav {
+    margin-left: auto;
+  }
+
+  .foundation-support-link {
+    min-height: 44px;
+    padding: 0.6rem 1rem;
+    white-space: nowrap;
+    font-size: 0.92rem;
+  }
+
+  .foundation-logo-card {
+    padding: 1rem;
+    border-radius: 26px;
+  }
+
+  .foundation-logo-card img {
+    width: 100%;
+    max-width: 520px;
+  }
+}
+
+
+/* ---------- SMALL PHONES ---------- */
+
+@media (max-width: 430px) {
+
+  .foundation-header {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .foundation-header-logo {
+    height: 48px;
+    max-width: 190px;
+  }
+
+  .foundation-support-link {
+    padding: 0.55rem 0.85rem;
+    font-size: 0.85rem;
+  }
+}
 
 /* Approved Literature Foundation logo artwork */
 .foundation-header {
