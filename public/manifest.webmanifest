@@ -7,18 +7,13 @@
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
+
   "icons": [
-    {
-      "src": "/branding/tlf-icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/branding/tlf-icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
-  ]
+  {
+    "src": "/branding/random-reads-icon.svg",
+    "sizes": "any",
+    "type": "image/svg+xml",
+    "purpose": "any maskable"
+  }
+]
 }
