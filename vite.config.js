@@ -8,7 +8,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['branding/tlf-icon-192.png', 'branding/tlf-icon-512.png', 'branding/favicon.ico', 'branding/apple-touch-icon.png'],
+      includeAssets: [
+  'branding/random-reads-icon.svg',
+  'branding/favicon.ico',
+  'branding/apple-touch-icon.png'
+],
       manifest: false,
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,json}'],
