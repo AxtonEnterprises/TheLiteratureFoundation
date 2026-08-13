@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 650" role="img" aria-labelledby="title desc">
+<title id="title">Random Reads</title>
+<desc id="desc">Random Reads horizontal logo with gold shuffle arrows above a navy open book and a navy and gold serif wordmark.</desc>
+
+<defs>
+  <style>
+    .navy{stroke:#073B5C;fill:none;stroke-linecap:round;stroke-linejoin:round}
+    .gold{stroke:#D9A51D;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  </style>
+</defs>
+
+<!-- ICON -->
+<g transform="translate(55 65)">
+  <!-- shuffle symbol -->
+  <path class="gold" stroke-width="34"
+        d="M105 160 C155 70 230 75 300 155
+           C355 218 410 225 485 225"/>
+  <path fill="#D9A51D" d="M470 187 L535 225 L470 263 Z"/>
+
+  <path class="gold" stroke-width="34"
+        d="M105 225 C165 225 210 203 255 150
+           C320 73 375 72 485 72"/>
+  <path fill="#D9A51D" d="M470 34 L535 72 L470 110 Z"/>
+
+  <!-- open book outer silhouette -->
+  <path class="navy" stroke-width="15"
+        d="M40 470 L105 245
+           C185 240 250 272 300 330
+           C350 272 415 240 495 245
+           L560 470
+           C455 425 370 426 300 482
+           C230 426 145 425 40 470 Z"/>
+
+  <!-- center -->
+  <path class="navy" stroke-width="13" d="M300 330 L300 482"/>
+
+  <!-- left page layers -->
+  <path class="navy" stroke-width="12" d="M62 430 C150 392 225 405 300 462"/>
+  <path class="navy" stroke-width="12" d="M72 394 C158 360 230 378 300 443"/>
+  <path class="navy" stroke-width="12" d="M82 358 C166 330 235 351 300 423"/>
+
+  <!-- right page layers -->
+  <path class="navy" stroke-width="12" d="M538 430 C450 392 375 405 300 462"/>
+  <path class="navy" stroke-width="12" d="M528 394 C442 360 370 378 300 443"/>
+  <path class="navy" stroke-width="12" d="M518 358 C434 330 365 351 300 423"/>
+
+  <!-- binding -->
+  <path d="M270 482 Q300 458 330 482 Q324 510 300 514 Q276 510 270 482Z"
+        fill="#FFF9EF" stroke="#073B5C" stroke-width="12"/>
+</g>
+
+<!-- WORDMARK -->
+<g font-family="Baskerville, 'Libre Baskerville', Georgia, 'Times New Roman', serif">
+  <text x="700" y="305" fill="#073B5C" font-size="165" letter-spacing="13">RANDOM</text>
+  <text x="700" y="485" fill="#D9A51D" font-size="165" letter-spacing="16">READS</text>
+</g>
+</svg>
