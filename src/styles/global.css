@@ -1023,3 +1023,161 @@ body {
 @media (max-width: 620px) {
   .foundation-header-logo { width: min(300px, 66vw); height: 56px; }
 }
+/* =========================================================
+   FINAL LITERATURE FOUNDATION HEADER OVERRIDE
+   ========================================================= */
+
+.foundation-site .foundation-header {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 100 !important;
+
+  width: 100% !important;
+  min-height: 96px !important;
+
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 1.5rem !important;
+
+  padding: 0.65rem clamp(1rem, 4vw, 3rem) !important;
+
+  background: #fffaf0 !important;
+  color: #06345a !important;
+
+  border-bottom: 1px solid rgba(6, 52, 90, 0.12) !important;
+
+  box-shadow:
+    0 4px 18px rgba(6, 52, 90, 0.06) !important;
+}
+
+
+/* LOGO */
+
+.foundation-site .foundation-brand {
+  display: flex !important;
+  align-items: center !important;
+  flex: 0 1 auto !important;
+  min-width: 0 !important;
+}
+
+.foundation-site .foundation-header-logo {
+  display: block !important;
+
+  width: auto !important;
+  height: 74px !important;
+
+  max-width: min(480px, 48vw) !important;
+
+  object-fit: contain !important;
+  object-position: left center !important;
+
+  filter: none !important;
+  opacity: 1 !important;
+}
+
+
+/* NAVIGATION */
+
+.foundation-site .foundation-nav {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 1.4rem !important;
+
+  color: #06345a !important;
+}
+
+.foundation-site .foundation-nav a {
+  color: #06345a !important;
+  font-weight: 700 !important;
+}
+
+.foundation-site .foundation-nav a:hover {
+  color: #1598b8 !important;
+}
+
+
+/* SUPPORT BUTTON */
+
+.foundation-site .foundation-support-link {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+
+  padding: 0.7rem 1.3rem !important;
+
+  color: #06345a !important;
+  background: transparent !important;
+
+  border: 2px solid #d7a42b !important;
+  border-radius: 999px !important;
+
+  white-space: nowrap !important;
+}
+
+.foundation-site .foundation-support-link:hover {
+  background: #d7a42b !important;
+  color: #071f32 !important;
+}
+
+
+/* =========================================================
+   MOBILE
+   ========================================================= */
+
+@media (max-width: 760px) {
+
+  .foundation-site .foundation-header {
+    min-height: 78px !important;
+
+    padding:
+      0.55rem
+      0.8rem !important;
+
+    gap: 0.65rem !important;
+  }
+
+  .foundation-site .foundation-header-logo {
+    height: 58px !important;
+
+    width: auto !important;
+    max-width: 230px !important;
+  }
+
+  /*
+   Hide Mission / Programs / About on phones.
+   Keep logo + Support Us visible.
+  */
+  .foundation-site
+  .foundation-nav
+  > a:not(.foundation-support-link) {
+    display: none !important;
+  }
+
+  .foundation-site .foundation-nav {
+    margin-left: auto !important;
+    flex-shrink: 0 !important;
+  }
+
+  .foundation-site .foundation-support-link {
+    padding: 0.6rem 1rem !important;
+    font-size: 0.9rem !important;
+  }
+}
+
+
+/* EXTRA SMALL PHONES */
+
+@media (max-width: 420px) {
+
+  .foundation-site .foundation-header-logo {
+    height: 52px !important;
+    max-width: 205px !important;
+  }
+
+  .foundation-site .foundation-support-link {
+    padding: 0.55rem 0.8rem !important;
+    font-size: 0.84rem !important;
+  }
+}
