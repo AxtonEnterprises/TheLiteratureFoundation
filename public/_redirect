@@ -1,0 +1,19 @@
+# Legacy Literature Foundation URLs
+
+/about-us /#about-foundation 301
+/about-us/ /#about-foundation 301
+
+/random-reads /read 301
+/random-reads/ /read 301
+
+/proof-of-reading /#programs 301
+/proof-of-reading/ /#programs 301
+
+/events / 301
+/events/ / 301
+
+/contact-us /#about-foundation 301
+/contact-us/ /#about-foundation 301
+
+/legal-notice / 301
+/legal-notice/ / 301
