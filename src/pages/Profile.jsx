@@ -14,8 +14,8 @@ import {
 
 import {
   BookOpen,
-  User,
-  NotebookPen
+  NotebookPen,
+  User
 } from "lucide-react";
 
 import { auth } from "../firebase";
@@ -26,6 +26,12 @@ import {
   getUserProfile,
   saveUserProfile
 } from "../services/storage.js";
+
+import {
+  useEffect,
+  useMemo,
+  useState
+} from "react";
 
 import SEO from "../components/SEO.jsx";
 
@@ -95,13 +101,10 @@ export default function Profile() {
     searchParams.get("tab");
 
   const initialTab =
-    [
-      "profile",
-      "reading",
-      "journal"
-    ].includes(requestedTab)
-      ? requestedTab
-      : "profile";
+  [
+    "profile",
+    "reading"
+  ].includes(requestedTab)
 
   const [
     activeTab,
@@ -279,6 +282,42 @@ export default function Profile() {
     }
   }
 
+  const combinedTimeline =
+  useMemo(() => {
+    const readingEvents =
+      readingTimeline.map(
+        (item) => ({
+          type: "reading",
+          date:
+            item.updatedAtISO ||
+            "",
+          data: item
+        })
+      );
+
+    const journalEvents =
+      journalEntries.map(
+        (entry) => ({
+          type: "journal",
+          date:
+            entry.createdAt ||
+            "",
+          data: entry
+        })
+      );
+
+    return [
+      ...readingEvents,
+      ...journalEvents
+    ].sort((a, b) =>
+      b.date.localeCompare(
+        a.date
+      )
+    );
+  }, [
+    readingTimeline,
+    journalEntries
+  ]);
 
   if (loading) {
     return (
@@ -424,19 +463,6 @@ export default function Profile() {
             Reading Timeline
           </button>
 
-          <button
-            type="button"
-            className={
-              activeTab === "journal"
-                ? "profile-tab active"
-                : "profile-tab"
-            }
-            onClick={() =>
-              changeTab(
-                "journal"
-              )
-            }
-          >
             <NotebookPen
               size={18}
             />
@@ -558,128 +584,198 @@ export default function Profile() {
         )}
 
 
-        {activeTab ===
-          "reading" && (
-          <section className="panel profile-panel">
-            <div className="section-heading-row">
-              <div>
-                <p className="eyebrow">
-                  Reading History
-                </p>
+        
+                          {activeTab === "reading" && (
+  <section className="panel profile-panel">
+    <div className="section-heading-row">
+      <div>
+        <p className="eyebrow">
+          Reading History
+        </p>
 
-                <h2>
-                  Reading Timeline
-                </h2>
-              </div>
+        <h2>
+          Reading Timeline
+        </h2>
+      </div>
 
-              <span className="muted">
-                {
-                  readingTimeline.length
-                }{" "}
-                {
-                  readingTimeline.length ===
-                  1
-                    ? "book"
-                    : "books"
-                }
-              </span>
-            </div>
-
-
-            {readingTimeline.length ===
-            0 ? (
-              <p className="muted">
-                You haven't started
-                reading a book yet.
-              </p>
-            ) : (
-              <div className="reading-timeline">
-                {readingTimeline.map(
-                  (item) => {
-                    const percent =
-                      Math.min(
-                        Math.max(
-                          Number(
-                            item
-                              .percentComplete
-                          ) || 0,
-                          0
-                        ),
-                        100
-                      );
-
-                    return (
-                      <article
-                        key={
-                          item.bookId ||
-                          item.id
-                        }
-                        className="timeline-book"
-                      >
-                        <Link
-  to={`/read/reader/${item.bookId}`}
-  className="timeline-cover"
->
-  {item.image ? (
-    <img
-      src={item.image}
-      alt={`Cover of ${item.title || "book"}`}
-    />
-  ) : (
-    <div className="timeline-cover-placeholder">
-      <BookOpen size={24} />
+      <Link
+        to="/read/journal"
+        className="button secondary"
+      >
+        Full Journal
+      </Link>
     </div>
-  )}
-</Link>
 
-                        <div className="timeline-book-content">
-                          <Link
-                            to={`/read/reader/${item.bookId}`}
-                            className="timeline-book-title"
-                          >
-                            {item.title ||
-                              "Untitled"}
-                          </Link>
+    {combinedTimeline.length === 0 ? (
+      <p className="muted">
+        Your reading activity
+        will appear here.
+      </p>
+    ) : (
+      <div className="reading-timeline">
+        {combinedTimeline.map(
+          (event, index) => {
+            if (
+              event.type ===
+              "journal"
+            ) {
+              const entry =
+                event.data;
 
-                          <p className="timeline-author">
-                            {item.author ||
-                              "Unknown author"}
-                          </p>
+              return (
+                <article
+                  key={`journal-${
+                    entry.id ||
+                    index
+                  }`}
+                  className="timeline-journal"
+                >
+                  <div className="timeline-journal-icon">
+                    <NotebookPen
+                      size={20}
+                    />
+                  </div>
 
-                          <div className="timeline-progress-row">
-                            <ProgressBar
-                              percent={
-                                percent
-                              }
-                            />
+                  <div>
+                    <p className="timeline-event-label">
+                      Journal Entry
+                    </p>
 
-                            <strong>
-                              {percent}%
-                            </strong>
-                          </div>
+                    {entry.bookId ? (
+                      <Link
+                        to={`/read/reader/${entry.bookId}`}
+                        className="timeline-book-title"
+                      >
+                        {entry.title ||
+                          "Untitled"}
+                      </Link>
+                    ) : (
+                      <strong className="timeline-book-title">
+                        {entry.title ||
+                          "Journal Entry"}
+                      </strong>
+                    )}
 
-                          <small className="muted">
-                            {percent >=
-                            100
-                              ? "Completed"
-                              : "Last read"}
+                    {entry.author && (
+                      <p className="timeline-author">
+                        {entry.author}
+                      </p>
+                    )}
 
-                            {item.updatedAtISO
-                              ? ` · ${formatDate(
-                                  item.updatedAtISO
-                                )}`
-                              : ""}
-                          </small>
-                        </div>
-                      </article>
-                    );
-                  }
-                )}
-              </div>
-            )}
-          </section>
+                    <p className="timeline-journal-text">
+                      {entry.note}
+                    </p>
+
+                    {entry.createdAt && (
+                      <small className="muted">
+                        {formatDate(
+                          entry.createdAt
+                        )}
+                      </small>
+                    )}
+                  </div>
+                </article>
+              );
+            }
+
+            const item =
+              event.data;
+
+            const percent =
+              Math.min(
+                Math.max(
+                  Number(
+                    item.percentComplete
+                  ) || 0,
+                  0
+                ),
+                100
+              );
+
+            return (
+              <article
+                key={`reading-${
+                  item.bookId ||
+                  item.id ||
+                  index
+                }`}
+                className="timeline-book"
+              >
+                <Link
+                  to={`/read/reader/${item.bookId}`}
+                  className="timeline-cover"
+                >
+                  {item.image ? (
+                    <img
+                      src={
+                        item.image
+                      }
+                      alt={`Cover of ${
+                        item.title ||
+                        "book"
+                      }`}
+                    />
+                  ) : (
+                    <div className="timeline-cover-placeholder">
+                      <BookOpen
+                        size={24}
+                      />
+                    </div>
+                  )}
+                </Link>
+
+                <div className="timeline-book-content">
+                  <p className="timeline-event-label">
+                    {percent >= 100
+                      ? "Finished Reading"
+                      : "Reading"}
+                  </p>
+
+                  <Link
+                    to={`/read/reader/${item.bookId}`}
+                    className="timeline-book-title"
+                  >
+                    {item.title ||
+                      "Untitled"}
+                  </Link>
+
+                  <p className="timeline-author">
+                    {item.author ||
+                      "Unknown author"}
+                  </p>
+
+                  <div className="timeline-progress-row">
+                    <ProgressBar
+                      percent={
+                        percent
+                      }
+                    />
+
+                    <strong>
+                      {percent}%
+                    </strong>
+                  </div>
+
+                  <small className="muted">
+                    {percent >= 100
+                      ? "Completed"
+                      : "Last read"}
+
+                    {item.updatedAtISO
+                      ? ` · ${formatDate(
+                          item.updatedAtISO
+                        )}`
+                      : ""}
+                  </small>
+                </div>
+              </article>
+            );
+          }
         )}
-
+      </div>
+    )}
+  </section>
+)}
 
         {activeTab ===
           "journal" && (
