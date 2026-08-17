@@ -15,8 +15,16 @@ import {
 
 import { auth, db } from "../firebase";
 
-const LOCAL_SAVED_BOOKS_KEY = "randomReads.savedBooks";
-const LOCAL_JOURNAL_KEY = "randomReads.journal";
+const LOCAL_SAVED_BOOKS_KEY =
+  "randomReads.savedBooks";
+
+const LOCAL_JOURNAL_KEY =
+  "randomReads.journal";
+
+
+/* ============================================================
+   AUTH HELPERS
+============================================================ */
 
 /*
  * Wait for Firebase Authentication to finish initializing.
@@ -31,15 +39,21 @@ async function getCurrentUser() {
   }
 
   return new Promise((resolve) => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      unsubscribe();
-      resolve(user);
-    });
+    const unsubscribe =
+      onAuthStateChanged(
+        auth,
+        (user) => {
+          unsubscribe();
+          resolve(user);
+        }
+      );
   });
 }
 
+
 async function requireUser() {
-  const user = await getCurrentUser();
+  const user =
+    await getCurrentUser();
 
   if (!user) {
     throw new Error(
@@ -50,13 +64,16 @@ async function requireUser() {
   return user;
 }
 
+
 /*
  * Firestore does not accept undefined values.
  * This removes any undefined properties that may come
- * from the Gutendex book object.
+ * from Gutendex or other app objects.
  */
 function cleanForFirestore(value) {
-  return JSON.parse(JSON.stringify(value));
+  return JSON.parse(
+    JSON.stringify(value)
+  );
 }
 
 
@@ -65,7 +82,8 @@ function cleanForFirestore(value) {
 ============================================================ */
 
 export async function getSavedBooks() {
-  const user = await getCurrentUser();
+  const user =
+    await getCurrentUser();
 
   if (!user) {
     return [];
@@ -78,22 +96,34 @@ export async function getSavedBooks() {
     "savedBooks"
   );
 
-  const snapshot = await getDocs(booksRef);
+  const snapshot =
+    await getDocs(booksRef);
 
-  const books = snapshot.docs.map((bookDoc) => {
-    const data = bookDoc.data();
+  const books =
+    snapshot.docs.map(
+      (bookDoc) => {
+        const data =
+          bookDoc.data();
 
-    return {
-      ...data,
-      id: data.id ?? bookDoc.id
-    };
-  });
+        return {
+          ...data,
+          id:
+            data.id ??
+            bookDoc.id
+        };
+      }
+    );
 
   books.sort((a, b) => {
-    const aDate = a.savedAt || "";
-    const bDate = b.savedAt || "";
+    const aDate =
+      a.savedAt || "";
 
-    return bDate.localeCompare(aDate);
+    const bDate =
+      b.savedAt || "";
+
+    return bDate.localeCompare(
+      aDate
+    );
   });
 
   return books;
@@ -102,10 +132,13 @@ export async function getSavedBooks() {
 
 export async function saveBook(book) {
   if (!book?.id) {
-    throw new Error("Cannot save a book without an ID.");
+    throw new Error(
+      "Cannot save a book without an ID."
+    );
   }
 
-  const user = await requireUser();
+  const user =
+    await requireUser();
 
   const bookRef = doc(
     db,
@@ -115,14 +148,19 @@ export async function saveBook(book) {
     String(book.id)
   );
 
-  const cleanBook = cleanForFirestore(book);
+  const cleanBook =
+    cleanForFirestore(book);
 
   await setDoc(
     bookRef,
     {
       ...cleanBook,
-      savedAt: new Date().toISOString(),
-      updatedAt: serverTimestamp()
+
+      savedAt:
+        new Date().toISOString(),
+
+      updatedAt:
+        serverTimestamp()
     },
     {
       merge: true
@@ -133,8 +171,11 @@ export async function saveBook(book) {
 }
 
 
-export async function removeSavedBook(bookId) {
-  const user = await requireUser();
+export async function removeSavedBook(
+  bookId
+) {
+  const user =
+    await requireUser();
 
   const bookRef = doc(
     db,
@@ -150,11 +191,16 @@ export async function removeSavedBook(bookId) {
 }
 
 
-export async function isBookSaved(bookId) {
-  const books = await getSavedBooks();
+export async function isBookSaved(
+  bookId
+) {
+  const books =
+    await getSavedBooks();
 
   return books.some(
-    (book) => String(book.id) === String(bookId)
+    (book) =>
+      String(book.id) ===
+      String(bookId)
   );
 }
 
@@ -164,7 +210,8 @@ export async function isBookSaved(bookId) {
 ============================================================ */
 
 export async function getJournal() {
-  const user = await getCurrentUser();
+  const user =
+    await getCurrentUser();
 
   if (!user) {
     return [];
@@ -179,20 +226,31 @@ export async function getJournal() {
 
   const journalQuery = query(
     journalRef,
-    orderBy("createdAt", "desc")
+    orderBy(
+      "createdAt",
+      "desc"
+    )
   );
 
-  const snapshot = await getDocs(journalQuery);
+  const snapshot =
+    await getDocs(
+      journalQuery
+    );
 
-  return snapshot.docs.map((entryDoc) => ({
-    id: entryDoc.id,
-    ...entryDoc.data()
-  }));
+  return snapshot.docs.map(
+    (entryDoc) => ({
+      id: entryDoc.id,
+      ...entryDoc.data()
+    })
+  );
 }
 
 
-export async function addJournalEntry(entry) {
-  const user = await requireUser();
+export async function addJournalEntry(
+  entry
+) {
+  const user =
+    await requireUser();
 
   const journalRef = collection(
     db,
@@ -205,16 +263,27 @@ export async function addJournalEntry(entry) {
    * Create a document reference first so we get an ID
    * without needing a separate addDoc call.
    */
-  const entryRef = doc(journalRef);
+  const entryRef =
+    doc(journalRef);
 
   const journalEntry = {
-    ...cleanForFirestore(entry),
+    ...cleanForFirestore(
+      entry
+    ),
+
     id: entryRef.id,
-    createdAt: new Date().toISOString(),
-    createdAtServer: serverTimestamp()
+
+    createdAt:
+      new Date().toISOString(),
+
+    createdAtServer:
+      serverTimestamp()
   };
 
-  await setDoc(entryRef, journalEntry);
+  await setDoc(
+    entryRef,
+    journalEntry
+  );
 
   return journalEntry;
 }
@@ -232,13 +301,16 @@ export async function saveReadingProgress(
 ) {
   if (
     !book?.id ||
-    paragraphIndex === undefined ||
-    paragraphIndex === null
+    paragraphIndex ===
+      undefined ||
+    paragraphIndex ===
+      null
   ) {
     return;
   }
 
-  const user = await requireUser();
+  const user =
+    await requireUser();
 
   const progressRef = doc(
     db,
@@ -248,46 +320,64 @@ export async function saveReadingProgress(
     String(book.id)
   );
 
-  const now = new Date().toISOString();
+  const now =
+    new Date().toISOString();
+
+  const safePercent =
+    Math.min(
+      Math.max(
+        Math.round(
+          percentComplete || 0
+        ),
+        0
+      ),
+      100
+    );
 
   const progressData = {
-    bookId: String(book.id),
+    bookId:
+      String(book.id),
 
     title:
-      book.title || "Untitled",
+      book.title ||
+      "Untitled",
 
     author:
-      book.author || "Unknown author",
+      book.author ||
+      "Unknown author",
 
     image:
-      book.image || null,
+      book.image ||
+      null,
 
     paragraphIndex,
 
     totalParagraphs:
-      totalParagraphs || 0,
+      totalParagraphs ||
+      0,
 
     percentComplete:
-      Math.min(
-        Math.max(
-          Math.round(percentComplete || 0),
-          0
-        ),
-        100
-      ),
+      safePercent,
 
-    updatedAt: serverTimestamp(),
+    updatedAt:
+      serverTimestamp(),
 
-    updatedAtISO: now
+    updatedAtISO:
+      now
   };
 
-  if (percentComplete >= 100) {
-    progressData.completedAt = now;
+  if (
+    safePercent >= 100
+  ) {
+    progressData.completedAt =
+      now;
   }
 
   await setDoc(
     progressRef,
-    cleanForFirestore(progressData),
+    cleanForFirestore(
+      progressData
+    ),
     {
       merge: true
     }
@@ -295,7 +385,9 @@ export async function saveReadingProgress(
 }
 
 
-export async function getReadingProgress(bookId) {
+export async function getReadingProgress(
+  bookId
+) {
   if (
     bookId === undefined ||
     bookId === null
@@ -303,14 +395,21 @@ export async function getReadingProgress(bookId) {
     return null;
   }
 
-  const user = await getCurrentUser();
+  const user =
+    await getCurrentUser();
 
   if (!user) {
     return null;
   }
 
+  /*
+   * Import getDoc lazily because this function only
+   * needs a single Firestore document.
+   */
   const { getDoc } =
-    await import("firebase/firestore");
+    await import(
+      "firebase/firestore"
+    );
 
   const progressRef = doc(
     db,
@@ -323,72 +422,64 @@ export async function getReadingProgress(bookId) {
   const snapshot =
     await getDoc(progressRef);
 
-  if (!snapshot.exists()) {
+  if (
+    !snapshot.exists()
+  ) {
     return null;
   }
 
   return snapshot.data();
 }
 
+
 export async function getReadingTimeline() {
-  const user = await getCurrentUser();
+  const user =
+    await getCurrentUser();
 
   if (!user) {
     return [];
   }
 
-  const progressRef = collection(
-    db,
-    "users",
-    user.uid,
-    "readingProgress"
-  );
+  const progressRef =
+    collection(
+      db,
+      "users",
+      user.uid,
+      "readingProgress"
+    );
 
   const snapshot =
-    await getDocs(progressRef);
+    await getDocs(
+      progressRef
+    );
 
   const records =
     snapshot.docs.map(
       (progressDoc) => ({
-        id: progressDoc.id,
+        id:
+          progressDoc.id,
+
         ...progressDoc.data()
       })
     );
 
-  records.sort((a, b) => {
-    const aDate =
-      a.updatedAtISO || "";
+  records.sort(
+    (a, b) => {
+      const aDate =
+        a.updatedAtISO ||
+        "";
 
-    const bDate =
-      b.updatedAtISO || "";
+      const bDate =
+        b.updatedAtISO ||
+        "";
 
-    return bDate.localeCompare(aDate);
-  });
-
-  return records;
-}
-
-  /*
-   * Import getDoc lazily here only because this function
-   * requires a single document.
-   */
-  const { getDoc } = await import("firebase/firestore");
-
-  const progressRef = doc(
-    db,
-    "users",
-    user.uid,
-    "readingProgress",
-    String(bookId)
+      return bDate.localeCompare(
+        aDate
+      );
+    }
   );
 
-  const snapshot = await getDoc(progressRef);
-
-  if (!snapshot.exists()) {
-    return null;
-  }
-
-  return snapshot.data();
+  return records;
 }
 
 
@@ -396,15 +487,23 @@ export async function getReadingTimeline() {
    ONE-TIME LOCAL STORAGE MIGRATION
 ============================================================ */
 
-function readLocalJSON(key, fallback) {
+function readLocalJSON(
+  key,
+  fallback
+) {
   try {
-    const raw = localStorage.getItem(key);
+    const raw =
+      localStorage.getItem(
+        key
+      );
 
     if (!raw) {
       return fallback;
     }
 
-    return JSON.parse(raw);
+    return JSON.parse(
+      raw
+    );
   } catch {
     return fallback;
   }
@@ -412,49 +511,82 @@ function readLocalJSON(key, fallback) {
 
 
 export async function migrateLocalDataToFirestore() {
-  const user = await getCurrentUser();
+  const user =
+    await getCurrentUser();
 
   if (!user) {
     return {
       migrated: false,
-      reason: "not-logged-in"
+      reason:
+        "not-logged-in"
     };
   }
 
   const migrationKey =
     `randomReads.firestoreMigration.${user.uid}`;
 
-  if (localStorage.getItem(migrationKey)) {
+  if (
+    localStorage.getItem(
+      migrationKey
+    )
+  ) {
     return {
       migrated: false,
-      reason: "already-migrated"
+      reason:
+        "already-migrated"
     };
   }
 
   const localBooks =
-    readLocalJSON(LOCAL_SAVED_BOOKS_KEY, []);
+    readLocalJSON(
+      LOCAL_SAVED_BOOKS_KEY,
+      []
+    );
 
   const localJournal =
-    readLocalJSON(LOCAL_JOURNAL_KEY, []);
+    readLocalJSON(
+      LOCAL_JOURNAL_KEY,
+      []
+    );
 
-  const progressRecords = [];
+  const progressRecords =
+    [];
 
-  for (let index = 0; index < localStorage.length; index += 1) {
-    const key = localStorage.key(index);
+  for (
+    let index = 0;
+    index <
+      localStorage.length;
+    index += 1
+  ) {
+    const key =
+      localStorage.key(
+        index
+      );
 
-    if (!key?.startsWith("readingProgress:")) {
+    if (
+      !key?.startsWith(
+        "readingProgress:"
+      )
+    ) {
       continue;
     }
 
     try {
-      const bookId = key.replace(
-        "readingProgress:",
-        ""
-      );
+      const bookId =
+        key.replace(
+          "readingProgress:",
+          ""
+        );
 
-      const value = JSON.parse(
-        localStorage.getItem(key)
-      );
+      const rawValue =
+        localStorage.getItem(
+          key
+        );
+
+      const value =
+        JSON.parse(
+          rawValue
+        );
 
       progressRecords.push({
         key,
@@ -462,33 +594,51 @@ export async function migrateLocalDataToFirestore() {
         value
       });
     } catch {
-      // Ignore malformed old progress data.
+      /*
+       * Ignore malformed
+       * old progress data.
+       */
     }
   }
 
   try {
-    /*
-     * Saved books
-     */
-    for (const book of localBooks) {
-      if (!book?.id) continue;
+    /* ========================================================
+       SAVED BOOKS MIGRATION
+    ======================================================== */
 
-      const bookRef = doc(
-        db,
-        "users",
-        user.uid,
-        "savedBooks",
-        String(book.id)
-      );
+    for (
+      const book
+      of localBooks
+    ) {
+      if (!book?.id) {
+        continue;
+      }
+
+      const bookRef =
+        doc(
+          db,
+          "users",
+          user.uid,
+          "savedBooks",
+          String(
+            book.id
+          )
+        );
 
       await setDoc(
         bookRef,
         {
-          ...cleanForFirestore(book),
+          ...cleanForFirestore(
+            book
+          ),
+
           savedAt:
             book.savedAt ||
-            new Date().toISOString(),
-          updatedAt: serverTimestamp()
+            new Date()
+              .toISOString(),
+
+          updatedAt:
+            serverTimestamp()
         },
         {
           merge: true
@@ -496,10 +646,15 @@ export async function migrateLocalDataToFirestore() {
       );
     }
 
-    /*
-     * Journal entries
-     */
-    for (const entry of localJournal) {
+
+    /* ========================================================
+       JOURNAL MIGRATION
+    ======================================================== */
+
+    for (
+      const entry
+      of localJournal
+    ) {
       const entryId =
         entry.id ||
         doc(
@@ -511,23 +666,32 @@ export async function migrateLocalDataToFirestore() {
           )
         ).id;
 
-      const entryRef = doc(
-        db,
-        "users",
-        user.uid,
-        "journal",
-        entryId
-      );
+      const entryRef =
+        doc(
+          db,
+          "users",
+          user.uid,
+          "journal",
+          entryId
+        );
 
       await setDoc(
         entryRef,
         {
-          ...cleanForFirestore(entry),
-          id: entryId,
+          ...cleanForFirestore(
+            entry
+          ),
+
+          id:
+            entryId,
+
           createdAt:
             entry.createdAt ||
-            new Date().toISOString(),
-          createdAtServer: serverTimestamp()
+            new Date()
+              .toISOString(),
+
+          createdAtServer:
+            serverTimestamp()
         },
         {
           merge: true
@@ -535,31 +699,68 @@ export async function migrateLocalDataToFirestore() {
       );
     }
 
-    /*
-     * Reading progress
-     */
-    for (const record of progressRecords) {
-      const progressRef = doc(
-        db,
-        "users",
-        user.uid,
-        "readingProgress",
-        String(record.bookId)
-      );
+
+    /* ========================================================
+       READING PROGRESS MIGRATION
+    ======================================================== */
+
+    for (
+      const record
+      of progressRecords
+    ) {
+      const progressRef =
+        doc(
+          db,
+          "users",
+          user.uid,
+          "readingProgress",
+          String(
+            record.bookId
+          )
+        );
+
+      const oldUpdatedAt =
+        record.value
+          ?.updatedAt;
+
+      let updatedAtISO =
+        new Date()
+          .toISOString();
+
+      if (oldUpdatedAt) {
+        const parsedDate =
+          new Date(
+            oldUpdatedAt
+          );
+
+        if (
+          !Number.isNaN(
+            parsedDate.getTime()
+          )
+        ) {
+          updatedAtISO =
+            parsedDate
+              .toISOString();
+        }
+      }
 
       await setDoc(
         progressRef,
         {
-          bookId: String(record.bookId),
+          bookId:
+            String(
+              record.bookId
+            ),
+
           paragraphIndex:
-            record.value?.paragraphIndex ?? 0,
-          updatedAt: serverTimestamp(),
-          updatedAtISO:
-            record.value?.updatedAt
-              ? new Date(
-                  record.value.updatedAt
-                ).toISOString()
-              : new Date().toISOString()
+            record.value
+              ?.paragraphIndex ??
+            0,
+
+          updatedAt:
+            serverTimestamp(),
+
+          updatedAtISO
         },
         {
           merge: true
@@ -567,9 +768,14 @@ export async function migrateLocalDataToFirestore() {
       );
     }
 
+
+    /* ========================================================
+       CLEAN UP OLD LOCAL DATA
+    ======================================================== */
+
     /*
-     * Only remove the old local data after every
-     * Firestore operation above succeeds.
+     * Only remove old localStorage data after all
+     * Firestore operations above succeed.
      */
     localStorage.removeItem(
       LOCAL_SAVED_BOOKS_KEY
@@ -579,20 +785,32 @@ export async function migrateLocalDataToFirestore() {
       LOCAL_JOURNAL_KEY
     );
 
-    for (const record of progressRecords) {
-      localStorage.removeItem(record.key);
+    for (
+      const record
+      of progressRecords
+    ) {
+      localStorage.removeItem(
+        record.key
+      );
     }
 
     localStorage.setItem(
       migrationKey,
-      new Date().toISOString()
+      new Date()
+        .toISOString()
     );
 
     return {
       migrated: true,
-      books: localBooks.length,
-      journalEntries: localJournal.length,
-      progressRecords: progressRecords.length
+
+      books:
+        localBooks.length,
+
+      journalEntries:
+        localJournal.length,
+
+      progressRecords:
+        progressRecords.length
     };
   } catch (error) {
     console.error(
@@ -601,8 +819,8 @@ export async function migrateLocalDataToFirestore() {
     );
 
     /*
-     * We deliberately leave the old localStorage
-     * data untouched if migration fails.
+     * Deliberately leave old localStorage data untouched
+     * if migration fails.
      */
     throw error;
   }
