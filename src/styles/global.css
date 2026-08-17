@@ -2214,3 +2214,122 @@ p {
   }
   
 }
+
+/* ==================================================
+   CONTINUE READING + TIMELINE EVENTS
+   ================================================== */
+
+.continue-reading-panel {
+  padding: 1.25rem;
+}
+
+.continue-reading-list {
+  display: grid;
+  gap: 0;
+}
+
+.continue-reading-item {
+  padding: 1rem 0;
+
+  border-top:
+    1px solid var(--line);
+}
+
+.continue-reading-item:first-child {
+  border-top: 0;
+}
+
+.continue-reading-title {
+  display: inline-block;
+
+  font-family:
+    Georgia,
+    "Times New Roman",
+    serif;
+
+  font-size: 1.25rem;
+  font-weight: 800;
+
+  color: var(--ink);
+}
+
+.continue-reading-title:hover {
+  text-decoration: underline;
+}
+
+.continue-reading-author {
+  margin:
+    0.25rem 0 0.7rem;
+
+  color: var(--muted);
+}
+
+.continue-reading-progress {
+  display: grid;
+
+  grid-template-columns:
+    minmax(0, 1fr) auto;
+
+  align-items: center;
+
+  gap: 0.75rem;
+}
+
+.timeline-event-label {
+  margin:
+    0 0 0.25rem;
+
+  color: var(--primary);
+
+  font-size: 0.7rem;
+  font-weight: 900;
+
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.timeline-journal {
+  display: grid;
+
+  grid-template-columns:
+    44px minmax(0, 1fr);
+
+  gap: 1rem;
+
+  padding: 1rem 0;
+
+  border-top:
+    1px solid var(--line);
+}
+
+.timeline-journal-icon {
+  width: 44px;
+  height: 44px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 50%;
+
+  background: #fff7d7;
+  color: #6e5500;
+}
+
+.timeline-journal-text {
+  margin:
+    0.65rem 0 0.5rem;
+
+  line-height: 1.6;
+}
+
+.home-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+
+  align-items: center;
+  justify-content: center;
+
+  gap: 0.75rem 1.25rem;
+
+  margin-top: 0.75rem;
+}
