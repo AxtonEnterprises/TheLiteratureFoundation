@@ -3,6 +3,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { Link } from "react-router-dom";
 
 import BookCard from "../components/BookCard.jsx";
+import SEO from "../components/SEO.jsx";
 
 import {
   getJournal,
@@ -12,7 +13,6 @@ import {
 } from "../services/storage.js";
 
 import { auth } from "../firebase";
-import SEO from "../components/SEO.jsx";
 
 export default function Journal() {
   const [books, setBooks] = useState([]);
@@ -21,6 +21,15 @@ export default function Journal() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
+
+  const journalSEO = (
+    <SEO
+      title="Reading Journal | Random Reads"
+      description="Save books, reading progress, notes, and reflections with the Random Reads reading journal."
+      path="/read/journal"
+      noindex
+    />
+  );
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(
@@ -47,13 +56,11 @@ export default function Journal() {
            */
           await migrateLocalDataToFirestore();
 
-          const [
-            savedBooks,
-            journalEntries
-          ] = await Promise.all([
-            getSavedBooks(),
-            getJournal()
-          ]);
+          const [savedBooks, journalEntries] =
+            await Promise.all([
+              getSavedBooks(),
+              getJournal()
+            ]);
 
           setBooks(savedBooks);
           setEntries(journalEntries);
@@ -98,6 +105,8 @@ export default function Journal() {
   if (loading) {
     return (
       <main className="page-wrap">
+        {journalSEO}
+
         <section className="hero-card small">
           <p className="eyebrow">
             Reading Journal
@@ -112,6 +121,8 @@ export default function Journal() {
   if (!user) {
     return (
       <main className="page-wrap">
+        {journalSEO}
+
         <section className="hero-card small">
           <p className="eyebrow">
             Reading Journal
@@ -139,14 +150,9 @@ export default function Journal() {
 
   return (
     <main className="page-wrap">
-      <SEO
-        title="Reading Journal | Random Reads"
-        description="Save books, reading progress, notes, and reflections with the Random Reads reading journal."
-        path="/read/journal"
-        noindex
-/>
-      <div className="stack-lg">
+      {journalSEO}
 
+      <div className="stack-lg">
         <section className="hero-card small">
           <p className="eyebrow">
             Your Library
@@ -225,7 +231,6 @@ export default function Journal() {
             )}
           </div>
         </section>
-
       </div>
     </main>
   );
