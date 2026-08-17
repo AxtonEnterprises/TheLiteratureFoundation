@@ -7,13 +7,18 @@ import {
   Shuffle,
   ArrowRight
 } from "lucide-react";
-
+import SEO from "../components/SEO.jsx";
 const SUPPORT_URL =
   "https://buy.stripe.com/fZudR897C0DL9II8wm6oo00";
 
 export default function FoundationHome() {
   return (
     <div className="foundation-site">
+      <SEO
+  title="The Literature Foundation | Discover, Read, Learn"
+  description="The Literature Foundation expands access to literature through free reading tools, discovery, reflection, and lifelong learning."
+  path="/"
+/>
       <header className="foundation-header">
         <a className="foundation-brand" href="/">
           <img
