@@ -24,7 +24,8 @@ export default function SEO({
   description,
   path = "/",
   image = DEFAULT_IMAGE,
-  type = "website"
+  type = "website",
+  noindex = false
 }) {
   useEffect(() => {
     const canonicalUrl = `${SITE_URL}${path}`;
@@ -91,6 +92,12 @@ export default function SEO({
       image
     );
 
+    setMeta(
+  'meta[name="robots"]',
+  ["name", "robots"],
+  noindex ? "noindex, nofollow" : "index, follow"
+);
+
     let canonical =
       document.head.querySelector('link[rel="canonical"]');
 
@@ -101,7 +108,7 @@ export default function SEO({
     }
 
     canonical.setAttribute("href", canonicalUrl);
-  }, [title, description, path, image, type]);
+  }, [title, description, path, image, type, noindex]);
 
   return null;
 }
