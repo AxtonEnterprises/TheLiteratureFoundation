@@ -152,9 +152,10 @@ export default function Login() {
   return (
     <main className="login-page">
       <SEO
-  title="Log In | Random Reads"
-  description="Log in to Random Reads to save books, reading progress, and journal entries."
-  path="/read/login"
+        title="Log In | Random Reads"
+        description="Log in to Random Reads to save books, reading progress, and journal entries."
+        path="/read/login"
+        noindex
 />
       <section className="login-card">
 
