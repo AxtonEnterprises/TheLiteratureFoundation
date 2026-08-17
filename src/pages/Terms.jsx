@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
 import SEO from "../components/SEO.jsx";
+import FoundationHeader from "../components/FoundationHeader.jsx";
 
 export default function Terms() {
   return (
@@ -10,6 +11,7 @@ export default function Terms() {
         description="Terms governing use of The Literature Foundation and Random Reads."
         path="/terms"
       />
+      <FoundationHeader />
 
       <div className="stack-lg">
         <section className="hero-card small">
