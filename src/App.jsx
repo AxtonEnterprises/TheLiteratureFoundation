@@ -11,6 +11,8 @@ import Reader from "./pages/Reader";
 import Journal from "./pages/Journal";
 import About from "./pages/About";
 import Login from "./pages/Login";
+import Privacy from "./pages/Privacy.jsx";
+import Terms from "./pages/Terms.jsx";
 import NotFound from "./pages/NotFound.jsx";
 
 export default function App() {
@@ -49,6 +51,8 @@ export default function App() {
           <Route path="/journal" element={<Navigate to="/read/journal" replace />} />
           <Route path="/login" element={<Navigate to="/read/login" replace />} />
           <Route path="/about" element={<Navigate to="/read/about" replace />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
