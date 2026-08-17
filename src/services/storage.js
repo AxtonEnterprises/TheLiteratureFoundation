@@ -308,7 +308,29 @@ export async function getReadingProgress(bookId) {
   if (!user) {
     return null;
   }
-  export async function getReadingTimeline() {
+
+  const { getDoc } =
+    await import("firebase/firestore");
+
+  const progressRef = doc(
+    db,
+    "users",
+    user.uid,
+    "readingProgress",
+    String(bookId)
+  );
+
+  const snapshot =
+    await getDoc(progressRef);
+
+  if (!snapshot.exists()) {
+    return null;
+  }
+
+  return snapshot.data();
+}
+
+export async function getReadingTimeline() {
   const user = await getCurrentUser();
 
   if (!user) {
@@ -344,7 +366,7 @@ export async function getReadingProgress(bookId) {
   });
 
   return records;
-  }
+}
 
   /*
    * Import getDoc lazily here only because this function
