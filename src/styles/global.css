@@ -50,7 +50,39 @@ textarea {
 button {
   cursor: pointer;
 }
+/* ==================================================
+   ACCESSIBILITY
+   ================================================== */
 
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid var(--secondary);
+  outline-offset: 3px;
+}
+
+.foundation-site a:focus-visible,
+.foundation-site button:focus-visible,
+.foundation-site input:focus-visible,
+.foundation-site textarea:focus-visible,
+.foundation-site select:focus-visible,
+.foundation-site [tabindex]:focus-visible {
+  outline-color: var(--foundation-gold, #d7a42b);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
 .app-shell {
   min-height: 100vh;
 }
