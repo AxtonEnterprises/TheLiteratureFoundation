@@ -41,26 +41,60 @@ const SPONSORED_BOOKS = [
   }
 ];
 
+const INSTALL_HANDLED_KEY =
+  "randomReads.installPromptHandled";
+
+function isRunningStandalone() {
+  return (
+    window.matchMedia?.(
+      "(display-mode: standalone)"
+    )?.matches ||
+    window.navigator.standalone === true
+  );
+}
+
 export default function Home() {
   const [book, setBook] = useState(null);
   const [status, setStatus] = useState("");
 
-  const [installPrompt, setInstallPrompt] = useState(null);
-  const [installStatus, setInstallStatus] = useState("");
+  const [installPrompt, setInstallPrompt] =
+    useState(null);
 
-  const [sponsoredIndex, setSponsoredIndex] = useState(0);
+  const [showInstallCard, setShowInstallCard] =
+    useState(false);
 
-  const sponsoredBook = SPONSORED_BOOKS[sponsoredIndex];
+  const [sponsoredIndex, setSponsoredIndex] =
+    useState(0);
+
+  const sponsoredBook =
+    SPONSORED_BOOKS[sponsoredIndex];
 
   useEffect(() => {
+    if (
+      isRunningStandalone() ||
+      localStorage.getItem(
+        INSTALL_HANDLED_KEY
+      ) === "true"
+    ) {
+      setShowInstallCard(false);
+      return;
+    }
+
     function handleBeforeInstallPrompt(event) {
       event.preventDefault();
+
       setInstallPrompt(event);
+      setShowInstallCard(true);
     }
 
     function handleAppInstalled() {
+      localStorage.setItem(
+        INSTALL_HANDLED_KEY,
+        "true"
+      );
+
       setInstallPrompt(null);
-      setInstallStatus("Random Reads has been installed.");
+      setShowInstallCard(false);
     }
 
     window.addEventListener(
@@ -89,7 +123,10 @@ export default function Home() {
   useEffect(() => {
     const interval = window.setInterval(() => {
       setSponsoredIndex((currentIndex) => {
-        return (currentIndex + 1) % SPONSORED_BOOKS.length;
+        return (
+          (currentIndex + 1) %
+          SPONSORED_BOOKS.length
+        );
       });
     }, 7000);
 
@@ -102,12 +139,16 @@ export default function Home() {
     try {
       setStatus("Finding a book...");
 
-      const nextBook = await getRandomBook();
+      const nextBook =
+        await getRandomBook();
 
       setBook(nextBook);
       setStatus("");
     } catch (error) {
-      console.error("Random book error:", error);
+      console.error(
+        "Random book error:",
+        error
+      );
 
       setStatus(
         "We couldn't find a book right now. Please try again."
@@ -116,63 +157,83 @@ export default function Home() {
   }
 
   async function handleSave(selectedBook) {
-  try {
-    await saveBook(selectedBook);
+    try {
+      await saveBook(selectedBook);
 
-    setStatus("Book saved to your account.");
-  } catch (error) {
-    console.error("Save book error:", error);
+      setStatus(
+        "Book saved to your account."
+      );
+    } catch (error) {
+      console.error(
+        "Save book error:",
+        error
+      );
 
-    if (!auth.currentUser) {
-      setStatus(
-        "Log in to save books to your account."
-      );
-    } else {
-      setStatus(
-        "We couldn't save that book. Please try again."
-      );
+      if (!auth.currentUser) {
+        setStatus(
+          "Log in to save books to your account."
+        );
+      } else {
+        setStatus(
+          "We couldn't save that book. Please try again."
+        );
+      }
     }
-  }
   }
 
   async function handleInstall() {
     if (!installPrompt) {
-      setInstallStatus(
-        "Install Random Reads from your browser menu by choosing Add to Home Screen or Install App."
-      );
-
+      setShowInstallCard(false);
       return;
     }
 
     try {
       await installPrompt.prompt();
 
-      const result = await installPrompt.userChoice;
+      await installPrompt.userChoice;
 
-      if (result.outcome === "accepted") {
-        setInstallStatus("Installing Random Reads...");
-      } else {
-        setInstallStatus("Installation cancelled.");
-      }
+      localStorage.setItem(
+        INSTALL_HANDLED_KEY,
+        "true"
+      );
 
       setInstallPrompt(null);
+      setShowInstallCard(false);
     } catch (error) {
-      console.error("Install error:", error);
-
-      setInstallStatus(
-        "Random Reads could not start installation. Try your browser's Add to Home Screen option."
+      console.error(
+        "Install error:",
+        error
       );
+
+      localStorage.setItem(
+        INSTALL_HANDLED_KEY,
+        "true"
+      );
+
+      setInstallPrompt(null);
+      setShowInstallCard(false);
     }
+  }
+
+  function handleDismissInstall() {
+    localStorage.setItem(
+      INSTALL_HANDLED_KEY,
+      "true"
+    );
+
+    setInstallPrompt(null);
+    setShowInstallCard(false);
   }
 
   return (
     <main className="page-wrap">
       <SEO
-  title="Random Reads | Free Classic Literature"
-  description="Discover public-domain books at random, search classic literature, save your progress, and read free with Random Reads."
-  path="/read"
-  image="https://theliteraturefoundation.org/branding/random-reads-icon.svg"
-/>
+        title="Random Reads | Free Classic Literature"
+        description="Discover public-domain books at random, search classic literature, save your progress, and read free with Random Reads."
+        path="/read"
+        image="https://theliteraturefoundation.org/branding/random-reads-icon.svg"
+      />
+
       <div className="stack-lg">
 
         <section className="hero-card">
@@ -218,7 +279,9 @@ export default function Home() {
         {book && (
           <BookCard
             book={book}
-            onSave={() => handleSave(book)}
+            onSave={() =>
+              handleSave(book)
+            }
           />
         )}
 
@@ -257,64 +320,83 @@ export default function Home() {
               </span>
 
               <small>
-                Sponsored by: {sponsoredBook.sponsor}
+                Sponsored by:{" "}
+                {sponsoredBook.sponsor}
               </small>
             </div>
           </Link>
 
           <div className="sponsored-dots">
-            {SPONSORED_BOOKS.map((sponsored, index) => (
+            {SPONSORED_BOOKS.map(
+              (sponsored, index) => (
+                <button
+                  key={sponsored.id}
+                  type="button"
+                  className={
+                    index === sponsoredIndex
+                      ? "sponsored-dot active"
+                      : "sponsored-dot"
+                  }
+                  onClick={() =>
+                    setSponsoredIndex(index)
+                  }
+                  aria-label={
+                    `Show ${sponsored.title}`
+                  }
+                />
+              )
+            )}
+          </div>
+        </section>
+
+        {showInstallCard && (
+          <section className="install-card">
+            <div>
+              <p className="eyebrow">
+                Random Reads App
+              </p>
+
+              <h2>
+                Add Random Reads to your
+                home screen
+              </h2>
+
+              <p className="muted">
+                Install Random Reads for quick
+                access from your phone, tablet,
+                or computer.
+              </p>
+            </div>
+
+            <div className="button-row">
               <button
-                key={sponsored.id}
                 type="button"
-                className={
-                  index === sponsoredIndex
-                    ? "sponsored-dot active"
-                    : "sponsored-dot"
+                className="button primary large"
+                onClick={handleInstall}
+              >
+                <Download size={20} />
+                Install App
+              </button>
+
+              <button
+                type="button"
+                className="button secondary large"
+                onClick={
+                  handleDismissInstall
                 }
-                onClick={() => setSponsoredIndex(index)}
-                aria-label={`Show ${sponsored.title}`}
-              />
-            ))}
-          </div>
-        </section>
-
-        <section className="install-card">
-          <div>
-            <p className="eyebrow">
-              Random Reads App
-            </p>
-
-            <h2>
-              Add Random Reads to your home screen
-            </h2>
-
-            <p className="muted">
-              Install Random Reads for quick access from
-              your phone, tablet, or computer.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            className="button primary large"
-            onClick={handleInstall}
-          >
-            <Download size={20} />
-            Install App
-          </button>
-
-          {installStatus && (
-            <p className="status">
-              {installStatus}
-            </p>
-          )}
-        </section>
+              >
+                Not Now
+              </button>
+            </div>
+          </section>
+        )}
 
         <footer className="foundation-footer">
           <p>
             This app is brought to you by{" "}
-            <strong>The Literature Foundation.</strong>
+            <strong>
+              The Literature Foundation.
+            </strong>
           </p>
 
           <a
