@@ -13,6 +13,7 @@ import About from "./pages/About";
 import Login from "./pages/Login";
 import Privacy from "./pages/Privacy.jsx";
 import Terms from "./pages/Terms.jsx";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound.jsx";
 
 export default function App() {
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="/read/search" element={<Search />} />
           <Route path="/read/reader/:id" element={<Reader />} />
           <Route path="/read/journal" element={<Journal />} />
+          <Route path="/read/profile" element={<Profile />} />
           <Route path="/read/about" element={<About />} />
           <Route path="/read/login" element={<Login />} />
 
