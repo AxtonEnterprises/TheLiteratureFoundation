@@ -616,19 +616,21 @@ export default function Profile() {
                         }
                         className="timeline-book"
                       >
-                        {item.image && (
-                          <Link
-                            to={`/read/reader/${item.bookId}`}
-                            className="timeline-cover"
-                          >
-                            <img
-                              src={
-                                item.image
-                              }
-                              alt=""
-                            />
-                          </Link>
-                        )}
+                        <Link
+  to={`/read/reader/${item.bookId}`}
+  className="timeline-cover"
+>
+  {item.image ? (
+    <img
+      src={item.image}
+      alt={`Cover of ${item.title || "book"}`}
+    />
+  ) : (
+    <div className="timeline-cover-placeholder">
+      <BookOpen size={24} />
+    </div>
+  )}
+</Link>
 
                         <div className="timeline-book-content">
                           <Link
