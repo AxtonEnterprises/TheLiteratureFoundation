@@ -7,6 +7,7 @@ import {
   Shuffle,
   ArrowRight
 } from "lucide-react";
+import FoundationHeader from "../components/FoundationHeader.jsx";
 import SEO from "../components/SEO.jsx";
 const SUPPORT_URL =
   "https://buy.stripe.com/fZudR897C0DL9II8wm6oo00";
@@ -19,34 +20,8 @@ export default function FoundationHome() {
   description="The Literature Foundation expands access to literature through free reading tools, discovery, reflection, and lifelong learning."
   path="/"
 />
-      <header className="foundation-header">
-        <a className="foundation-brand" href="/">
-          <img
-            className="foundation-header-logo"
-            src="/branding/tlf-logo-horizontal-web.png"
-            alt="The Literature Foundation"
-          />
-        </a>
-
-        <nav
-          className="foundation-nav"
-          aria-label="Foundation navigation"
-        >
-          <a href="#mission">Mission</a>
-          <a href="#programs">Programs</a>
-          <a href="#about-foundation">About</a>
-
-          <a
-            href={SUPPORT_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="foundation-support-link"
-          >
-            Support Us
-          </a>
-        </nav>
-      </header>
-
+      <FoundationHeader />
+      
       <section className="foundation-hero">
         <div className="foundation-hero-copy">
           <p className="foundation-eyebrow">
