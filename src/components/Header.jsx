@@ -41,7 +41,11 @@ export default function Header() {
         )}
         {!authLoading && user && (
           <>
-            <div className="nav-link"><User size={18}/><span>{user.displayName || user.email?.split("@")[0] || "Account"}</span></div>
+            <NavLink to="/read/profile"  className={navClass}
+>
+  <User size={18} />
+  <span>Profile</span>
+</NavLink>
             <button type="button" className="nav-link" onClick={handleLogout}><LogOut size={18}/><span>Log Out</span></button>
           </>
         )}
