@@ -12,6 +12,7 @@ import {
 
 import { auth } from "../firebase";
 import "./Login.css";
+import SEO from "../components/SEO.jsx";
 
 const googleProvider = new GoogleAuthProvider();
 
@@ -150,6 +151,11 @@ export default function Login() {
 
   return (
     <main className="login-page">
+      <SEO
+  title="Log In | Random Reads"
+  description="Log in to Random Reads to save books, reading progress, and journal entries."
+  path="/read/login"
+/>
       <section className="login-card">
 
         <p className="login-eyebrow">
