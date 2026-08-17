@@ -11,7 +11,10 @@ import {
 
 import BookCard from "../components/BookCard.jsx";
 import { getRandomBook } from "../services/booksApi.js";
-import { saveBook } from "../services/storage.js";
+import {
+  getReadingTimeline,
+  saveBook
+} from "../services/storage.js";
 import SEO from "../components/SEO.jsx";
 
 const SPONSORED_BOOKS = [
@@ -56,6 +59,47 @@ function isRunningStandalone() {
 export default function Home() {
   const [book, setBook] = useState(null);
   const [status, setStatus] = useState("");
+  const [
+  continueReading,
+  setContinueReading
+] = useState([]);
+  useEffect(() => {
+  let active = true;
+
+  async function loadContinueReading() {
+    if (!auth.currentUser) {
+      if (active) {
+        setContinueReading([]);
+      }
+
+      return;
+    }
+
+    try {
+      const timeline =
+        await getReadingTimeline();
+
+      if (!active) {
+        return;
+      }
+
+      setContinueReading(
+        timeline.slice(0, 3)
+      );
+    } catch (error) {
+      console.error(
+        "Could not load continue reading:",
+        error
+      );
+    }
+  }
+
+  loadContinueReading();
+
+  return () => {
+    active = false;
+  };
+}, []);
 
   const [installPrompt, setInstallPrompt] =
     useState(null);
@@ -250,6 +294,85 @@ export default function Home() {
             library for your next book.
           </p>
 
+          {continueReading.length > 0 && (
+  <section className="panel continue-reading-panel">
+    <div className="section-heading-row">
+      <div>
+        <p className="eyebrow">
+          Your Reading
+        </p>
+
+        <h2>
+          Continue Reading
+        </h2>
+      </div>
+
+      <Link
+        to="/read/profile?tab=reading"
+        className="button secondary"
+      >
+        See All
+      </Link>
+    </div>
+
+    <div className="continue-reading-list">
+      {continueReading.map(
+        (item) => {
+          const percent =
+            Math.min(
+              Math.max(
+                Number(
+                  item.percentComplete
+                ) || 0,
+                0
+              ),
+              100
+            );
+
+          return (
+            <article
+              key={
+                item.bookId ||
+                item.id
+              }
+              className="continue-reading-item"
+            >
+              <Link
+                to={`/read/reader/${item.bookId}`}
+                className="continue-reading-title"
+              >
+                {item.title ||
+                  "Untitled"}
+              </Link>
+
+              <p className="continue-reading-author">
+                {item.author ||
+                  "Unknown author"}
+              </p>
+
+              <div className="continue-reading-progress">
+                <div className="reading-progress-track">
+                  <div
+                    className="reading-progress-fill"
+                    style={{
+                      width:
+                        `${percent}%`
+                    }}
+                  />
+                </div>
+
+                <strong>
+                  {percent}%
+                </strong>
+              </div>
+            </article>
+          );
+        }
+      )}
+    </div>
+  </section>
+)}
+
           <div className="button-row">
             <button
               type="button"
@@ -399,13 +522,22 @@ export default function Home() {
             </strong>
           </p>
 
-          <a
-            href="/"
-            className="foundation-link"
-          >
-            Visit The Literature Foundation
-            <ExternalLink size={16} />
-          </a>
+          <div className="home-footer-links">
+  <Link
+    to="/read/about"
+    className="foundation-link"
+  >
+    About Random Reads
+  </Link>
+
+  <a
+    href="/"
+    className="foundation-link"
+  >
+    Visit The Literature Foundation
+    <ExternalLink size={16} />
+  </a>
+</div>
         </footer>
 
       </div>
