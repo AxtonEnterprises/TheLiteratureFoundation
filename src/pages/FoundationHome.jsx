@@ -225,10 +225,9 @@ export default function FoundationHome() {
 
         <div>
           <p>
-            The Literature Foundation is a nonprofit organization
-            focused on increasing access to literature and
-            building tools that help people engage with books
-            more deeply.
+            The Literature Foundation is an organization focused
+on increasing access to literature and building tools
+that help people engage with books more deeply.
           </p>
 
           <p>
@@ -269,30 +268,52 @@ export default function FoundationHome() {
       </section>
 
       <footer className="foundation-footer-new">
-        <div className="foundation-footer-brand">
-          <img
-            src="/branding/tlf-icon-approved.png"
-            alt=""
-          />
+  <div className="foundation-footer-brand">
+    <img
+      src="/branding/tlf-icon-approved.png"
+      alt=""
+    />
 
-          <div>
-            <strong>The Literature Foundation</strong>
-            <span>Discover · Read · Learn</span>
-          </div>
-        </div>
+    <div>
+      <strong>The Literature Foundation</strong>
+      <span>
+        Making literature easier to discover, read, and learn from.
+      </span>
+    </div>
+  </div>
 
-        <div className="foundation-footer-links">
-          <Link to="/read">Random Reads</Link>
+  <div className="foundation-footer-links">
+    <Link to="/read">Random Reads</Link>
 
-          <a href="mailto:info@theliteraturefoundation.org">
-            Contact
-          </a>
+    <a href="#about-foundation">
+      About
+    </a>
 
-          <span>
-            © {new Date().getFullYear()}
-          </span>
-        </div>
-      </footer>
+    <a
+      href={SUPPORT_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Support
+    </a>
+
+    <Link to="/privacy">
+      Privacy
+    </Link>
+
+    <Link to="/terms">
+      Terms
+    </Link>
+
+    <a href="mailto:info@theliteraturefoundation.org">
+      Contact
+    </a>
+
+    <span>
+      © {new Date().getFullYear()} The Literature Foundation
+    </span>
+  </div>
+</footer>
     </div>
   );
 }
