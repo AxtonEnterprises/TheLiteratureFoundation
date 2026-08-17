@@ -16,6 +16,7 @@ import {
 
 import { paginateParagraphs } from "../utils/paginateText.js";
 import { auth } from "../firebase";
+import SEO from "../components/SEO.jsx";
 
 export default function Reader() {
   const { id } = useParams();
@@ -466,6 +467,24 @@ export default function Reader() {
 
   return (
     <section className="reader-page">
+      <SEO
+  title={
+    book
+      ? `${book.title} | Random Reads`
+      : "Read Classic Literature | Random Reads"
+  }
+  description={
+    book
+      ? `Read ${book.title}${book.author ? ` by ${book.author}` : ""} free online with Random Reads from The Literature Foundation.`
+      : "Read classic public-domain literature free online with Random Reads."
+  }
+  path={`/read/reader/${id}`}
+  image={
+    book?.image ||
+    "https://theliteraturefoundation.org/branding/random-reads-icon.svg"
+  }
+  type="book"
+/>
 
       <div className="reader-topbar">
         <div>
