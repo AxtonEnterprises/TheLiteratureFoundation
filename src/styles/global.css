@@ -1859,3 +1859,336 @@ p {
     font-size: 0.84rem;
   }
 }
+/* ==================================================
+   READER PROFILE
+   ================================================== */
+
+.profile-header-card {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+
+  padding: 1.5rem;
+
+  background: rgba(255, 255, 255, 0.88);
+
+  border: 1px solid var(--line);
+  border-radius: 28px;
+
+  box-shadow:
+    0 20px 60px
+    rgba(23, 60, 58, 0.08);
+}
+
+.profile-avatar {
+  width: 96px;
+  height: 96px;
+
+  flex: 0 0 96px;
+
+  display: grid;
+  place-items: center;
+
+  overflow: hidden;
+
+  border-radius: 50%;
+
+  background: #eef4f3;
+  color: var(--ink);
+
+  border: 3px solid white;
+
+  box-shadow:
+    0 8px 24px
+    rgba(11, 45, 69, 0.12);
+}
+
+.profile-avatar img {
+  width: 100%;
+  height: 100%;
+
+  display: block;
+
+  object-fit: cover;
+}
+
+.profile-title {
+  margin-bottom: 0.5rem;
+
+  font-size:
+    clamp(
+      2rem,
+      7vw,
+      3.5rem
+    );
+}
+
+.profile-tabs {
+  display: flex;
+  gap: 0.5rem;
+
+  overflow-x: auto;
+
+  padding: 0.4rem;
+
+  background: white;
+
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.profile-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+
+  padding: 0.75rem 1rem;
+
+  border: 0;
+  border-radius: 999px;
+
+  background: transparent;
+  color: var(--muted);
+
+  font-weight: 800;
+
+  white-space: nowrap;
+}
+
+.profile-tab.active {
+  background: var(--ink);
+  color: white;
+}
+
+.profile-panel {
+  padding: 1.25rem;
+}
+
+.profile-form {
+  display: grid;
+  gap: 1rem;
+
+  max-width: 680px;
+}
+
+.profile-form label {
+  display: grid;
+  gap: 0.4rem;
+
+  font-weight: 800;
+}
+
+.profile-form input,
+.profile-form textarea {
+  width: 100%;
+
+  padding: 0.9rem 1rem;
+
+  border: 1px solid var(--line);
+  border-radius: 16px;
+
+  background: white;
+  color: var(--ink);
+}
+
+.profile-form textarea {
+  resize: vertical;
+}
+
+.profile-photo-preview {
+  width: 120px;
+  height: 120px;
+
+  overflow: hidden;
+
+  border-radius: 50%;
+
+  background: #eef4f3;
+
+  border: 1px solid var(--line);
+}
+
+.profile-photo-preview img {
+  width: 100%;
+  height: 100%;
+
+  display: block;
+
+  object-fit: cover;
+}
+
+.section-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+
+  margin-bottom: 1rem;
+}
+
+.reading-timeline {
+  display: grid;
+  gap: 0;
+}
+
+.timeline-book {
+  display: grid;
+
+  grid-template-columns:
+    72px 1fr;
+
+  gap: 1rem;
+
+  padding: 1rem 0;
+
+  border-top:
+    1px solid var(--line);
+}
+
+.timeline-book:first-child {
+  border-top: 0;
+}
+
+.timeline-cover {
+  width: 72px;
+  height: 102px;
+
+  overflow: hidden;
+
+  border-radius: 10px;
+
+  background: #e9e1cf;
+}
+
+.timeline-cover img {
+  width: 100%;
+  height: 100%;
+
+  display: block;
+
+  object-fit: cover;
+}
+
+.timeline-book-content {
+  min-width: 0;
+}
+
+.timeline-book-title {
+  color: var(--ink);
+
+  font-family:
+    Georgia,
+    "Times New Roman",
+    serif;
+
+  font-size: 1.2rem;
+  font-weight: 800;
+
+  text-decoration: none;
+}
+
+.timeline-book-title:hover {
+  text-decoration: underline;
+}
+
+.timeline-author {
+  margin:
+    0.2rem 0 0.75rem;
+
+  color: var(--muted);
+}
+
+.timeline-progress-row {
+  display: grid;
+
+  grid-template-columns:
+    minmax(0, 1fr) auto;
+
+  align-items: center;
+
+  gap: 0.75rem;
+
+  margin-bottom: 0.45rem;
+}
+
+.reading-progress-track {
+  width: 100%;
+  height: 10px;
+
+  overflow: hidden;
+
+  border-radius: 999px;
+
+  background: #e6ecea;
+}
+
+.reading-progress-fill {
+  height: 100%;
+
+  border-radius: inherit;
+
+  background: var(--primary);
+
+  transition:
+    width 0.25s ease;
+}
+
+.profile-journal-list {
+  display: grid;
+}
+
+.profile-journal-snippet {
+  padding: 1rem 0;
+
+  border-top:
+    1px solid var(--line);
+}
+
+.profile-journal-snippet:first-child {
+  border-top: 0;
+}
+
+.profile-journal-snippet small {
+  display: block;
+
+  margin-top: 0.25rem;
+
+  color: var(--muted);
+}
+
+.profile-journal-snippet p {
+  margin-bottom: 0;
+}
+
+
+@media (max-width: 600px) {
+  .profile-header-card {
+    align-items: flex-start;
+  }
+
+  .profile-avatar {
+    width: 72px;
+    height: 72px;
+
+    flex-basis: 72px;
+  }
+
+  .profile-tabs {
+    border-radius: 20px;
+  }
+
+  .section-heading-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .timeline-book {
+    grid-template-columns:
+      58px 1fr;
+  }
+
+  .timeline-cover {
+    width: 58px;
+    height: 84px;
+  }
+}
