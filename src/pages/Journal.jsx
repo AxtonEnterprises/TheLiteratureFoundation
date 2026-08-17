@@ -140,9 +140,10 @@ export default function Journal() {
   return (
     <main className="page-wrap">
       <SEO
-  title="Reading Journal | Random Reads"
-  description="Save books, reading progress, notes, and reflections with the Random Reads reading journal."
-  path="/read/journal"
+        title="Reading Journal | Random Reads"
+        description="Save books, reading progress, notes, and reflections with the Random Reads reading journal."
+        path="/read/journal"
+        noindex
 />
       <div className="stack-lg">
 
