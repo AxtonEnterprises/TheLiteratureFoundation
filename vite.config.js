@@ -15,8 +15,14 @@ export default defineConfig({
 ],
       manifest: false,
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,json}'],
-        navigateFallbackDenylist: [/^\/api\//],
+        globPatterns: [
+        '**/*.{js,css,html,svg,png,ico,json,txt,xml}'
+],
+        navigateFallbackDenylist: [
+        /^\/api\//,
+        /^\/robots\.txt$/,
+        /^\/sitemap\.xml$/
+],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/gutendex\.com\/.*/i,
