@@ -3,6 +3,7 @@ import BookCard from '../components/BookCard.jsx';
 import SearchBar from '../components/SearchBar.jsx';
 import { searchBooks } from '../services/booksApi.js';
 import { saveBook } from '../services/storage.js';
+import SEO from "../components/SEO.jsx";
 
 export default function Search() {
   const [results, setResults] = useState([]);
@@ -40,6 +41,12 @@ export default function Search() {
       <div className="results-list">
         {results.map((book) => <BookCard key={book.id} book={book} onSave={handleSave} compact />)}
       </div>
+      <SEO
+  title="Search Classic Literature | Random Reads"
+  description="Search public-domain books by title, author, or subject and read classic literature free with Random Reads."
+  path="/read/search"
+  image="https://theliteraturefoundation.org/branding/random-reads-icon.svg"
+/>
     </section>
   );
 }
