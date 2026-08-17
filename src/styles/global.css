@@ -1697,6 +1697,32 @@ p {
   font-size: 0.86rem;
 }
 /* ==================================================
+   LEGAL PAGES
+   ================================================== */
+
+.legal-page {
+  max-width: 860px;
+}
+
+.legal-content {
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+}
+
+.legal-content h2 {
+  margin-top: 2rem;
+}
+
+.legal-content h2:first-child {
+  margin-top: 0;
+}
+
+.legal-content a {
+  color: var(--primary);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+/* ==================================================
    TABLET
    ================================================== */
 
