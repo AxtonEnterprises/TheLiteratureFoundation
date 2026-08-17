@@ -12,6 +12,7 @@ import {
 } from "../services/storage.js";
 
 import { auth } from "../firebase";
+import SEO from "../components/SEO.jsx";
 
 export default function Journal() {
   const [books, setBooks] = useState([]);
@@ -138,6 +139,11 @@ export default function Journal() {
 
   return (
     <main className="page-wrap">
+      <SEO
+  title="Reading Journal | Random Reads"
+  description="Save books, reading progress, notes, and reflections with the Random Reads reading journal."
+  path="/read/journal"
+/>
       <div className="stack-lg">
 
         <section className="hero-card small">
