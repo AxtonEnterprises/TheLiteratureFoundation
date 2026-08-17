@@ -482,6 +482,111 @@ export async function getReadingTimeline() {
   return records;
 }
 
+/* ============================================================
+   USER PROFILE
+============================================================ */
+
+export async function getUserProfile() {
+  const user =
+    await getCurrentUser();
+
+  if (!user) {
+    return null;
+  }
+
+  const { getDoc } =
+    await import(
+      "firebase/firestore"
+    );
+
+  const profileRef = doc(
+    db,
+    "users",
+    user.uid
+  );
+
+  const snapshot =
+    await getDoc(profileRef);
+
+  const storedProfile =
+    snapshot.exists()
+      ? snapshot.data()
+      : {};
+
+  return {
+    uid: user.uid,
+
+    displayName:
+      storedProfile.displayName ||
+      user.displayName ||
+      user.email?.split("@")[0] ||
+      "Reader",
+
+    email:
+      user.email || "",
+
+    photoURL:
+      storedProfile.photoURL ||
+      user.photoURL ||
+      "",
+
+    about:
+      storedProfile.about ||
+      ""
+  };
+}
+
+
+export async function saveUserProfile({
+  displayName,
+  photoURL,
+  about
+}) {
+  const user =
+    await requireUser();
+
+  const profileRef = doc(
+    db,
+    "users",
+    user.uid
+  );
+
+  const profileData = {
+    displayName:
+      displayName?.trim() ||
+      "Reader",
+
+    photoURL:
+      photoURL?.trim() ||
+      "",
+
+    about:
+      about?.trim() ||
+      "",
+
+    updatedAt:
+      serverTimestamp(),
+
+    updatedAtISO:
+      new Date().toISOString()
+  };
+
+  await setDoc(
+    profileRef,
+    cleanForFirestore(
+      profileData
+    ),
+    {
+      merge: true
+    }
+  );
+
+  return {
+    uid: user.uid,
+    email: user.email || "",
+    ...profileData
+  };
+}
 
 /* ============================================================
    ONE-TIME LOCAL STORAGE MIGRATION
