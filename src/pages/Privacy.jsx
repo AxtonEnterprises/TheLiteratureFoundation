@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import FoundationHeader from "../components/FoundationHeader.jsx";
 
 import SEO from "../components/SEO.jsx";
 
@@ -10,6 +11,7 @@ export default function Privacy() {
         description="Privacy information for The Literature Foundation and Random Reads."
         path="/privacy"
       />
+      <FoundationHeader />
 
       <div className="stack-lg">
         <section className="hero-card small">
