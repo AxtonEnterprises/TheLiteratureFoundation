@@ -321,9 +321,11 @@ export default function Reader() {
     async function persistProgress() {
       try {
         await saveReadingProgress(
-          book.id,
-          pages[pageIndex].startIndex
-        );
+        book,
+        pages[pageIndex].startIndex,
+        paragraphs.length,
+        progress
+);
       } catch (error) {
         if (!cancelled) {
           console.error(
@@ -340,10 +342,12 @@ export default function Reader() {
       cancelled = true;
     };
   }, [
-    book?.id,
-    pageIndex,
-    pages,
-    progressLoaded
+  book,
+  pageIndex,
+  pages,
+  paragraphs.length,
+  progress,
+  progressLoaded
   ]);
 
   /*
