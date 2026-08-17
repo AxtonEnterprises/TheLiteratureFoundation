@@ -6,10 +6,17 @@ import {
   Sparkles,
   ExternalLink
 } from "lucide-react";
+import SEO from "../components/SEO.jsx";
 
 export default function About() {
   return (
     <main className="page-wrap">
+      <SEO
+  title="About Random Reads | The Literature Foundation"
+  description="Learn how Random Reads helps people discover, read, save, and reflect on classic public-domain literature."
+  path="/read/about"
+  image="https://theliteraturefoundation.org/branding/random-reads-icon.svg"
+/>
       <div className="stack-lg">
 
         <section className="hero-card about-hero">
