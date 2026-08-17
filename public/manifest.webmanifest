@@ -1,19 +1,31 @@
 {
-  "name": "Random Reads \u2014 The Literature Foundation",
+  "name": "Random Reads — The Literature Foundation",
   "short_name": "Random Reads",
   "description": "Discover, save, and read classic public-domain books.",
+  "id": "/read",
   "start_url": "/read",
   "scope": "/read",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
-
   "icons": [
-  {
-    "src": "/branding/random-reads-icon.svg",
-    "sizes": "any",
-    "type": "image/svg+xml",
-    "purpose": "any maskable"
-  }
-]
+    {
+      "src": "/branding/random-reads-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/branding/random-reads-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/branding/random-reads-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
 }
