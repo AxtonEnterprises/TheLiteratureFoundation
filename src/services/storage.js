@@ -225,12 +225,15 @@ export async function addJournalEntry(entry) {
 ============================================================ */
 
 export async function saveReadingProgress(
-  bookId,
-  paragraphIndex
+  book,
+  paragraphIndex,
+  totalParagraphs,
+  percentComplete
 ) {
   if (
-    bookId === undefined ||
-    bookId === null
+    !book?.id ||
+    paragraphIndex === undefined ||
+    paragraphIndex === null
   ) {
     return;
   }
@@ -242,17 +245,49 @@ export async function saveReadingProgress(
     "users",
     user.uid,
     "readingProgress",
-    String(bookId)
+    String(book.id)
   );
+
+  const now = new Date().toISOString();
+
+  const progressData = {
+    bookId: String(book.id),
+
+    title:
+      book.title || "Untitled",
+
+    author:
+      book.author || "Unknown author",
+
+    image:
+      book.image || null,
+
+    paragraphIndex,
+
+    totalParagraphs:
+      totalParagraphs || 0,
+
+    percentComplete:
+      Math.min(
+        Math.max(
+          Math.round(percentComplete || 0),
+          0
+        ),
+        100
+      ),
+
+    updatedAt: serverTimestamp(),
+
+    updatedAtISO: now
+  };
+
+  if (percentComplete >= 100) {
+    progressData.completedAt = now;
+  }
 
   await setDoc(
     progressRef,
-    {
-      bookId: String(bookId),
-      paragraphIndex,
-      updatedAt: serverTimestamp(),
-      updatedAtISO: new Date().toISOString()
-    },
+    cleanForFirestore(progressData),
     {
       merge: true
     }
@@ -272,6 +307,43 @@ export async function getReadingProgress(bookId) {
 
   if (!user) {
     return null;
+  }
+  export async function getReadingTimeline() {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return [];
+  }
+
+  const progressRef = collection(
+    db,
+    "users",
+    user.uid,
+    "readingProgress"
+  );
+
+  const snapshot =
+    await getDocs(progressRef);
+
+  const records =
+    snapshot.docs.map(
+      (progressDoc) => ({
+        id: progressDoc.id,
+        ...progressDoc.data()
+      })
+    );
+
+  records.sort((a, b) => {
+    const aDate =
+      a.updatedAtISO || "";
+
+    const bDate =
+      b.updatedAtISO || "";
+
+    return bDate.localeCompare(aDate);
+  });
+
+  return records;
   }
 
   /*
