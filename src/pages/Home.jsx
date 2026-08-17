@@ -12,6 +12,7 @@ import {
 import BookCard from "../components/BookCard.jsx";
 import { getRandomBook } from "../services/booksApi.js";
 import { saveBook } from "../services/storage.js";
+import SEO from "../components/SEO.jsx";
 
 const SPONSORED_BOOKS = [
   {
@@ -166,6 +167,12 @@ export default function Home() {
 
   return (
     <main className="page-wrap">
+      <SEO
+  title="Random Reads | Free Classic Literature"
+  description="Discover public-domain books at random, search classic literature, save your progress, and read free with Random Reads."
+  path="/read"
+  image="https://theliteraturefoundation.org/branding/random-reads-icon.svg"
+/>
       <div className="stack-lg">
 
         <section className="hero-card">
