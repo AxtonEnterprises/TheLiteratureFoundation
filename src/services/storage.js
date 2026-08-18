@@ -245,7 +245,27 @@ export async function getJournal() {
   );
 }
 
+export async function getJournalForBook(
+  bookId
+) {
+  if (
+    bookId === undefined ||
+    bookId === null
+  ) {
+    return [];
+  }
 
+  const entries =
+    await getJournal();
+
+  return entries.filter(
+    (entry) =>
+      String(
+        entry.bookId
+      ) ===
+      String(bookId)
+  );
+}
 export async function addJournalEntry(
   entry
 ) {
