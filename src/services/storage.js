@@ -1138,6 +1138,25 @@ export async function saveUserProfile({
     new Date()
       .toISOString();
 
+export async function saveUserProfile({
+  displayName,
+  about,
+  avatar
+}) {
+  const user =
+    await requireUser();
+
+  const profileRef =
+    doc(
+      db,
+      "users",
+      user.uid
+    );
+
+  const now =
+    new Date()
+      .toISOString();
+
   const cleanProfile =
     cleanForFirestore({
       displayName:
@@ -1145,26 +1164,8 @@ export async function saveUserProfile({
           ?.trim() ||
         "Reader",
 
-      /*
-       * Store only the avatar ID.
-       *
-       * We are NOT storing the image itself
-       * or a large URL in Firestore.
-       */
       avatar:
         avatar
-          ?.trim() ||
-        "",
-
-      /*
-       * Keep this field so older profile
-       * pictures are not destroyed.
-       *
-       * Profile.jsx no longer needs to expose
-       * this as an editable field.
-       */
-      photoURL:
-        photoURL
           ?.trim() ||
         "",
 
@@ -1196,6 +1197,14 @@ export async function saveUserProfile({
 
     email:
       user.email ||
+      "",
+
+    /*
+     * Preserve the authenticated account's photo
+     * as a fallback if no preset avatar is chosen.
+     */
+    photoURL:
+      user.photoURL ||
       "",
 
     ...cleanProfile
