@@ -1120,26 +1120,6 @@ export async function getUserProfile() {
 
 export async function saveUserProfile({
   displayName,
-  photoURL,
-  about,
-  avatar
-}) {
-  const user =
-    await requireUser();
-
-  const profileRef =
-    doc(
-      db,
-      "users",
-      user.uid
-    );
-
-  const now =
-    new Date()
-      .toISOString();
-
-export async function saveUserProfile({
-  displayName,
   about,
   avatar
 }) {
