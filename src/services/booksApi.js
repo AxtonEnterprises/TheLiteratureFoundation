@@ -1,4 +1,5 @@
-const API_BASE = "https://gutendex.com/books";
+const API_BASE =
+  "https://gutendex.com/books";
 
 const CACHE_KEY =
   "randomReadsBooks";
@@ -9,6 +10,10 @@ const CACHE_TIME_KEY =
 const CACHE_MAX_AGE =
   1000 * 60 * 60 * 24;
 
+
+/* ============================================================
+   FORMAT HELPERS
+============================================================ */
 
 export function getReadableTextUrl(
   book
@@ -35,7 +40,8 @@ export function getReadableTextUrl(
         type.startsWith(
           "text/plain"
         ) &&
-        typeof url === "string"
+        typeof url ===
+          "string"
     )?.[1] ||
     null
   );
@@ -64,7 +70,8 @@ export function getHtmlUrl(
         type.startsWith(
           "text/html"
         ) &&
-        typeof url === "string"
+        typeof url ===
+          "string"
     )?.[1] ||
     null
   );
@@ -87,19 +94,75 @@ export function getCoverImageUrl(
 }
 
 
+/* ============================================================
+   AUTHOR NORMALIZATION
+============================================================ */
+
+function normalizeAuthorDisplayName(
+  name
+) {
+  if (
+    typeof name !==
+      "string" ||
+    !name.trim()
+  ) {
+    return "";
+  }
+
+  const trimmed =
+    name.trim();
+
+  /*
+   * Gutendex commonly uses:
+   *
+   * Shelley, Mary Wollstonecraft
+   *
+   * Convert that to:
+   *
+   * Mary Wollstonecraft Shelley
+   *
+   * This is intentionally conservative. If the name
+   * contains multiple commas, keep the original order.
+   */
+  const parts =
+    trimmed
+      .split(",")
+      .map(
+        (part) =>
+          part.trim()
+      )
+      .filter(Boolean);
+
+  if (
+    parts.length === 2
+  ) {
+    const [
+      lastName,
+      givenNames
+    ] = parts;
+
+    return `${givenNames} ${lastName}`;
+  }
+
+  return trimmed;
+}
+
+
 export function getAuthorName(
   book
 ) {
   /*
-   * Already-normalized books can simply
-   * return their existing author string.
+   * Already-normalized books can return their
+   * existing author field.
    */
   if (
     typeof book?.author ===
       "string" &&
     book.author.trim()
   ) {
-    return book.author;
+    return normalizeAuthorDisplayName(
+      book.author
+    );
   }
 
   if (
@@ -108,15 +171,29 @@ export function getAuthorName(
     return "Unknown author";
   }
 
-  return book.authors
-    .map(
-      (author) =>
-        author.name
-    )
-    .filter(Boolean)
-    .join(", ");
+  const authorNames =
+    book.authors
+      .map(
+        (author) =>
+          normalizeAuthorDisplayName(
+            author?.name
+          )
+      )
+      .filter(Boolean);
+
+  if (
+    !authorNames.length
+  ) {
+    return "Unknown author";
+  }
+
+  return authorNames.join(", ");
 }
 
+
+/* ============================================================
+   BOOK NORMALIZATION
+============================================================ */
 
 export function normalizeBook(
   book
@@ -141,22 +218,30 @@ export function normalizeBook(
     getHtmlUrl(book) ||
     null;
 
+  const textUrl =
+    book.textUrl ||
+    getReadableTextUrl(
+      book
+    ) ||
+    null;
+
   return {
     ...book,
 
     author,
 
     /*
-     * Keep both properties because different
-     * parts of Random Reads currently use
-     * cover and image.
+     * Keep both properties because existing parts of
+     * Random Reads currently use both cover and image.
      */
     cover,
 
     image:
       cover,
 
-    htmlUrl
+    htmlUrl,
+
+    textUrl
   };
 }
 
@@ -165,14 +250,305 @@ function normalizeBooks(
   books
 ) {
   return (
-    Array.isArray(books)
+    Array.isArray(
+      books
+    )
       ? books
       : []
   )
-    .map(normalizeBook)
+    .map(
+      normalizeBook
+    )
     .filter(Boolean);
 }
 
+
+/* ============================================================
+   SEARCH DEDUPLICATION
+============================================================ */
+
+/*
+ * Create a comparison-safe title.
+ *
+ * Examples:
+ *
+ * "Frankenstein; or, The Modern Prometheus"
+ * "Frankenstein: Or, The Modern Prometheus"
+ *
+ * become much easier to compare.
+ */
+function normalizeTitleForKey(
+  title
+) {
+  return String(
+    title || ""
+  )
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(
+      /[\u0300-\u036f]/g,
+      ""
+    )
+    .replace(
+      /&/g,
+      " and "
+    )
+    .replace(
+      /[^a-z0-9]+/g,
+      " "
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
+    .trim();
+}
+
+
+function normalizeAuthorForKey(
+  author
+) {
+  return String(
+    author ||
+    "unknown author"
+  )
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(
+      /[\u0300-\u036f]/g,
+      ""
+    )
+    .replace(
+      /[^a-z0-9]+/g,
+      " "
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
+    .trim();
+}
+
+
+/*
+ * Gutenberg sometimes varies subtitles and punctuation
+ * enough that strict title equality still leaves duplicates.
+ *
+ * This removes common subtitle separators for a secondary
+ * comparison key while retaining enough title information
+ * to avoid collapsing unrelated books.
+ */
+function getPrimaryTitle(
+  title
+) {
+  const normalized =
+    normalizeTitleForKey(
+      title
+    );
+
+  const separators = [
+    " or ",
+    " a novel ",
+    " a tale "
+  ];
+
+  for (
+    const separator
+    of separators
+  ) {
+    const index =
+      normalized.indexOf(
+        separator
+      );
+
+    if (
+      index > 4
+    ) {
+      return normalized
+        .slice(
+          0,
+          index
+        )
+        .trim();
+    }
+  }
+
+  return normalized;
+}
+
+
+function makeBookDedupKey(
+  book
+) {
+  const title =
+    getPrimaryTitle(
+      book?.title
+    );
+
+  const author =
+    normalizeAuthorForKey(
+      book?.author
+    );
+
+  return `${title}::${author}`;
+}
+
+
+/*
+ * Assign a score to each Gutenberg edition.
+ *
+ * Prefer:
+ * - usable plain text
+ * - cover
+ * - HTML source
+ * - richer subject metadata
+ * - higher download count
+ */
+function getEditionScore(
+  book
+) {
+  let score = 0;
+
+  if (
+    book?.textUrl
+  ) {
+    score += 100;
+  }
+
+  if (
+    book?.cover ||
+    book?.image
+  ) {
+    score += 50;
+  }
+
+  if (
+    book?.htmlUrl
+  ) {
+    score += 20;
+  }
+
+  if (
+    Array.isArray(
+      book?.subjects
+    )
+  ) {
+    score += Math.min(
+      book.subjects.length,
+      10
+    );
+  }
+
+  if (
+    Number.isFinite(
+      Number(
+        book?.download_count
+      )
+    )
+  ) {
+    /*
+     * Download count only acts as a tie breaker.
+     */
+    score += Math.min(
+      Number(
+        book.download_count
+      ) /
+        100000,
+      10
+    );
+  }
+
+  return score;
+}
+
+
+function chooseBetterEdition(
+  current,
+  candidate
+) {
+  if (!current) {
+    return candidate;
+  }
+
+  if (!candidate) {
+    return current;
+  }
+
+  const currentScore =
+    getEditionScore(
+      current
+    );
+
+  const candidateScore =
+    getEditionScore(
+      candidate
+    );
+
+  if (
+    candidateScore >
+    currentScore
+  ) {
+    return candidate;
+  }
+
+  return current;
+}
+
+
+function deduplicateBooks(
+  books
+) {
+  const groups =
+    new Map();
+
+  for (
+    const book
+    of books
+  ) {
+    if (
+      !book?.title
+    ) {
+      continue;
+    }
+
+    const key =
+      makeBookDedupKey(
+        book
+      );
+
+    /*
+     * If we somehow have no useful comparison key,
+     * preserve the individual Gutenberg record.
+     */
+    const safeKey =
+      key.replace(
+        /^::$/,
+        `id:${book.id}`
+      );
+
+    const existing =
+      groups.get(
+        safeKey
+      );
+
+    groups.set(
+      safeKey,
+      chooseBetterEdition(
+        existing,
+        book
+      )
+    );
+  }
+
+  return [
+    ...groups.values()
+  ];
+}
+
+
+/* ============================================================
+   GUTENDEX REQUESTS
+============================================================ */
 
 async function fetchBooksFromGutendex() {
   const response =
@@ -189,11 +565,17 @@ async function fetchBooksFromGutendex() {
   const data =
     await response.json();
 
-  return normalizeBooks(
-    data.results
+  return deduplicateBooks(
+    normalizeBooks(
+      data.results
+    )
   );
 }
 
+
+/* ============================================================
+   CACHE
+============================================================ */
 
 export async function getCachedBooks() {
   const cachedBooks =
@@ -213,25 +595,26 @@ export async function getCachedBooks() {
       Number(cachedAt) <
       CACHE_MAX_AGE;
 
-  if (cacheIsFresh) {
+  if (
+    cacheIsFresh
+  ) {
     try {
-      /*
-       * Important:
-       * normalize old cached Gutendex records too.
-       */
       const parsed =
         JSON.parse(
           cachedBooks
         );
 
+      /*
+       * Normalize and deduplicate old cache records so
+       * existing users don't need to manually clear data.
+       */
       const normalized =
-        normalizeBooks(
-          parsed
+        deduplicateBooks(
+          normalizeBooks(
+            parsed
+          )
         );
 
-      /*
-       * Upgrade the cached data while we're here.
-       */
       localStorage.setItem(
         CACHE_KEY,
         JSON.stringify(
@@ -256,23 +639,33 @@ export async function getCachedBooks() {
 
   localStorage.setItem(
     CACHE_KEY,
-    JSON.stringify(books)
+    JSON.stringify(
+      books
+    )
   );
 
   localStorage.setItem(
     CACHE_TIME_KEY,
-    String(Date.now())
+    String(
+      Date.now()
+    )
   );
 
   return books;
 }
 
 
+/* ============================================================
+   RANDOM BOOK
+============================================================ */
+
 export async function getRandomBook() {
   const books =
     await getCachedBooks();
 
-  if (!books.length) {
+  if (
+    !books.length
+  ) {
     throw new Error(
       "No books found"
     );
@@ -287,6 +680,10 @@ export async function getRandomBook() {
 }
 
 
+/* ============================================================
+   SEARCH
+============================================================ */
+
 export async function searchBooks(
   searchQuery = ""
 ) {
@@ -298,7 +695,9 @@ export async function searchBooks(
       : API_BASE;
 
   const response =
-    await fetch(url);
+    await fetch(
+      url
+    );
 
   if (!response.ok) {
     throw new Error(
@@ -309,11 +708,20 @@ export async function searchBooks(
   const data =
     await response.json();
 
-  return normalizeBooks(
-    data.results
+  const normalized =
+    normalizeBooks(
+      data.results
+    );
+
+  return deduplicateBooks(
+    normalized
   );
 }
 
+
+/* ============================================================
+   INDIVIDUAL BOOK
+============================================================ */
 
 export async function getBookById(
   bookId
@@ -337,6 +745,10 @@ export async function getBookById(
   );
 }
 
+
+/* ============================================================
+   READER TEXT
+============================================================ */
 
 export async function getReadableText(
   book
