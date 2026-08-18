@@ -24,7 +24,8 @@ import {
 import BookCard from "../components/BookCard.jsx";
 
 import {
-  getRandomBook
+  getRandomBook,
+  preloadRandomBook
 } from "../services/booksApi.js";
 
 import {
@@ -82,6 +83,18 @@ export default function Home() {
     book,
     setBook
   ] = useState(null);
+
+  useEffect(() => {
+  preloadRandomBook()
+    .catch(
+      (error) => {
+        console.error(
+          "Could not preload random book:",
+          error
+        );
+      }
+    );
+}, []);
 
   const [
     status,
