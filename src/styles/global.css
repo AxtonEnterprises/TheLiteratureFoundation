@@ -2333,3 +2333,199 @@ p {
 
   margin-top: 0.75rem;
 }
+/* ==================================================
+   PARAGRAPH NUMBERS + READER NOTES
+   ================================================== */
+
+.reader-paragraph-row {
+  display: grid;
+  grid-template-columns:
+    42px minmax(0, 1fr);
+  gap: 0.75rem;
+
+  align-items: start;
+}
+
+.reader-paragraph-row p {
+  margin:
+    0 0 1.2em;
+}
+
+.paragraph-number {
+  min-width: 32px;
+
+  padding: 0.2rem 0.3rem;
+  margin-top: 0.15rem;
+
+  border: 0;
+  border-radius: 8px;
+
+  background: transparent;
+  color: #8a969c;
+
+  font-size: 0.68em;
+  font-weight: 800;
+  text-align: right;
+
+  opacity: 0.7;
+}
+
+.paragraph-number:hover,
+.paragraph-number:focus-visible {
+  background: #eef4f3;
+  color: var(--ink);
+  opacity: 1;
+}
+
+.paragraph-number.has-note {
+  background: #fff7d7;
+  color: #856500;
+  opacity: 1;
+}
+
+.reader-notes-panel {
+  flex-shrink: 0;
+
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+
+  background: rgba(
+    255,
+    255,
+    255,
+    0.9
+  );
+
+  border:
+    1px solid var(--line);
+  border-radius: 24px;
+
+  box-shadow:
+    0 14px 40px
+    rgba(
+      23,
+      60,
+      58,
+      0.07
+    );
+}
+
+.reader-notes-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.note-count {
+  min-width: 32px;
+  height: 32px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 999px;
+
+  background: var(--ink);
+  color: white;
+
+  font-weight: 800;
+}
+
+.reader-page-notes {
+  display: grid;
+  gap: 0.75rem;
+
+  margin-bottom: 1.25rem;
+}
+
+.reader-page-note {
+  padding: 0.9rem 1rem;
+
+  background: #fffdf8;
+
+  border:
+    1px solid var(--line);
+  border-radius: 16px;
+}
+
+.reader-page-note-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+
+  color: var(--muted);
+
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.reader-page-note p {
+  margin:
+    0.5rem 0 0;
+}
+
+.add-paragraph-note {
+  padding-top: 1rem;
+
+  border-top:
+    1px solid var(--line);
+}
+
+.paragraph-select-label {
+  display: grid;
+  gap: 0.4rem;
+
+  margin-bottom: 0.75rem;
+
+  font-weight: 800;
+}
+
+.paragraph-select-label select {
+  width: 100%;
+
+  padding: 0.8rem;
+
+  border:
+    1px solid var(--line);
+  border-radius: 14px;
+
+  background: white;
+  color: var(--ink);
+}
+
+.add-paragraph-note textarea {
+  width: 100%;
+  min-height: 110px;
+
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+
+  resize: vertical;
+
+  border:
+    1px solid var(--line);
+  border-radius: 16px;
+
+  background: white;
+  color: var(--ink);
+}
+
+
+@media (
+  max-width: 600px
+) {
+  .reader-paragraph-row {
+    grid-template-columns:
+      30px minmax(0, 1fr);
+
+    gap: 0.45rem;
+  }
+
+  .paragraph-number {
+    min-width: 26px;
+    padding:
+      0.15rem;
+  }
+}
