@@ -1,6 +1,22 @@
-import { useEffect, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
-import { Link } from "react-router-dom";
+import {
+  useEffect,
+  useMemo,
+  useState
+} from "react";
+
+import {
+  onAuthStateChanged
+} from "firebase/auth";
+
+import {
+  Link,
+  useSearchParams
+} from "react-router-dom";
+
+import {
+  ArrowLeft,
+  BookOpen
+} from "lucide-react";
 
 import BookCard from "../components/BookCard.jsx";
 import SEO from "../components/SEO.jsx";
@@ -14,13 +30,42 @@ import {
 
 import { auth } from "../firebase";
 
-export default function Journal() {
-  const [books, setBooks] = useState([]);
-  const [entries, setEntries] = useState([]);
 
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState("");
+export default function Journal() {
+  const [
+    searchParams
+  ] = useSearchParams();
+
+  const selectedBookId =
+    searchParams.get(
+      "bookId"
+    );
+
+  const [
+    books,
+    setBooks
+  ] = useState([]);
+
+  const [
+    entries,
+    setEntries
+  ] = useState([]);
+
+  const [
+    user,
+    setUser
+  ] = useState(null);
+
+  const [
+    loading,
+    setLoading
+  ] = useState(true);
+
+  const [
+    status,
+    setStatus
+  ] = useState("");
+
 
   const journalSEO = (
     <SEO
@@ -31,65 +76,167 @@ export default function Journal() {
     />
   );
 
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      async (firebaseUser) => {
-        setUser(firebaseUser);
-
-        if (!firebaseUser) {
-          setBooks([]);
-          setEntries([]);
-          setLoading(false);
-          return;
-        }
-
-        try {
-          setLoading(true);
-          setStatus("");
-
-          /*
-           * Move any old browser-based Random Reads
-           * data into this user's Firestore account.
-           *
-           * This only runs once per UID.
-           */
-          await migrateLocalDataToFirestore();
-
-          const [savedBooks, journalEntries] =
-            await Promise.all([
-              getSavedBooks(),
-              getJournal()
-            ]);
-
-          setBooks(savedBooks);
-          setEntries(journalEntries);
-        } catch (error) {
-          console.error(
-            "Could not load journal:",
-            error
+    const unsubscribe =
+      onAuthStateChanged(
+        auth,
+        async (
+          firebaseUser
+        ) => {
+          setUser(
+            firebaseUser
           );
 
-          setStatus(
-            "We couldn't load your reading journal."
-          );
-        } finally {
-          setLoading(false);
+          if (
+            !firebaseUser
+          ) {
+            setBooks([]);
+            setEntries([]);
+            setLoading(false);
+
+            return;
+          }
+
+          try {
+            setLoading(true);
+            setStatus("");
+
+            await migrateLocalDataToFirestore();
+
+            const [
+              savedBooks,
+              journalEntries
+            ] =
+              await Promise.all([
+                getSavedBooks(),
+                getJournal()
+              ]);
+
+            setBooks(
+              savedBooks
+            );
+
+            setEntries(
+              journalEntries
+            );
+          } catch (error) {
+            console.error(
+              "Could not load journal:",
+              error
+            );
+
+            setStatus(
+              "We couldn't load your reading journal."
+            );
+          } finally {
+            setLoading(false);
+          }
         }
-      }
-    );
+      );
 
     return unsubscribe;
   }, []);
 
-  async function handleRemove(bookId) {
+
+  const filteredEntries =
+    useMemo(() => {
+      if (
+        !selectedBookId
+      ) {
+        return entries;
+      }
+
+      return entries.filter(
+        (entry) =>
+          String(
+            entry.bookId
+          ) ===
+          String(
+            selectedBookId
+          )
+      );
+    }, [
+      entries,
+      selectedBookId
+    ]);
+
+
+  const selectedBook =
+    useMemo(() => {
+      if (
+        !selectedBookId
+      ) {
+        return null;
+      }
+
+      const savedBook =
+        books.find(
+          (book) =>
+            String(
+              book.id
+            ) ===
+            String(
+              selectedBookId
+            )
+        );
+
+      if (
+        savedBook
+      ) {
+        return savedBook;
+      }
+
+      const journalEntry =
+        entries.find(
+          (entry) =>
+            String(
+              entry.bookId
+            ) ===
+            String(
+              selectedBookId
+            )
+        );
+
+      if (
+        !journalEntry
+      ) {
+        return null;
+      }
+
+      return {
+        id:
+          selectedBookId,
+
+        title:
+          journalEntry.title ||
+          "Untitled",
+
+        author:
+          journalEntry.author ||
+          "Unknown author"
+      };
+    }, [
+      books,
+      entries,
+      selectedBookId
+    ]);
+
+
+  async function handleRemove(
+    bookId
+  ) {
     try {
       setStatus("");
 
       const nextBooks =
-        await removeSavedBook(bookId);
+        await removeSavedBook(
+          bookId
+        );
 
-      setBooks(nextBooks);
+      setBooks(
+        nextBooks
+      );
     } catch (error) {
       console.error(
         "Could not remove saved book:",
@@ -102,6 +249,7 @@ export default function Journal() {
     }
   }
 
+
   if (loading) {
     return (
       <main className="page-wrap">
@@ -112,11 +260,14 @@ export default function Journal() {
             Reading Journal
           </p>
 
-          <h1>Loading your library...</h1>
+          <h1>
+            Loading your library...
+          </h1>
         </section>
       </main>
     );
   }
+
 
   if (!user) {
     return (
@@ -128,11 +279,15 @@ export default function Journal() {
             Reading Journal
           </p>
 
-          <h1>Your reading belongs to you.</h1>
+          <h1>
+            Your reading belongs to you.
+          </h1>
 
           <p>
-            Log in to save books, journal entries,
-            and reading progress across your devices.
+            Log in to save books,
+            journal entries, and
+            reading progress across
+            your devices.
           </p>
 
           <div className="button-row">
@@ -148,22 +303,70 @@ export default function Journal() {
     );
   }
 
+
   return (
     <main className="page-wrap">
       {journalSEO}
 
       <div className="stack-lg">
+
         <section className="hero-card small">
           <p className="eyebrow">
-            Your Library
+            Reading Journal
           </p>
 
-          <h1>Your saved reading</h1>
+          {selectedBookId ? (
+            <>
+              <h1>
+                {selectedBook?.title ||
+                  "Book Journal"}
+              </h1>
 
-          <p className="muted">
-            Your books and notes are saved to your
-            Random Reads account.
-          </p>
+              {selectedBook?.author && (
+                <p className="muted">
+                  {
+                    selectedBook.author
+                  }
+                </p>
+              )}
+
+              <div className="button-row">
+                <Link
+                  to="/read/profile"
+                  className="button secondary"
+                >
+                  <ArrowLeft
+                    size={16}
+                  />
+
+                  Reading Timeline
+                </Link>
+
+                <Link
+                  to={`/read/reader/${selectedBookId}`}
+                  className="button primary"
+                >
+                  <BookOpen
+                    size={16}
+                  />
+
+                  Read Book
+                </Link>
+              </div>
+            </>
+          ) : (
+            <>
+              <h1>
+                Your saved reading
+              </h1>
+
+              <p className="muted">
+                Your books and notes
+                are saved to your
+                Random Reads account.
+              </p>
+            </>
+          )}
 
           {status && (
             <p className="status">
@@ -172,65 +375,131 @@ export default function Journal() {
           )}
         </section>
 
-        <section className="panel">
-          <div style={{ padding: "1.25rem" }}>
-            <h2>Saved books</h2>
 
-            {books.length === 0 ? (
+        {!selectedBookId && (
+          <section className="panel">
+            <div
+              style={{
+                padding:
+                  "1.25rem"
+              }}
+            >
+              <h2>
+                Saved books
+              </h2>
+
+              {books.length ===
+              0 ? (
+                <p className="muted">
+                  No saved books yet.
+                </p>
+              ) : (
+                <div className="results-list">
+                  {books.map(
+                    (book) => (
+                      <BookCard
+                        key={
+                          book.id
+                        }
+                        book={
+                          book
+                        }
+                        compact
+                        onRemove={() =>
+                          handleRemove(
+                            book.id
+                          )
+                        }
+                      />
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+
+        <section className="panel">
+          <div
+            style={{
+              padding:
+                "1.25rem"
+            }}
+          >
+            <h2>
+              {selectedBookId
+                ? "Journal Entries"
+                : "Reading Journal"}
+            </h2>
+
+            {filteredEntries.length ===
+            0 ? (
               <p className="muted">
-                No saved books yet.
+                {selectedBookId
+                  ? "No journal entries for this book yet."
+                  : "No journal entries yet."}
               </p>
             ) : (
-              <div className="results-list">
-                {books.map((book) => (
-                  <BookCard
-                    key={book.id}
-                    book={book}
-                    compact
-                    onRemove={() =>
-                      handleRemove(book.id)
+              filteredEntries.map(
+                (entry) => (
+                  <article
+                    key={
+                      entry.id
                     }
-                  />
-                ))}
-              </div>
+                    className="note-card"
+                  >
+                    {!selectedBookId && (
+                      <Link
+                        to={`/read/journal?bookId=${encodeURIComponent(
+                          entry.bookId
+                        )}`}
+                        className="timeline-book-title"
+                      >
+                        {entry.title ||
+                          "Untitled"}
+                      </Link>
+                    )}
+
+                    <small>
+                      {!selectedBookId &&
+                        entry.author}
+
+                      {entry.paragraphNumber
+                        ? `${
+                            !selectedBookId
+                              ? " · "
+                              : ""
+                          }¶${entry.paragraphNumber}`
+                        : ""}
+
+                      {entry.createdAt
+                        ? ` · ${new Date(
+                            entry.createdAt
+                          ).toLocaleDateString()}`
+                        : ""}
+                    </small>
+
+                    {entry.paragraphPreview && (
+                      <p className="journal-paragraph-preview">
+                        “
+                        {
+                          entry.paragraphPreview
+                        }
+                        ”
+                      </p>
+                    )}
+
+                    <p>
+                      {entry.note}
+                    </p>
+                  </article>
+                )
+              )
             )}
           </div>
         </section>
 
-        <section className="panel">
-          <div style={{ padding: "1.25rem" }}>
-            <h2>Reading Journal</h2>
-
-            {entries.length === 0 ? (
-              <p className="muted">
-                No journal entries yet.
-              </p>
-            ) : (
-              entries.map((entry) => (
-                <article
-                  key={entry.id}
-                  className="note-card"
-                >
-                  <strong>
-                    {entry.title}
-                  </strong>
-
-                  <small>
-                    {entry.author}
-
-                    {entry.createdAt
-                      ? ` · ${new Date(
-                          entry.createdAt
-                        ).toLocaleDateString()}`
-                      : ""}
-                  </small>
-
-                  <p>{entry.note}</p>
-                </article>
-              ))
-            )}
-          </div>
-        </section>
       </div>
     </main>
   );
