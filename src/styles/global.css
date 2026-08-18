@@ -2593,3 +2593,92 @@ p {
   line-height:
     1.55;
 }
+/* ==================================================
+   JOURNAL VISIBILITY + EDITING
+   ================================================== */
+
+.journal-entry-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+
+  margin-top: 0.3rem;
+}
+
+.journal-visibility-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+
+  padding: 0.3rem 0.55rem;
+
+  border-radius: 999px;
+
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.journal-visibility-badge.private {
+  background: #eef1f4;
+  color: #40515c;
+}
+
+.journal-visibility-badge.public {
+  background: #e6f5f2;
+  color: #176c63;
+}
+
+.journal-visibility-badge.group {
+  background: #fff3d8;
+  color: #745400;
+}
+
+.journal-entry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+
+  margin-top: 0.9rem;
+}
+
+.journal-edit-form {
+  display: grid;
+  gap: 1rem;
+
+  margin-top: 1rem;
+}
+
+.journal-edit-form label {
+  display: grid;
+  gap: 0.4rem;
+
+  font-weight: 700;
+}
+
+.journal-edit-form textarea,
+.journal-edit-form input,
+.journal-edit-form select {
+  width: 100%;
+
+  padding: 0.8rem;
+
+  border: 1px solid var(--line);
+  border-radius: 14px;
+
+  background: white;
+  color: var(--ink);
+}
+
+.journal-edit-form textarea {
+  resize: vertical;
+}
+
+.journal-group-label {
+  display: block;
+
+  margin-top: 0.5rem;
+
+  color: var(--muted);
+}
