@@ -122,18 +122,6 @@ function normalizeAuthorDisplayName(
   const trimmed =
     name.trim();
 
-  /*
-   * Gutendex commonly uses:
-   *
-   * Shelley, Mary Wollstonecraft
-   *
-   * Convert that to:
-   *
-   * Mary Wollstonecraft Shelley
-   *
-   * If there are multiple commas, preserve the original
-   * because the structure may be more complicated.
-   */
   const parts =
     trimmed
       .split(",")
@@ -204,12 +192,6 @@ export function getAuthorName(
 function isEnglishBook(
   book
 ) {
-  /*
-   * Gutendex normally provides a languages array.
-   *
-   * If language metadata is missing, keep the book rather
-   * than accidentally discarding a valid result.
-   */
   if (
     !Array.isArray(
       book?.languages
@@ -264,10 +246,6 @@ export function normalizeBook(
 
     author,
 
-    /*
-     * Keep both properties because existing parts of
-     * Random Reads currently use both cover and image.
-     */
     cover,
 
     image:
@@ -354,13 +332,6 @@ function normalizeAuthorForKey(
 }
 
 
-/*
- * Gutenberg often has several records for the same work
- * with slightly different subtitles or punctuation.
- *
- * This creates a simpler comparison title while leaving
- * the actual displayed title unchanged.
- */
 function getPrimaryTitle(
   title
 ) {
@@ -417,16 +388,6 @@ function makeBookDedupKey(
 }
 
 
-/*
- * Prefer the Gutenberg edition most useful to Random Reads.
- *
- * Highest priorities:
- * - usable plain text
- * - cover art
- * - HTML source
- * - useful metadata
- * - download count as a small tie breaker
- */
 function getEditionScore(
   book
 ) {
@@ -615,11 +576,15 @@ async function fetchBooksFromGutendex() {
 ============================================================ */
 
 export async function getCachedBooks() {
-  if (memoryBookPool?.length) {
+  if (
+    memoryBookPool?.length
+  ) {
     return memoryBookPool;
   }
 
-  if (bookPoolPromise) {
+  if (
+    bookPoolPromise
+  ) {
     return bookPoolPromise;
   }
 
@@ -639,10 +604,14 @@ export async function getCachedBooks() {
         cachedBooks &&
         cachedAt &&
         Date.now() -
-          Number(cachedAt) <
+          Number(
+            cachedAt
+          ) <
           CACHE_MAX_AGE;
 
-      if (cacheIsFresh) {
+      if (
+        cacheIsFresh
+      ) {
         try {
           const parsed =
             JSON.parse(
@@ -707,81 +676,6 @@ export async function getCachedBooks() {
   }
 }
 
-  const cachedAt =
-    localStorage.getItem(
-      CACHE_TIME_KEY
-    );
-
-  const cacheIsFresh =
-    cachedBooks &&
-    cachedAt &&
-    Date.now() -
-      Number(cachedAt) <
-      CACHE_MAX_AGE;
-
-  if (
-    cacheIsFresh
-  ) {
-    try {
-      const parsed =
-        JSON.parse(
-          cachedBooks
-        );
-
-      /*
-       * Re-run the entire preparation pipeline against
-       * existing cached records.
-       *
-       * This means users automatically receive:
-       * - normalized authors
-       * - English filtering
-       * - deduplication
-       * - normalized cover/image fields
-       */
-      const prepared =
-        prepareBooks(
-          parsed
-        );
-
-      localStorage.setItem(
-        CACHE_KEY,
-        JSON.stringify(
-          prepared
-        )
-      );
-
-      return prepared;
-    } catch {
-      localStorage.removeItem(
-        CACHE_KEY
-      );
-
-      localStorage.removeItem(
-        CACHE_TIME_KEY
-      );
-    }
-  }
-
-  const books =
-    await fetchBooksFromGutendex();
-
-  localStorage.setItem(
-    CACHE_KEY,
-    JSON.stringify(
-      books
-    )
-  );
-
-  localStorage.setItem(
-    CACHE_TIME_KEY,
-    String(
-      Date.now()
-    )
-  );
-
-  return books;
-}
-
 
 /* ============================================================
    RANDOM BOOK
@@ -791,7 +685,9 @@ function chooseRandomBook(
   books,
   excludeId = null
 ) {
-  if (!books.length) {
+  if (
+    !books.length
+  ) {
     return null;
   }
 
@@ -800,8 +696,12 @@ function chooseRandomBook(
     excludeId !== null
       ? books.filter(
           (book) =>
-            String(book.id) !==
-            String(excludeId)
+            String(
+              book.id
+            ) !==
+            String(
+              excludeId
+            )
         )
       : books;
 
@@ -818,11 +718,15 @@ export async function preloadRandomBook() {
   const books =
     await getCachedBooks();
 
-  if (!books.length) {
+  if (
+    !books.length
+  ) {
     return null;
   }
 
-  if (!nextRandomBook) {
+  if (
+    !nextRandomBook
+  ) {
     nextRandomBook =
       chooseRandomBook(
         books
@@ -837,13 +741,17 @@ export async function getRandomBook() {
   const books =
     await getCachedBooks();
 
-  if (!books.length) {
+  if (
+    !books.length
+  ) {
     throw new Error(
       "No books found"
     );
   }
 
-  if (!nextRandomBook) {
+  if (
+    !nextRandomBook
+  ) {
     nextRandomBook =
       chooseRandomBook(
         books
@@ -853,9 +761,6 @@ export async function getRandomBook() {
   const selectedBook =
     nextRandomBook;
 
-  /*
-   * Prepare the NEXT click immediately.
-   */
   nextRandomBook =
     chooseRandomBook(
       books,
@@ -867,7 +772,7 @@ export async function getRandomBook() {
 
 
 /* ============================================================
-   SEARCH
+   SEARCH CACHE
 ============================================================ */
 
 function normalizeSearchQuery(
@@ -907,7 +812,9 @@ function readSearchCache(
       searchQuery
     );
 
-  if (!normalizedQuery) {
+  if (
+    !normalizedQuery
+  ) {
     return null;
   }
 
@@ -927,7 +834,9 @@ function readSearchCache(
     }
 
     const cached =
-      JSON.parse(raw);
+      JSON.parse(
+        raw
+      );
 
     if (
       !cached?.createdAt ||
@@ -964,7 +873,9 @@ function saveSearchCache(
       searchQuery
     );
 
-  if (!normalizedQuery) {
+  if (
+    !normalizedQuery
+  ) {
     return;
   }
 
@@ -982,12 +893,15 @@ function saveSearchCache(
     );
   } catch {
     /*
-     * A full localStorage cache should never
-     * prevent search itself from working.
+     * Cache failures should never block searching.
      */
   }
 }
 
+
+/* ============================================================
+   SEARCH
+============================================================ */
 
 export async function searchBooks(
   searchQuery = ""
@@ -997,13 +911,17 @@ export async function searchBooks(
       searchQuery
     );
 
-  if (normalizedQuery) {
+  if (
+    normalizedQuery
+  ) {
     const cached =
       readSearchCache(
         normalizedQuery
       );
 
-    if (cached) {
+    if (
+      cached
+    ) {
       return cached;
     }
   }
@@ -1020,7 +938,9 @@ export async function searchBooks(
       url
     );
 
-  if (!response.ok) {
+  if (
+    !response.ok
+  ) {
     throw new Error(
       "Search failed"
     );
@@ -1034,7 +954,9 @@ export async function searchBooks(
       data.results
     );
 
-  if (normalizedQuery) {
+  if (
+    normalizedQuery
+  ) {
     saveSearchCache(
       normalizedQuery,
       books
@@ -1066,8 +988,7 @@ export async function prefetchSearchBooks(
     );
   } catch {
     /*
-     * Background prefetch failures are silent.
-     * Normal Search still reports errors.
+     * Background prefetch failures are intentionally silent.
      */
   }
 }
@@ -1085,7 +1006,9 @@ export async function getBookById(
       `${API_BASE}/${bookId}`
     );
 
-  if (!response.ok) {
+  if (
+    !response.ok
+  ) {
     throw new Error(
       "Could not load book"
     );
@@ -1094,13 +1017,6 @@ export async function getBookById(
   const book =
     await response.json();
 
-  /*
-   * Do not reject an individual book based on language here.
-   *
-   * If someone already has a direct Gutenberg ID or saved
-   * record, the Reader should still be able to open it.
-   * Language filtering belongs to discovery/search.
-   */
   return normalizeBook(
     book
   );
@@ -1114,7 +1030,9 @@ export async function getBookById(
 export async function getReadableText(
   book
 ) {
-  if (!book?.id) {
+  if (
+    !book?.id
+  ) {
     throw new Error(
       "Missing book ID."
     );
@@ -1130,7 +1048,9 @@ export async function getReadableText(
       proxyUrl
     );
 
-  if (!response.ok) {
+  if (
+    !response.ok
+  ) {
     const errorText =
       await response.text();
 
@@ -1159,7 +1079,9 @@ export async function getReadableText(
 export async function getStructuredBookText(
   book
 ) {
-  if (!book?.id) {
+  if (
+    !book?.id
+  ) {
     throw new Error(
       "Missing book ID."
     );
@@ -1172,7 +1094,9 @@ export async function getStructuredBookText(
       )}`
     );
 
-  if (!response.ok) {
+  if (
+    !response.ok
+  ) {
     const error =
       await response
         .json()
