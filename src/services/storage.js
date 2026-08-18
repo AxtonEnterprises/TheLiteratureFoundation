@@ -14,6 +14,10 @@ import {
 } from "firebase/auth";
 
 import { auth, db } from "../firebase";
+import {
+  getAuthorName,
+  getCoverImageUrl
+} from "./booksApi.js";
 
 const LOCAL_SAVED_BOOKS_KEY =
   "randomReads.savedBooks";
