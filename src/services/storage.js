@@ -13,11 +13,16 @@ import {
   onAuthStateChanged
 } from "firebase/auth";
 
-import { auth, db } from "../firebase";
+import {
+  auth,
+  db
+} from "../firebase";
+
 import {
   getAuthorName,
   getCoverImageUrl
 } from "./booksApi.js";
+
 
 const LOCAL_SAVED_BOOKS_KEY =
   "randomReads.savedBooks";
@@ -25,33 +30,39 @@ const LOCAL_SAVED_BOOKS_KEY =
 const LOCAL_JOURNAL_KEY =
   "randomReads.journal";
 
+const JOURNAL_VISIBILITIES = [
+  "private",
+  "public",
+  "group"
+];
+
 
 /* ============================================================
    AUTH HELPERS
 ============================================================ */
 
-/*
- * Wait for Firebase Authentication to finish initializing.
- *
- * auth.currentUser can briefly be null while Firebase restores
- * a previously saved session. Waiting for onAuthStateChanged
- * prevents Firestore calls from running too early.
- */
 async function getCurrentUser() {
-  if (auth.currentUser) {
+  if (
+    auth.currentUser
+  ) {
     return auth.currentUser;
   }
 
-  return new Promise((resolve) => {
-    const unsubscribe =
-      onAuthStateChanged(
-        auth,
-        (user) => {
-          unsubscribe();
-          resolve(user);
-        }
-      );
-  });
+  return new Promise(
+    (resolve) => {
+      const unsubscribe =
+        onAuthStateChanged(
+          auth,
+          (user) => {
+            unsubscribe();
+
+            resolve(
+              user
+            );
+          }
+        );
+    }
+  );
 }
 
 
@@ -69,15 +80,73 @@ async function requireUser() {
 }
 
 
+/* ============================================================
+   DATA CLEANING
+============================================================ */
+
 /*
- * Firestore does not accept undefined values.
- * This removes any undefined properties that may come
- * from Gutendex or other app objects.
+ * Firestore does not accept undefined.
+ *
+ * Only use this for ordinary JSON-compatible data.
+ * Firestore values such as serverTimestamp() are added
+ * AFTER cleaning instead of being passed through JSON.
  */
-function cleanForFirestore(value) {
+function cleanForFirestore(
+  value
+) {
   return JSON.parse(
-    JSON.stringify(value)
+    JSON.stringify(
+      value
+    )
   );
+}
+
+
+/* ============================================================
+   JOURNAL HELPERS
+============================================================ */
+
+function normalizeVisibility(
+  visibility
+) {
+  if (
+    JOURNAL_VISIBILITIES.includes(
+      visibility
+    )
+  ) {
+    return visibility;
+  }
+
+  /*
+   * All legacy notes are private by default.
+   */
+  return "private";
+}
+
+
+function normalizeJournalEntry(
+  entry
+) {
+  if (!entry) {
+    return null;
+  }
+
+  return {
+    ...entry,
+
+    visibility:
+      normalizeVisibility(
+        entry.visibility
+      ),
+
+    groupId:
+      entry.groupId ||
+      null,
+
+    updatedAtISO:
+      entry.updatedAtISO ||
+      null
+  };
 }
 
 
@@ -93,15 +162,18 @@ export async function getSavedBooks() {
     return [];
   }
 
-  const booksRef = collection(
-    db,
-    "users",
-    user.uid,
-    "savedBooks"
-  );
+  const booksRef =
+    collection(
+      db,
+      "users",
+      user.uid,
+      "savedBooks"
+    );
 
   const snapshot =
-    await getDocs(booksRef);
+    await getDocs(
+      booksRef
+    );
 
   const books =
     snapshot.docs.map(
@@ -111,6 +183,7 @@ export async function getSavedBooks() {
 
         return {
           ...data,
+
           id:
             data.id ??
             bookDoc.id
@@ -118,24 +191,32 @@ export async function getSavedBooks() {
       }
     );
 
-  books.sort((a, b) => {
-    const aDate =
-      a.savedAt || "";
+  books.sort(
+    (a, b) => {
+      const aDate =
+        a.savedAt ||
+        "";
 
-    const bDate =
-      b.savedAt || "";
+      const bDate =
+        b.savedAt ||
+        "";
 
-    return bDate.localeCompare(
-      aDate
-    );
-  });
+      return bDate.localeCompare(
+        aDate
+      );
+    }
+  );
 
   return books;
 }
 
 
-export async function saveBook(book) {
-  if (!book?.id) {
+export async function saveBook(
+  book
+) {
+  if (
+    !book?.id
+  ) {
     throw new Error(
       "Cannot save a book without an ID."
     );
@@ -144,16 +225,21 @@ export async function saveBook(book) {
   const user =
     await requireUser();
 
-  const bookRef = doc(
-    db,
-    "users",
-    user.uid,
-    "savedBooks",
-    String(book.id)
-  );
+  const bookRef =
+    doc(
+      db,
+      "users",
+      user.uid,
+      "savedBooks",
+      String(
+        book.id
+      )
+    );
 
   const cleanBook =
-    cleanForFirestore(book);
+    cleanForFirestore(
+      book
+    );
 
   await setDoc(
     bookRef,
@@ -161,7 +247,8 @@ export async function saveBook(book) {
       ...cleanBook,
 
       savedAt:
-        new Date().toISOString(),
+        new Date()
+          .toISOString(),
 
       updatedAt:
         serverTimestamp()
@@ -181,15 +268,20 @@ export async function removeSavedBook(
   const user =
     await requireUser();
 
-  const bookRef = doc(
-    db,
-    "users",
-    user.uid,
-    "savedBooks",
-    String(bookId)
-  );
+  const bookRef =
+    doc(
+      db,
+      "users",
+      user.uid,
+      "savedBooks",
+      String(
+        bookId
+      )
+    );
 
-  await deleteDoc(bookRef);
+  await deleteDoc(
+    bookRef
+  );
 
   return getSavedBooks();
 }
@@ -203,8 +295,12 @@ export async function isBookSaved(
 
   return books.some(
     (book) =>
-      String(book.id) ===
-      String(bookId)
+      String(
+        book.id
+      ) ===
+      String(
+        bookId
+      )
   );
 }
 
@@ -221,40 +317,50 @@ export async function getJournal() {
     return [];
   }
 
-  const journalRef = collection(
-    db,
-    "users",
-    user.uid,
-    "journal"
-  );
+  const journalRef =
+    collection(
+      db,
+      "users",
+      user.uid,
+      "journal"
+    );
 
-  const journalQuery = query(
-    journalRef,
-    orderBy(
-      "createdAt",
-      "desc"
-    )
-  );
+  const journalQuery =
+    query(
+      journalRef,
+      orderBy(
+        "createdAt",
+        "desc"
+      )
+    );
 
   const snapshot =
     await getDocs(
       journalQuery
     );
 
-  return snapshot.docs.map(
-    (entryDoc) => ({
-      id: entryDoc.id,
-      ...entryDoc.data()
-    })
-  );
+  return snapshot.docs
+    .map(
+      (entryDoc) =>
+        normalizeJournalEntry({
+          id:
+            entryDoc.id,
+
+          ...entryDoc.data()
+        })
+    )
+    .filter(Boolean);
 }
+
 
 export async function getJournalForBook(
   bookId
 ) {
   if (
-    bookId === undefined ||
-    bookId === null
+    bookId ===
+      undefined ||
+    bookId ===
+      null
   ) {
     return [];
   }
@@ -267,38 +373,79 @@ export async function getJournalForBook(
       String(
         entry.bookId
       ) ===
-      String(bookId)
+      String(
+        bookId
+      )
   );
 }
+
+
+/*
+ * New journal records default to PRIVATE.
+ *
+ * visibility:
+ *   private
+ *   public
+ *   group
+ *
+ * groupId remains null unless visibility is group.
+ */
 export async function addJournalEntry(
   entry
 ) {
   const user =
     await requireUser();
 
-  const journalRef = collection(
-    db,
-    "users",
-    user.uid,
-    "journal"
-  );
+  const journalRef =
+    collection(
+      db,
+      "users",
+      user.uid,
+      "journal"
+    );
 
-  /*
-   * Create a document reference first so we get an ID
-   * without needing a separate addDoc call.
-   */
   const entryRef =
-    doc(journalRef);
+    doc(
+      journalRef
+    );
+
+  const now =
+    new Date()
+      .toISOString();
+
+  const visibility =
+    normalizeVisibility(
+      entry?.visibility
+    );
+
+  const cleanEntry =
+    cleanForFirestore({
+      ...entry,
+
+      id:
+        entryRef.id,
+
+      userId:
+        user.uid,
+
+      visibility,
+
+      groupId:
+        visibility ===
+        "group"
+          ? entry?.groupId ||
+            null
+          : null,
+
+      createdAt:
+        now,
+
+      updatedAtISO:
+        null
+    });
 
   const journalEntry = {
-    ...cleanForFirestore(
-      entry
-    ),
-
-    id: entryRef.id,
-
-    createdAt:
-      new Date().toISOString(),
+    ...cleanEntry,
 
     createdAtServer:
       serverTimestamp()
@@ -309,7 +456,196 @@ export async function addJournalEntry(
     journalEntry
   );
 
-  return journalEntry;
+  /*
+   * Return the client-friendly version rather than the
+   * unresolved serverTimestamp sentinel.
+   */
+  return normalizeJournalEntry(
+    cleanEntry
+  );
+}
+
+
+/* ============================================================
+   UPDATE JOURNAL ENTRY
+============================================================ */
+
+export async function updateJournalEntry(
+  entryId,
+  updates
+) {
+  if (!entryId) {
+    throw new Error(
+      "Missing journal entry ID."
+    );
+  }
+
+  const user =
+    await requireUser();
+
+  const entryRef =
+    doc(
+      db,
+      "users",
+      user.uid,
+      "journal",
+      String(
+        entryId
+      )
+    );
+
+  const now =
+    new Date()
+      .toISOString();
+
+  const updateData = {};
+
+
+  /*
+   * Note text
+   */
+  if (
+    updates?.note !==
+      undefined
+  ) {
+    const cleanedNote =
+      String(
+        updates.note
+      ).trim();
+
+    if (
+      !cleanedNote
+    ) {
+      throw new Error(
+        "A journal entry cannot be empty."
+      );
+    }
+
+    updateData.note =
+      cleanedNote;
+  }
+
+
+  /*
+   * Visibility
+   */
+  if (
+    updates?.visibility !==
+      undefined
+  ) {
+    const visibility =
+      normalizeVisibility(
+        updates.visibility
+      );
+
+    updateData.visibility =
+      visibility;
+
+    updateData.groupId =
+      visibility ===
+      "group"
+        ? updates?.groupId ||
+          null
+        : null;
+  } else if (
+    updates?.groupId !==
+      undefined
+  ) {
+    updateData.groupId =
+      updates.groupId ||
+      null;
+  }
+
+
+  /*
+   * Other journal fields can be updated later without
+   * changing the Firestore API.
+   */
+  if (
+    updates?.paragraphPreview !==
+      undefined
+  ) {
+    updateData.paragraphPreview =
+      String(
+        updates.paragraphPreview ||
+        ""
+      );
+  }
+
+
+  const cleanUpdates =
+    cleanForFirestore(
+      updateData
+    );
+
+  await setDoc(
+    entryRef,
+    {
+      ...cleanUpdates,
+
+      updatedAt:
+        serverTimestamp(),
+
+      updatedAtISO:
+        now
+    },
+    {
+      merge: true
+    }
+  );
+
+  return {
+    id:
+      String(
+        entryId
+      ),
+
+    ...cleanUpdates,
+
+    updatedAtISO:
+      now
+  };
+}
+
+
+/* ============================================================
+   DELETE JOURNAL ENTRY
+============================================================ */
+
+export async function deleteJournalEntry(
+  entryId
+) {
+  if (!entryId) {
+    throw new Error(
+      "Missing journal entry ID."
+    );
+  }
+
+  const user =
+    await requireUser();
+
+  const entryRef =
+    doc(
+      db,
+      "users",
+      user.uid,
+      "journal",
+      String(
+        entryId
+      )
+    );
+
+  await deleteDoc(
+    entryRef
+  );
+
+  return {
+    deleted: true,
+    id:
+      String(
+        entryId
+      )
+  };
 }
 
 
@@ -336,73 +672,88 @@ export async function saveReadingProgress(
   const user =
     await requireUser();
 
-  const progressRef = doc(
-    db,
-    "users",
-    user.uid,
-    "readingProgress",
-    String(book.id)
-  );
+  const progressRef =
+    doc(
+      db,
+      "users",
+      user.uid,
+      "readingProgress",
+      String(
+        book.id
+      )
+    );
 
   const now =
-    new Date().toISOString();
+    new Date()
+      .toISOString();
 
   const safePercent =
     Math.min(
       Math.max(
         Math.round(
-          percentComplete || 0
+          percentComplete ||
+          0
         ),
         0
       ),
       100
     );
 
-  const progressData = {
-    bookId:
-      String(book.id),
+  const progressData =
+    cleanForFirestore({
+      bookId:
+        String(
+          book.id
+        ),
 
-    title:
-      book.title ||
-      "Untitled",
+      title:
+        book.title ||
+        "Untitled",
 
-    author:
-  book.author ||
-  getAuthorName(book) ||
-  "Unknown author",
+      author:
+        book.author ||
+        getAuthorName(
+          book
+        ) ||
+        "Unknown author",
 
-image:
-  book.image ||
-  getCoverImageUrl(book) ||
-  null,
-    paragraphIndex,
+      image:
+        book.image ||
+        book.cover ||
+        getCoverImageUrl(
+          book
+        ) ||
+        null,
 
-    totalParagraphs:
-      totalParagraphs ||
-      0,
+      paragraphIndex,
 
-    percentComplete:
-      safePercent,
+      totalParagraphs:
+        totalParagraphs ||
+        0,
 
-    updatedAt:
-      serverTimestamp(),
+      percentComplete:
+        safePercent,
 
-    updatedAtISO:
-      now
-  };
+      updatedAtISO:
+        now,
 
-  if (
-    safePercent >= 100
-  ) {
-    progressData.completedAt =
-      now;
-  }
+      ...(safePercent >=
+      100
+        ? {
+            completedAt:
+              now
+          }
+        : {})
+    });
 
   await setDoc(
     progressRef,
-    cleanForFirestore(
-      progressData
-    ),
+    {
+      ...progressData,
+
+      updatedAt:
+        serverTimestamp()
+    },
     {
       merge: true
     }
@@ -414,8 +765,10 @@ export async function getReadingProgress(
   bookId
 ) {
   if (
-    bookId === undefined ||
-    bookId === null
+    bookId ===
+      undefined ||
+    bookId ===
+      null
   ) {
     return null;
   }
@@ -427,25 +780,28 @@ export async function getReadingProgress(
     return null;
   }
 
-  /*
-   * Import getDoc lazily because this function only
-   * needs a single Firestore document.
-   */
-  const { getDoc } =
+  const {
+    getDoc
+  } =
     await import(
       "firebase/firestore"
     );
 
-  const progressRef = doc(
-    db,
-    "users",
-    user.uid,
-    "readingProgress",
-    String(bookId)
-  );
+  const progressRef =
+    doc(
+      db,
+      "users",
+      user.uid,
+      "readingProgress",
+      String(
+        bookId
+      )
+    );
 
   const snapshot =
-    await getDoc(progressRef);
+    await getDoc(
+      progressRef
+    );
 
   if (
     !snapshot.exists()
@@ -507,6 +863,7 @@ export async function getReadingTimeline() {
   return records;
 }
 
+
 /* ============================================================
    USER PROFILE
 ============================================================ */
@@ -519,19 +876,24 @@ export async function getUserProfile() {
     return null;
   }
 
-  const { getDoc } =
+  const {
+    getDoc
+  } =
     await import(
       "firebase/firestore"
     );
 
-  const profileRef = doc(
-    db,
-    "users",
-    user.uid
-  );
+  const profileRef =
+    doc(
+      db,
+      "users",
+      user.uid
+    );
 
   const snapshot =
-    await getDoc(profileRef);
+    await getDoc(
+      profileRef
+    );
 
   const storedProfile =
     snapshot.exists()
@@ -539,19 +901,24 @@ export async function getUserProfile() {
       : {};
 
   return {
-    uid: user.uid,
+    uid:
+      user.uid,
 
     displayName:
-      storedProfile.displayName ||
+      storedProfile
+        .displayName ||
       user.displayName ||
-      user.email?.split("@")[0] ||
+      user.email
+        ?.split("@")[0] ||
       "Reader",
 
     email:
-      user.email || "",
+      user.email ||
+      "",
 
     photoURL:
-      storedProfile.photoURL ||
+      storedProfile
+        .photoURL ||
       user.photoURL ||
       "",
 
@@ -570,48 +937,63 @@ export async function saveUserProfile({
   const user =
     await requireUser();
 
-  const profileRef = doc(
-    db,
-    "users",
-    user.uid
-  );
+  const profileRef =
+    doc(
+      db,
+      "users",
+      user.uid
+    );
 
-  const profileData = {
-    displayName:
-      displayName?.trim() ||
-      "Reader",
+  const now =
+    new Date()
+      .toISOString();
 
-    photoURL:
-      photoURL?.trim() ||
-      "",
+  const cleanProfile =
+    cleanForFirestore({
+      displayName:
+        displayName
+          ?.trim() ||
+        "Reader",
 
-    about:
-      about?.trim() ||
-      "",
+      photoURL:
+        photoURL
+          ?.trim() ||
+        "",
 
-    updatedAt:
-      serverTimestamp(),
+      about:
+        about
+          ?.trim() ||
+        "",
 
-    updatedAtISO:
-      new Date().toISOString()
-  };
+      updatedAtISO:
+        now
+    });
 
   await setDoc(
     profileRef,
-    cleanForFirestore(
-      profileData
-    ),
+    {
+      ...cleanProfile,
+
+      updatedAt:
+        serverTimestamp()
+    },
     {
       merge: true
     }
   );
 
   return {
-    uid: user.uid,
-    email: user.email || "",
-    ...profileData
+    uid:
+      user.uid,
+
+    email:
+      user.email ||
+      "",
+
+    ...cleanProfile
   };
 }
+
 
 /* ============================================================
    ONE-TIME LOCAL STORAGE MIGRATION
@@ -646,7 +1028,9 @@ export async function migrateLocalDataToFirestore() {
 
   if (!user) {
     return {
-      migrated: false,
+      migrated:
+        false,
+
       reason:
         "not-logged-in"
     };
@@ -661,7 +1045,9 @@ export async function migrateLocalDataToFirestore() {
     )
   ) {
     return {
-      migrated: false,
+      migrated:
+        false,
+
       reason:
         "already-migrated"
     };
@@ -682,6 +1068,10 @@ export async function migrateLocalDataToFirestore() {
   const progressRecords =
     [];
 
+
+  /*
+   * Find old reading-progress keys.
+   */
   for (
     let index = 0;
     index <
@@ -725,11 +1115,11 @@ export async function migrateLocalDataToFirestore() {
       });
     } catch {
       /*
-       * Ignore malformed
-       * old progress data.
+       * Ignore malformed legacy progress.
        */
     }
   }
+
 
   try {
     /* ========================================================
@@ -740,7 +1130,9 @@ export async function migrateLocalDataToFirestore() {
       const book
       of localBooks
     ) {
-      if (!book?.id) {
+      if (
+        !book?.id
+      ) {
         continue;
       }
 
@@ -805,20 +1197,45 @@ export async function migrateLocalDataToFirestore() {
           entryId
         );
 
-      await setDoc(
-        entryRef,
-        {
-          ...cleanForFirestore(
-            entry
-          ),
+      /*
+       * Old local journal records become private.
+       */
+      const migratedEntry =
+        cleanForFirestore({
+          ...entry,
 
           id:
             entryId,
+
+          userId:
+            user.uid,
+
+          visibility:
+            normalizeVisibility(
+              entry.visibility
+            ),
+
+          groupId:
+            entry.visibility ===
+            "group"
+              ? entry.groupId ||
+                null
+              : null,
 
           createdAt:
             entry.createdAt ||
             new Date()
               .toISOString(),
+
+          updatedAtISO:
+            entry.updatedAtISO ||
+            null
+        });
+
+      await setDoc(
+        entryRef,
+        {
+          ...migratedEntry,
 
           createdAtServer:
             serverTimestamp()
@@ -857,7 +1274,9 @@ export async function migrateLocalDataToFirestore() {
         new Date()
           .toISOString();
 
-      if (oldUpdatedAt) {
+      if (
+        oldUpdatedAt
+      ) {
         const parsedDate =
           new Date(
             oldUpdatedAt
@@ -865,7 +1284,8 @@ export async function migrateLocalDataToFirestore() {
 
         if (
           !Number.isNaN(
-            parsedDate.getTime()
+            parsedDate
+              .getTime()
           )
         ) {
           updatedAtISO =
@@ -903,10 +1323,6 @@ export async function migrateLocalDataToFirestore() {
        CLEAN UP OLD LOCAL DATA
     ======================================================== */
 
-    /*
-     * Only remove old localStorage data after all
-     * Firestore operations above succeed.
-     */
     localStorage.removeItem(
       LOCAL_SAVED_BOOKS_KEY
     );
@@ -931,7 +1347,8 @@ export async function migrateLocalDataToFirestore() {
     );
 
     return {
-      migrated: true,
+      migrated:
+        true,
 
       books:
         localBooks.length,
@@ -949,8 +1366,8 @@ export async function migrateLocalDataToFirestore() {
     );
 
     /*
-     * Deliberately leave old localStorage data untouched
-     * if migration fails.
+     * Leave the original localStorage data untouched
+     * if the migration fails.
      */
     throw error;
   }
