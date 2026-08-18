@@ -367,13 +367,14 @@ export async function saveReadingProgress(
       "Untitled",
 
     author:
-      book.author ||
-      "Unknown author",
+  book.author ||
+  getAuthorName(book) ||
+  "Unknown author",
 
-    image:
-      book.image ||
-      null,
-
+image:
+  book.image ||
+  getCoverImageUrl(book) ||
+  null,
     paragraphIndex,
 
     totalParagraphs:
