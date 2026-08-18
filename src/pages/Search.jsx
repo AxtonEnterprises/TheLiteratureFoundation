@@ -3,6 +3,7 @@ import BookCard from '../components/BookCard.jsx';
 import SearchBar from '../components/SearchBar.jsx';
 import { searchBooks } from '../services/booksApi.js';
 import { saveBook } from '../services/storage.js';
+import { auth } from "../firebase";
 import SEO from "../components/SEO.jsx";
 
 export default function Search() {
@@ -25,9 +26,39 @@ export default function Search() {
     }
   }
 
-  function handleSave(book) {
-    saveBook(book);
-    setStatus(`Saved “${book.title}.”`);
+  async function handleSave(
+  book
+) {
+  try {
+    setStatus(
+      "Saving book..."
+    );
+
+    await saveBook(
+      book
+    );
+
+    setStatus(
+      `Saved “${book.title}.”`
+    );
+  } catch (error) {
+    console.error(
+      "Could not save book:",
+      error
+    );
+
+    if (
+      !auth.currentUser
+    ) {
+      setStatus(
+        "Log in to save books to your account."
+      );
+    } else {
+      setStatus(
+        "We couldn't save that book. Please try again."
+      );
+    }
+  }
   }
 
   return (
