@@ -23,6 +23,10 @@ import {
   getCoverImageUrl
 } from "./booksApi.js";
 
+import {
+  getBookById
+} from "./booksApi.js";
+
 
 const LOCAL_SAVED_BOOKS_KEY =
   "randomReads.savedBooks";
@@ -844,7 +848,116 @@ export async function getReadingTimeline() {
       })
     );
 
-  records.sort(
+
+  /*
+   * Repair older reading-progress records that
+   * were saved before Random Reads stored complete
+   * book metadata.
+   */
+  const repairedRecords =
+    await Promise.all(
+      records.map(
+        async (record) => {
+          const needsRepair =
+            !record.title ||
+            !record.author ||
+            record.author ===
+              "Unknown author" ||
+            !record.image;
+
+          if (
+            !needsRepair ||
+            !record.bookId
+          ) {
+            return record;
+          }
+
+          try {
+            const book =
+              await getBookById(
+                record.bookId
+              );
+
+            if (!book) {
+              return record;
+            }
+
+            const repairedRecord = {
+              ...record,
+
+              title:
+                book.title ||
+                record.title ||
+                "Untitled",
+
+              author:
+                book.author ||
+                record.author ||
+                "Unknown author",
+
+              image:
+                book.image ||
+                book.cover ||
+                record.image ||
+                null
+            };
+
+
+            /*
+             * Save the repaired metadata back to
+             * Firestore so we don't have to repair
+             * this record every time.
+             */
+            const recordRef =
+              doc(
+                db,
+                "users",
+                user.uid,
+                "readingProgress",
+                String(
+                  record.bookId
+                )
+              );
+
+            await setDoc(
+              recordRef,
+              {
+                title:
+                  repairedRecord.title,
+
+                author:
+                  repairedRecord.author,
+
+                image:
+                  repairedRecord.image,
+
+                metadataUpdatedAt:
+                  serverTimestamp()
+              },
+              {
+                merge: true
+              }
+            );
+
+            return repairedRecord;
+          } catch (error) {
+            /*
+             * A Gutendex/network failure should not
+             * prevent the reading timeline from loading.
+             */
+            console.warn(
+              `Could not repair metadata for book ${record.bookId}:`,
+              error
+            );
+
+            return record;
+          }
+        }
+      )
+    );
+
+
+  repairedRecords.sort(
     (a, b) => {
       const aDate =
         a.updatedAtISO ||
@@ -860,7 +973,8 @@ export async function getReadingTimeline() {
     }
   );
 
-  return records;
+
+  return repairedRecords;
 }
 
 
