@@ -2,11 +2,13 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
-  orderBy,
   query,
   serverTimestamp,
-  setDoc
+  setDoc,
+  updateDoc,
+  where
 } from "firebase/firestore";
 
 import {
@@ -361,26 +363,80 @@ export async function getJournalForBook(
   bookId
 ) {
   if (
-    bookId ===
-      undefined ||
-    bookId ===
-      null
+    bookId === undefined ||
+    bookId === null
   ) {
     return [];
   }
 
-  const entries =
-    await getJournal();
+  const user =
+    auth.currentUser;
 
-  return entries.filter(
-    (entry) =>
-      String(
-        entry.bookId
-      ) ===
-      String(
-        bookId
-      )
-  );
+  if (!user) {
+    return [];
+  }
+
+  try {
+    const journalRef =
+      collection(
+        db,
+        "users",
+        user.uid,
+        "journal"
+      );
+
+    const journalQuery =
+      query(
+        journalRef,
+        where(
+          "bookId",
+          "==",
+          String(bookId)
+        )
+      );
+
+    const snapshot =
+      await getDocs(
+        journalQuery
+      );
+
+    const entries =
+      snapshot.docs.map(
+        (journalDoc) => ({
+          id:
+            journalDoc.id,
+
+          ...journalDoc.data()
+        })
+      );
+
+    return entries.sort(
+      (a, b) => {
+        const aDate =
+          a.createdAtISO ||
+          a.createdAt ||
+          "";
+
+        const bDate =
+          b.createdAtISO ||
+          b.createdAt ||
+          "";
+
+        return String(
+          bDate
+        ).localeCompare(
+          String(aDate)
+        );
+      }
+    );
+  } catch (error) {
+    console.error(
+      `Could not load journal for book ${bookId}:`,
+      error
+    );
+
+    throw error;
+  }
 }
 
 
