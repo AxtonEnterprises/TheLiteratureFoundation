@@ -16,7 +16,9 @@ import {
 import {
   BookOpen,
   NotebookPen,
-  User
+  Pencil,
+  User,
+  X
 } from "lucide-react";
 
 import { auth } from "../firebase";
@@ -92,27 +94,38 @@ export default function Profile() {
     setSearchParams
   ] = useSearchParams();
 
-  const requestedTab =
-    searchParams.get("tab");
-
-  const initialTab =
-    [
-      "profile",
-      "reading"
-    ].includes(requestedTab)
-      ? requestedTab
-      : "profile";
+  /*
+   * New profile behavior:
+   *
+   * /read/profile
+   *     -> Reading Timeline
+   *
+   * /read/profile?edit=1
+   *     -> Edit Profile
+   *
+   * We also support the old ?tab=profile URL so
+   * existing links don't break.
+   */
+  const editingFromUrl =
+    searchParams.get("edit") === "1" ||
+    searchParams.get("tab") === "profile";
 
   const [
-    activeTab,
-    setActiveTab
-  ] = useState(initialTab);
+    editingProfile,
+    setEditingProfile
+  ] = useState(
+    editingFromUrl
+  );
 
-  const [user, setUser] =
-    useState(null);
+  const [
+    user,
+    setUser
+  ] = useState(null);
 
-  const [profile, setProfile] =
-    useState(null);
+  const [
+    profile,
+    setProfile
+  ] = useState(null);
 
   const [
     readingTimeline,
@@ -139,14 +152,20 @@ export default function Profile() {
     setAbout
   ] = useState("");
 
-  const [loading, setLoading] =
-    useState(true);
+  const [
+    loading,
+    setLoading
+  ] = useState(true);
 
-  const [saving, setSaving] =
-    useState(false);
+  const [
+    saving,
+    setSaving
+  ] = useState(false);
 
-  const [status, setStatus] =
-    useState("");
+  const [
+    status,
+    setStatus
+  ] = useState("");
 
 
   useEffect(() => {
@@ -233,14 +252,72 @@ export default function Profile() {
   }, []);
 
 
-  function changeTab(
-    nextTab
-  ) {
-    setActiveTab(nextTab);
+  /*
+   * Count journal entries once per book.
+   *
+   * Result:
+   *
+   * {
+   *   "84": 4,
+   *   "1342": 2
+   * }
+   */
+  const journalCountsByBook =
+    useMemo(() => {
+      const counts =
+        new Map();
+
+      for (
+        const entry
+        of journalEntries
+      ) {
+        if (
+          entry.bookId ===
+            undefined ||
+          entry.bookId ===
+            null
+        ) {
+          continue;
+        }
+
+        const key =
+          String(
+            entry.bookId
+          );
+
+        counts.set(
+          key,
+          (
+            counts.get(key) ||
+            0
+          ) + 1
+        );
+      }
+
+      return counts;
+    }, [
+      journalEntries
+    ]);
+
+
+  function openEditProfile() {
+    setEditingProfile(
+      true
+    );
 
     setSearchParams({
-      tab: nextTab
+      edit: "1"
     });
+  }
+
+
+  function closeEditProfile() {
+    setEditingProfile(
+      false
+    );
+
+    setSearchParams({});
+    setStatus("");
   }
 
 
@@ -260,11 +337,19 @@ export default function Profile() {
           about
         });
 
-      setProfile(saved);
+      setProfile(
+        saved
+      );
 
       setStatus(
         "Profile saved."
       );
+
+      setEditingProfile(
+        false
+      );
+
+      setSearchParams({});
     } catch (error) {
       console.error(
         "Could not save profile:",
@@ -278,44 +363,6 @@ export default function Profile() {
       setSaving(false);
     }
   }
-
-
-  const combinedTimeline =
-    useMemo(() => {
-      const readingEvents =
-        readingTimeline.map(
-          (item) => ({
-            type: "reading",
-            date:
-              item.updatedAtISO ||
-              "",
-            data: item
-          })
-        );
-
-      const journalEvents =
-        journalEntries.map(
-          (entry) => ({
-            type: "journal",
-            date:
-              entry.createdAt ||
-              "",
-            data: entry
-          })
-        );
-
-      return [
-        ...readingEvents,
-        ...journalEvents
-      ].sort((a, b) =>
-        b.date.localeCompare(
-          a.date
-        )
-      );
-    }, [
-      readingTimeline,
-      journalEntries
-    ]);
 
 
   if (loading) {
@@ -401,11 +448,13 @@ export default function Profile() {
                 alt=""
               />
             ) : (
-              <User size={42} />
+              <User
+                size={42}
+              />
             )}
           </div>
 
-          <div>
+          <div className="profile-header-content">
             <p className="eyebrow">
               Reader Profile
             </p>
@@ -420,48 +469,24 @@ export default function Profile() {
                 {profile.about}
               </p>
             )}
+
+            {!editingProfile && (
+              <button
+                type="button"
+                className="button secondary profile-edit-button"
+                onClick={
+                  openEditProfile
+                }
+              >
+                <Pencil
+                  size={16}
+                />
+
+                Edit Profile
+              </button>
+            )}
           </div>
         </section>
-
-
-        <nav
-          className="profile-tabs"
-          aria-label="Profile sections"
-        >
-          <button
-            type="button"
-            className={
-              activeTab === "profile"
-                ? "profile-tab active"
-                : "profile-tab"
-            }
-            onClick={() =>
-              changeTab(
-                "profile"
-              )
-            }
-          >
-            <User size={18} />
-            Profile
-          </button>
-
-          <button
-            type="button"
-            className={
-              activeTab === "reading"
-                ? "profile-tab active"
-                : "profile-tab"
-            }
-            onClick={() =>
-              changeTab(
-                "reading"
-              )
-            }
-          >
-            <BookOpen size={18} />
-            Reading Timeline
-          </button>
-        </nav>
 
 
         {status && (
@@ -471,12 +496,30 @@ export default function Profile() {
         )}
 
 
-        {activeTab ===
-          "profile" && (
+        {editingProfile ? (
           <section className="panel profile-panel">
-            <h2>
-              Edit Profile
-            </h2>
+            <div className="section-heading-row">
+              <div>
+                <p className="eyebrow">
+                  Account
+                </p>
+
+                <h2>
+                  Edit Profile
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                className="button secondary"
+                onClick={
+                  closeEditProfile
+                }
+              >
+                <X size={16} />
+                Cancel
+              </button>
+            </div>
 
             <form
               className="profile-form"
@@ -496,8 +539,7 @@ export default function Profile() {
                     event
                   ) =>
                     setDisplayName(
-                      event.target
-                        .value
+                      event.target.value
                     )
                   }
                   maxLength={80}
@@ -517,8 +559,7 @@ export default function Profile() {
                     event
                   ) =>
                     setPhotoURL(
-                      event.target
-                        .value
+                      event.target.value
                     )
                   }
                   placeholder="https://..."
@@ -529,7 +570,9 @@ export default function Profile() {
               {photoURL && (
                 <div className="profile-photo-preview">
                   <img
-                    src={photoURL}
+                    src={
+                      photoURL
+                    }
                     alt="Profile preview"
                   />
                 </div>
@@ -540,13 +583,14 @@ export default function Profile() {
                 About me
 
                 <textarea
-                  value={about}
+                  value={
+                    about
+                  }
                   onChange={(
                     event
                   ) =>
                     setAbout(
-                      event.target
-                        .value
+                      event.target.value
                     )
                   }
                   maxLength={500}
@@ -561,11 +605,13 @@ export default function Profile() {
               </small>
 
 
-              <div>
+              <div className="button-row">
                 <button
                   type="submit"
                   className="button primary"
-                  disabled={saving}
+                  disabled={
+                    saving
+                  }
                 >
                   {saving
                     ? "Saving..."
@@ -574,11 +620,7 @@ export default function Profile() {
               </div>
             </form>
           </section>
-        )}
-
-
-        {activeTab ===
-          "reading" && (
+        ) : (
           <section className="panel profile-panel">
             <div className="section-heading-row">
               <div>
@@ -595,112 +637,62 @@ export default function Profile() {
                 to="/read/journal"
                 className="button secondary"
               >
+                <NotebookPen
+                  size={16}
+                />
+
                 Full Journal
               </Link>
             </div>
 
 
-            {combinedTimeline.length === 0 ? (
+            {readingTimeline.length ===
+            0 ? (
               <p className="muted">
                 Your reading activity
                 will appear here.
               </p>
             ) : (
               <div className="reading-timeline">
-                {combinedTimeline.map(
+                {readingTimeline.map(
                   (
-                    event,
+                    item,
                     index
                   ) => {
-                    if (
-                      event.type ===
-                      "journal"
-                    ) {
-                      const entry =
-                        event.data;
-
-                      return (
-                        <article
-                          key={`journal-${
-                            entry.id ||
-                            index
-                          }`}
-                          className="timeline-journal"
-                        >
-                          <div className="timeline-journal-icon">
-                            <NotebookPen
-                              size={20}
-                            />
-                          </div>
-
-                          <div>
-                            <p className="timeline-event-label">
-                              Journal Entry
-                            </p>
-
-                            {entry.bookId ? (
-                              <Link
-                                to={`/read/reader/${entry.bookId}`}
-                                className="timeline-book-title"
-                              >
-                                {entry.title ||
-                                  "Untitled"}
-                              </Link>
-                            ) : (
-                              <strong className="timeline-book-title">
-                                {entry.title ||
-                                  "Journal Entry"}
-                              </strong>
-                            )}
-
-                            {entry.author && (
-                              <p className="timeline-author">
-                                {entry.author}
-                              </p>
-                            )}
-
-                            <p className="timeline-journal-text">
-                              {entry.note}
-                            </p>
-
-                            {entry.createdAt && (
-                              <small className="muted">
-                                {formatDate(
-                                  entry.createdAt
-                                )}
-                              </small>
-                            )}
-                          </div>
-                        </article>
-                      );
-                    }
-
-                    const item =
-                      event.data;
-
                     const percent =
                       Math.min(
                         Math.max(
                           Number(
-                            item
-                              .percentComplete
+                            item.percentComplete
                           ) || 0,
                           0
                         ),
                         100
                       );
 
+                    const bookId =
+                      String(
+                        item.bookId ||
+                        item.id ||
+                        ""
+                      );
+
+                    const noteCount =
+                      journalCountsByBook.get(
+                        bookId
+                      ) ||
+                      0;
+
                     return (
                       <article
                         key={`reading-${
-                          item.bookId ||
-                          item.id ||
+                          bookId ||
                           index
                         }`}
                         className="timeline-book"
                       >
                         <Link
-                          to={`/read/reader/${item.bookId}`}
+                          to={`/read/reader/${bookId}`}
                           className="timeline-cover"
                         >
                           {item.image ? (
@@ -724,13 +716,14 @@ export default function Profile() {
 
                         <div className="timeline-book-content">
                           <p className="timeline-event-label">
-                            {percent >= 100
+                            {percent >=
+                            100
                               ? "Finished Reading"
                               : "Reading"}
                           </p>
 
                           <Link
-                            to={`/read/reader/${item.bookId}`}
+                            to={`/read/reader/${bookId}`}
                             className="timeline-book-title"
                           >
                             {item.title ||
@@ -765,6 +758,26 @@ export default function Profile() {
                                 )}`
                               : ""}
                           </small>
+
+                          {noteCount >
+                            0 && (
+                            <div className="timeline-journal-link-row">
+                              <Link
+                                to={`/read/journal?bookId=${encodeURIComponent(
+                                  bookId
+                                )}`}
+                                className="timeline-journal-link"
+                              >
+                                <NotebookPen
+                                  size={16}
+                                />
+
+                                See journal entries
+                                {" "}
+                                ({noteCount})
+                              </Link>
+                            </div>
+                          )}
                         </div>
                       </article>
                     );
