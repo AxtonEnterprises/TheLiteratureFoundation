@@ -121,8 +121,8 @@ function normalizeAuthorDisplayName(
    *
    * Mary Wollstonecraft Shelley
    *
-   * This is intentionally conservative. If the name
-   * contains multiple commas, keep the original order.
+   * If there are multiple commas, preserve the original
+   * because the structure may be more complicated.
    */
   const parts =
     trimmed
@@ -151,10 +151,6 @@ function normalizeAuthorDisplayName(
 export function getAuthorName(
   book
 ) {
-  /*
-   * Already-normalized books can return their
-   * existing author field.
-   */
   if (
     typeof book?.author ===
       "string" &&
@@ -188,6 +184,34 @@ export function getAuthorName(
   }
 
   return authorNames.join(", ");
+}
+
+
+/* ============================================================
+   LANGUAGE FILTERING
+============================================================ */
+
+function isEnglishBook(
+  book
+) {
+  /*
+   * Gutendex normally provides a languages array.
+   *
+   * If language metadata is missing, keep the book rather
+   * than accidentally discarding a valid result.
+   */
+  if (
+    !Array.isArray(
+      book?.languages
+    ) ||
+    !book.languages.length
+  ) {
+    return true;
+  }
+
+  return book.languages.includes(
+    "en"
+  );
 }
 
 
@@ -267,16 +291,6 @@ function normalizeBooks(
    SEARCH DEDUPLICATION
 ============================================================ */
 
-/*
- * Create a comparison-safe title.
- *
- * Examples:
- *
- * "Frankenstein; or, The Modern Prometheus"
- * "Frankenstein: Or, The Modern Prometheus"
- *
- * become much easier to compare.
- */
 function normalizeTitleForKey(
   title
 ) {
@@ -331,12 +345,11 @@ function normalizeAuthorForKey(
 
 
 /*
- * Gutenberg sometimes varies subtitles and punctuation
- * enough that strict title equality still leaves duplicates.
+ * Gutenberg often has several records for the same work
+ * with slightly different subtitles or punctuation.
  *
- * This removes common subtitle separators for a secondary
- * comparison key while retaining enough title information
- * to avoid collapsing unrelated books.
+ * This creates a simpler comparison title while leaving
+ * the actual displayed title unchanged.
  */
 function getPrimaryTitle(
   title
@@ -395,14 +408,14 @@ function makeBookDedupKey(
 
 
 /*
- * Assign a score to each Gutenberg edition.
+ * Prefer the Gutenberg edition most useful to Random Reads.
  *
- * Prefer:
+ * Highest priorities:
  * - usable plain text
- * - cover
+ * - cover art
  * - HTML source
- * - richer subject metadata
- * - higher download count
+ * - useful metadata
+ * - download count as a small tie breaker
  */
 function getEditionScore(
   book
@@ -439,20 +452,18 @@ function getEditionScore(
     );
   }
 
+  const downloadCount =
+    Number(
+      book?.download_count
+    );
+
   if (
     Number.isFinite(
-      Number(
-        book?.download_count
-      )
+      downloadCount
     )
   ) {
-    /*
-     * Download count only acts as a tie breaker.
-     */
     score += Math.min(
-      Number(
-        book.download_count
-      ) /
+      downloadCount /
         100000,
       10
     );
@@ -516,15 +527,10 @@ function deduplicateBooks(
         book
       );
 
-    /*
-     * If we somehow have no useful comparison key,
-     * preserve the individual Gutenberg record.
-     */
     const safeKey =
-      key.replace(
-        /^::$/,
-        `id:${book.id}`
-      );
+      key === "::"
+        ? `id:${book.id}`
+        : key;
 
     const existing =
       groups.get(
@@ -547,6 +553,29 @@ function deduplicateBooks(
 
 
 /* ============================================================
+   STANDARD BOOK PIPELINE
+============================================================ */
+
+function prepareBooks(
+  books
+) {
+  const normalized =
+    normalizeBooks(
+      books
+    );
+
+  const englishBooks =
+    normalized.filter(
+      isEnglishBook
+    );
+
+  return deduplicateBooks(
+    englishBooks
+  );
+}
+
+
+/* ============================================================
    GUTENDEX REQUESTS
 ============================================================ */
 
@@ -565,10 +594,8 @@ async function fetchBooksFromGutendex() {
   const data =
     await response.json();
 
-  return deduplicateBooks(
-    normalizeBooks(
-      data.results
-    )
+  return prepareBooks(
+    data.results
   );
 }
 
@@ -605,24 +632,28 @@ export async function getCachedBooks() {
         );
 
       /*
-       * Normalize and deduplicate old cache records so
-       * existing users don't need to manually clear data.
+       * Re-run the entire preparation pipeline against
+       * existing cached records.
+       *
+       * This means users automatically receive:
+       * - normalized authors
+       * - English filtering
+       * - deduplication
+       * - normalized cover/image fields
        */
-      const normalized =
-        deduplicateBooks(
-          normalizeBooks(
-            parsed
-          )
+      const prepared =
+        prepareBooks(
+          parsed
         );
 
       localStorage.setItem(
         CACHE_KEY,
         JSON.stringify(
-          normalized
+          prepared
         )
       );
 
-      return normalized;
+      return prepared;
     } catch {
       localStorage.removeItem(
         CACHE_KEY
@@ -708,13 +739,14 @@ export async function searchBooks(
   const data =
     await response.json();
 
-  const normalized =
-    normalizeBooks(
-      data.results
-    );
-
-  return deduplicateBooks(
-    normalized
+  /*
+   * Search results are:
+   * 1. normalized
+   * 2. filtered to English
+   * 3. deduplicated
+   */
+  return prepareBooks(
+    data.results
   );
 }
 
@@ -740,6 +772,13 @@ export async function getBookById(
   const book =
     await response.json();
 
+  /*
+   * Do not reject an individual book based on language here.
+   *
+   * If someone already has a direct Gutenberg ID or saved
+   * record, the Reader should still be able to open it.
+   * Language filtering belongs to discovery/search.
+   */
   return normalizeBook(
     book
   );
