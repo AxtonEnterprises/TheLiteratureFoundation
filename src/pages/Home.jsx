@@ -1,9 +1,18 @@
 import { auth } from "../firebase";
+
 import {
   onAuthStateChanged
 } from "firebase/auth";
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+
+import {
+  useEffect,
+  useState
+} from "react";
+
+import {
+  Link
+} from "react-router-dom";
+
 import {
   BookOpen,
   Download,
@@ -13,12 +22,18 @@ import {
 } from "lucide-react";
 
 import BookCard from "../components/BookCard.jsx";
-import { getRandomBook } from "../services/booksApi.js";
+
+import {
+  getRandomBook
+} from "../services/booksApi.js";
+
 import {
   getReadingTimeline,
   saveBook
 } from "../services/storage.js";
+
 import SEO from "../components/SEO.jsx";
+
 
 const SPONSORED_BOOKS = [
   {
@@ -47,8 +62,10 @@ const SPONSORED_BOOKS = [
   }
 ];
 
+
 const INSTALL_HANDLED_KEY =
   "randomReads.installPromptHandled";
+
 
 function isRunningStandalone() {
   return (
@@ -59,96 +76,117 @@ function isRunningStandalone() {
   );
 }
 
+
 export default function Home() {
-  const [book, setBook] = useState(null);
-  const [status, setStatus] = useState("");
   const [
-  continueReading,
-  setContinueReading
-] = useState([]);
-  
+    book,
+    setBook
+  ] = useState(null);
 
-    useEffect(() => {
-  let active = true;
+  const [
+    status,
+    setStatus
+  ] = useState("");
 
-  const unsubscribe =
-    onAuthStateChanged(
-      auth,
-      async (
-        firebaseUser
-      ) => {
-        if (
-          !firebaseUser
-        ) {
-          if (active) {
-            setContinueReading(
-              []
-            );
-          }
+  const [
+    continueReading,
+    setContinueReading
+  ] = useState([]);
 
-          return;
-        }
+  const [
+    installPrompt,
+    setInstallPrompt
+  ] = useState(null);
 
-        try {
-          const timeline =
-            await getReadingTimeline();
+  const [
+    showInstallCard,
+    setShowInstallCard
+  ] = useState(false);
 
-          if (!active) {
+  const [
+    sponsoredIndex,
+    setSponsoredIndex
+  ] = useState(0);
+
+
+  const sponsoredBook =
+    SPONSORED_BOOKS[
+      sponsoredIndex
+    ];
+
+
+  /*
+   * Continue Reading
+   *
+   * Wait for Firebase Authentication to finish restoring
+   * the user's session before loading reading progress.
+   */
+  useEffect(() => {
+    let active = true;
+
+    const unsubscribe =
+      onAuthStateChanged(
+        auth,
+        async (
+          firebaseUser
+        ) => {
+          if (
+            !firebaseUser
+          ) {
+            if (active) {
+              setContinueReading(
+                []
+              );
+            }
+
             return;
           }
 
-          /*
-           * Only unfinished books belong in
-           * Continue Reading.
-           */
-          const unfinished =
-            timeline.filter(
-              (item) =>
-                Number(
-                  item.percentComplete
-                ) < 100
+          try {
+            const timeline =
+              await getReadingTimeline();
+
+            if (!active) {
+              return;
+            }
+
+            /*
+             * Finished books should remain in the
+             * Reading Timeline, but not Continue Reading.
+             */
+            const unfinished =
+              timeline.filter(
+                (item) =>
+                  Number(
+                    item.percentComplete
+                  ) < 100
+              );
+
+            setContinueReading(
+              unfinished.slice(
+                0,
+                3
+              )
             );
-
-          setContinueReading(
-            unfinished.slice(
-              0,
-              3
-            )
-          );
-        } catch (error) {
-          console.error(
-            "Could not load continue reading:",
-            error
-          );
+          } catch (error) {
+            console.error(
+              "Could not load continue reading:",
+              error
+            );
+          }
         }
-      }
-    );
+      );
 
-  return () => {
-    active = false;
-    unsubscribe();
-  };
-}, []);
-        
-  loadContinueReading();
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
 
-  return () => {
-    active = false;
-  };
-}, []);
 
-  const [installPrompt, setInstallPrompt] =
-    useState(null);
-
-  const [showInstallCard, setShowInstallCard] =
-    useState(false);
-
-  const [sponsoredIndex, setSponsoredIndex] =
-    useState(0);
-
-  const sponsoredBook =
-    SPONSORED_BOOKS[sponsoredIndex];
-
+  /*
+   * PWA installation prompt
+   */
   useEffect(() => {
     if (
       isRunningStandalone() ||
@@ -156,15 +194,25 @@ export default function Home() {
         INSTALL_HANDLED_KEY
       ) === "true"
     ) {
-      setShowInstallCard(false);
+      setShowInstallCard(
+        false
+      );
+
       return;
     }
 
-    function handleBeforeInstallPrompt(event) {
+    function handleBeforeInstallPrompt(
+      event
+    ) {
       event.preventDefault();
 
-      setInstallPrompt(event);
-      setShowInstallCard(true);
+      setInstallPrompt(
+        event
+      );
+
+      setShowInstallCard(
+        true
+      );
     }
 
     function handleAppInstalled() {
@@ -173,8 +221,13 @@ export default function Home() {
         "true"
       );
 
-      setInstallPrompt(null);
-      setShowInstallCard(false);
+      setInstallPrompt(
+        null
+      );
+
+      setShowInstallCard(
+        false
+      );
     }
 
     window.addEventListener(
@@ -200,29 +253,52 @@ export default function Home() {
     };
   }, []);
 
+
+  /*
+   * Rotate the sponsored book.
+   */
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      setSponsoredIndex((currentIndex) => {
-        return (
-          (currentIndex + 1) %
-          SPONSORED_BOOKS.length
-        );
-      });
-    }, 7000);
+    const interval =
+      window.setInterval(
+        () => {
+          setSponsoredIndex(
+            (
+              currentIndex
+            ) => {
+              return (
+                (
+                  currentIndex +
+                  1
+                ) %
+                SPONSORED_BOOKS.length
+              );
+            }
+          );
+        },
+        7000
+      );
 
     return () => {
-      window.clearInterval(interval);
+      window.clearInterval(
+        interval
+      );
     };
   }, []);
 
+
   async function handleRandomBook() {
     try {
-      setStatus("Finding a book...");
+      setStatus(
+        "Finding a book..."
+      );
 
       const nextBook =
         await getRandomBook();
 
-      setBook(nextBook);
+      setBook(
+        nextBook
+      );
+
       setStatus("");
     } catch (error) {
       console.error(
@@ -236,9 +312,14 @@ export default function Home() {
     }
   }
 
-  async function handleSave(selectedBook) {
+
+  async function handleSave(
+    selectedBook
+  ) {
     try {
-      await saveBook(selectedBook);
+      await saveBook(
+        selectedBook
+      );
 
       setStatus(
         "Book saved to your account."
@@ -249,7 +330,9 @@ export default function Home() {
         error
       );
 
-      if (!auth.currentUser) {
+      if (
+        !auth.currentUser
+      ) {
         setStatus(
           "Log in to save books to your account."
         );
@@ -261,9 +344,13 @@ export default function Home() {
     }
   }
 
+
   async function handleInstall() {
     if (!installPrompt) {
-      setShowInstallCard(false);
+      setShowInstallCard(
+        false
+      );
+
       return;
     }
 
@@ -277,8 +364,13 @@ export default function Home() {
         "true"
       );
 
-      setInstallPrompt(null);
-      setShowInstallCard(false);
+      setInstallPrompt(
+        null
+      );
+
+      setShowInstallCard(
+        false
+      );
     } catch (error) {
       console.error(
         "Install error:",
@@ -290,10 +382,16 @@ export default function Home() {
         "true"
       );
 
-      setInstallPrompt(null);
-      setShowInstallCard(false);
+      setInstallPrompt(
+        null
+      );
+
+      setShowInstallCard(
+        false
+      );
     }
   }
+
 
   function handleDismissInstall() {
     localStorage.setItem(
@@ -301,9 +399,15 @@ export default function Home() {
       "true"
     );
 
-    setInstallPrompt(null);
-    setShowInstallCard(false);
+    setInstallPrompt(
+      null
+    );
+
+    setShowInstallCard(
+      false
+    );
   }
+
 
   return (
     <main className="page-wrap">
@@ -315,7 +419,6 @@ export default function Home() {
       />
 
       <div className="stack-lg">
-
         <section className="hero-card">
           <p className="eyebrow">
             Classic literature discovery
@@ -330,92 +433,101 @@ export default function Home() {
             library for your next book.
           </p>
 
-          {continueReading.length > 0 && (
-  <section className="panel continue-reading-panel">
-    <div className="section-heading-row">
-      <div>
-        <p className="eyebrow">
-          Your Reading
-        </p>
+          {continueReading.length >
+            0 && (
+            <section className="panel continue-reading-panel">
+              <div className="section-heading-row">
+                <div>
+                  <p className="eyebrow">
+                    Your Reading
+                  </p>
 
-        <h2>
-          Continue Reading
-        </h2>
-      </div>
-
-      <Link
-        to="/read/profile?tab=reading"
-        className="button secondary"
-      >
-        See All
-      </Link>
-    </div>
-
-    <div className="continue-reading-list">
-      {continueReading.map(
-        (item) => {
-          const percent =
-            Math.min(
-              Math.max(
-                Number(
-                  item.percentComplete
-                ) || 0,
-                0
-              ),
-              100
-            );
-
-          return (
-            <article
-              key={
-                item.bookId ||
-                item.id
-              }
-              className="continue-reading-item"
-            >
-              <Link
-                to={`/read/reader/${item.bookId}`}
-                className="continue-reading-title"
-              >
-                {item.title ||
-                  "Untitled"}
-              </Link>
-
-              <p className="continue-reading-author">
-                {item.author ||
-                  "Unknown author"}
-              </p>
-
-              <div className="continue-reading-progress">
-                <div className="reading-progress-track">
-                  <div
-                    className="reading-progress-fill"
-                    style={{
-                      width:
-                        `${percent}%`
-                    }}
-                  />
+                  <h2>
+                    Continue Reading
+                  </h2>
                 </div>
 
-                <strong>
-                  {percent}%
-                </strong>
+                <Link
+                  to="/read/profile?tab=reading"
+                  className="button secondary"
+                >
+                  See All
+                </Link>
               </div>
-            </article>
-          );
-        }
-      )}
-    </div>
-  </section>
-)}
+
+              <div className="continue-reading-list">
+                {continueReading.map(
+                  (
+                    item
+                  ) => {
+                    const percent =
+                      Math.min(
+                        Math.max(
+                          Number(
+                            item.percentComplete
+                          ) ||
+                            0,
+                          0
+                        ),
+                        100
+                      );
+
+                    return (
+                      <article
+                        key={
+                          item.bookId ||
+                          item.id
+                        }
+                        className="continue-reading-item"
+                      >
+                        <Link
+                          to={`/read/reader/${item.bookId}`}
+                          className="continue-reading-title"
+                        >
+                          {item.title ||
+                            "Untitled"}
+                        </Link>
+
+                        <p className="continue-reading-author">
+                          {item.author ||
+                            "Unknown author"}
+                        </p>
+
+                        <div className="continue-reading-progress">
+                          <div className="reading-progress-track">
+                            <div
+                              className="reading-progress-fill"
+                              style={{
+                                width:
+                                  `${percent}%`
+                              }}
+                            />
+                          </div>
+
+                          <strong>
+                            {percent}%
+                          </strong>
+                        </div>
+                      </article>
+                    );
+                  }
+                )}
+              </div>
+            </section>
+          )}
 
           <div className="button-row">
             <button
               type="button"
               className="button primary large"
-              onClick={handleRandomBook}
+              onClick={
+                handleRandomBook
+              }
             >
-              <Shuffle size={20} />
+              <Shuffle
+                size={20}
+              />
+
               Random Book
             </button>
 
@@ -423,7 +535,10 @@ export default function Home() {
               to="/read/search"
               className="button secondary large"
             >
-              <Search size={20} />
+              <Search
+                size={20}
+              />
+
               Search Library
             </Link>
           </div>
@@ -435,14 +550,18 @@ export default function Home() {
           )}
         </section>
 
+
         {book && (
           <BookCard
             book={book}
             onSave={() =>
-              handleSave(book)
+              handleSave(
+                book
+              )
             }
           />
         )}
+
 
         <section className="sponsored-banner">
           <div className="sponsored-label">
@@ -455,7 +574,9 @@ export default function Home() {
           >
             <div className="sponsored-cover">
               <img
-                src={sponsoredBook.image}
+                src={
+                  sponsoredBook.image
+                }
                 alt={`Cover of ${sponsoredBook.title}`}
               />
             </div>
@@ -466,47 +587,63 @@ export default function Home() {
               </p>
 
               <h2>
-                {sponsoredBook.title}
+                {
+                  sponsoredBook.title
+                }
               </h2>
 
               <p className="sponsored-author">
-                {sponsoredBook.author}
+                {
+                  sponsoredBook.author
+                }
               </p>
 
               <span className="sponsored-read-link">
-                <BookOpen size={18} />
+                <BookOpen
+                  size={18}
+                />
+
                 Read Now
               </span>
 
               <small>
                 Sponsored by:{" "}
-                {sponsoredBook.sponsor}
+                {
+                  sponsoredBook.sponsor
+                }
               </small>
             </div>
           </Link>
 
           <div className="sponsored-dots">
             {SPONSORED_BOOKS.map(
-              (sponsored, index) => (
+              (
+                sponsored,
+                index
+              ) => (
                 <button
-                  key={sponsored.id}
+                  key={
+                    sponsored.id
+                  }
                   type="button"
                   className={
-                    index === sponsoredIndex
+                    index ===
+                    sponsoredIndex
                       ? "sponsored-dot active"
                       : "sponsored-dot"
                   }
                   onClick={() =>
-                    setSponsoredIndex(index)
+                    setSponsoredIndex(
+                      index
+                    )
                   }
-                  aria-label={
-                    `Show ${sponsored.title}`
-                  }
+                  aria-label={`Show ${sponsored.title}`}
                 />
               )
             )}
           </div>
         </section>
+
 
         {showInstallCard && (
           <section className="install-card">
@@ -516,14 +653,12 @@ export default function Home() {
               </p>
 
               <h2>
-                Add Random Reads to your
-                home screen
+                Add Random Reads to your home screen
               </h2>
 
               <p className="muted">
-                Install Random Reads for quick
-                access from your phone, tablet,
-                or computer.
+                Install Random Reads for quick access from
+                your phone, tablet, or computer.
               </p>
             </div>
 
@@ -531,9 +666,14 @@ export default function Home() {
               <button
                 type="button"
                 className="button primary large"
-                onClick={handleInstall}
+                onClick={
+                  handleInstall
+                }
               >
-                <Download size={20} />
+                <Download
+                  size={20}
+                />
+
                 Install App
               </button>
 
@@ -550,6 +690,7 @@ export default function Home() {
           </section>
         )}
 
+
         <footer className="foundation-footer">
           <p>
             This app is brought to you by{" "}
@@ -559,23 +700,25 @@ export default function Home() {
           </p>
 
           <div className="home-footer-links">
-  <Link
-    to="/read/about"
-    className="foundation-link"
-  >
-    About Random Reads
-  </Link>
+            <Link
+              to="/read/about"
+              className="foundation-link"
+            >
+              About Random Reads
+            </Link>
 
-  <a
-    href="/"
-    className="foundation-link"
-  >
-    Visit The Literature Foundation
-    <ExternalLink size={16} />
-  </a>
-</div>
+            <a
+              href="/"
+              className="foundation-link"
+            >
+              Visit The Literature Foundation
+
+              <ExternalLink
+                size={16}
+              />
+            </a>
+          </div>
         </footer>
-
       </div>
     </main>
   );
