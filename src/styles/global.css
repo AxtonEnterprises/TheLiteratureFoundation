@@ -515,7 +515,7 @@ p {
   display: flex;
   flex-direction: column;
 
-  overflow: hidden;
+  overflow: visible;
 }
 
 .reader-topbar {
@@ -2527,5 +2527,14 @@ p {
     min-width: 26px;
     padding:
       0.15rem;
+  }
+}
+.reader-window {
+  flex: none;
+}
+
+@media (max-width: 700px) {
+  .reader-nav {
+    position: static;
   }
 }
