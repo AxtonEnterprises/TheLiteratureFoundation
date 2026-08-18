@@ -1086,6 +1086,25 @@ export async function getUserProfile() {
       user.email ||
       "",
 
+    /*
+     * New preset avatar field.
+     *
+     * Examples:
+     * "austen"
+     * "shakespeare"
+     * "alice"
+     */
+    avatar:
+      storedProfile.avatar ||
+      "",
+
+    /*
+     * Keep photoURL for backwards compatibility
+     * with existing profiles / Google accounts.
+     *
+     * The preset avatar will take priority in
+     * Profile.jsx when one has been selected.
+     */
     photoURL:
       storedProfile
         .photoURL ||
@@ -1102,7 +1121,8 @@ export async function getUserProfile() {
 export async function saveUserProfile({
   displayName,
   photoURL,
-  about
+  about,
+  avatar
 }) {
   const user =
     await requireUser();
@@ -1125,6 +1145,24 @@ export async function saveUserProfile({
           ?.trim() ||
         "Reader",
 
+      /*
+       * Store only the avatar ID.
+       *
+       * We are NOT storing the image itself
+       * or a large URL in Firestore.
+       */
+      avatar:
+        avatar
+          ?.trim() ||
+        "",
+
+      /*
+       * Keep this field so older profile
+       * pictures are not destroyed.
+       *
+       * Profile.jsx no longer needs to expose
+       * this as an editable field.
+       */
       photoURL:
         photoURL
           ?.trim() ||
