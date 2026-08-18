@@ -2538,3 +2538,58 @@ p {
     position: static;
   }
 }
+/* ==================================================
+   PROFILE TIMELINE JOURNAL LINKS
+   ================================================== */
+
+.profile-header-content {
+  min-width: 0;
+}
+
+.profile-edit-button {
+  margin-top: 0.75rem;
+}
+
+.timeline-journal-link-row {
+  margin-top: 0.85rem;
+}
+
+.timeline-journal-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+
+  color: var(--primary);
+
+  font-size: 0.9rem;
+  font-weight: 800;
+
+  text-decoration: none;
+}
+
+.timeline-journal-link:hover {
+  text-decoration: underline;
+}
+
+.journal-paragraph-preview {
+  margin:
+    0.75rem 0;
+
+  padding:
+    0.75rem 1rem;
+
+  border-left:
+    3px solid var(--primary);
+
+  background:
+    #f7faf9;
+
+  color:
+    var(--muted);
+
+  font-style:
+    italic;
+
+  line-height:
+    1.55;
+}
