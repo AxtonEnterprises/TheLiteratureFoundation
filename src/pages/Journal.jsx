@@ -388,35 +388,51 @@ export default function Journal() {
 
                     {isEditing ? (
                       <div className="journal-edit-form">
-                        <label>
-                          Journal entry
-                          <textarea
-                            value={editNote}
-                            onChange={(event) =>
-                              setEditNote(event.target.value)
-                            }
-                            rows={5}
-                          />
-                        </label>
+                        <label className="journal-edit-field">
+  <span>Journal entry</span>
 
-                        <label>
-                          Visibility
-                          <select
-                            value={editVisibility}
-                            onChange={(event) => {
-                              const nextVisibility = event.target.value;
-                              setEditVisibility(nextVisibility);
+  <textarea
+    value={editNote}
+    onChange={(event) =>
+      setEditNote(event.target.value)
+    }
+    rows={5}
+  />
+</label>
 
-                              if (nextVisibility !== "group") {
-                                setEditGroupId("");
-                              }
-                            }}
-                          >
-                            <option value="private">Private</option>
-                            <option value="public">Public</option>
-                            <option value="group">Group</option>
-                          </select>
-                        </label>
+                        <label className="journal-edit-field">
+  <span>Visibility</span>
+
+  <select
+    value={editVisibility}
+    onChange={(event) => {
+      const nextVisibility =
+        event.target.value;
+
+      setEditVisibility(
+        nextVisibility
+      );
+
+      if (
+        nextVisibility !== "group"
+      ) {
+        setEditGroupId("");
+      }
+    }}
+  >
+    <option value="private">
+      Private
+    </option>
+
+    <option value="public">
+      Public
+    </option>
+
+    <option value="group">
+      Group
+    </option>
+  </select>
+</label>
 
                         {editVisibility === "group" && (
                           <label>
