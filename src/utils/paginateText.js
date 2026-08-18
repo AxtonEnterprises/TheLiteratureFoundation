@@ -15,38 +15,80 @@ export function paginateParagraphs({
     return [];
   }
 
-  const readableBlocks =
-    splitLongParagraphs(paragraphs);
-
   const measurer =
     document.createElement("article");
 
   measurer.className = className;
-  measurer.style.position = "absolute";
-  measurer.style.visibility = "hidden";
-  measurer.style.pointerEvents = "none";
-  measurer.style.left = "-9999px";
+
+  measurer.style.position =
+    "absolute";
+
+  measurer.style.visibility =
+    "hidden";
+
+  measurer.style.pointerEvents =
+    "none";
+
+  measurer.style.left =
+    "-9999px";
+
   measurer.style.top = "0";
+
   measurer.style.width =
     `${containerWidth}px`;
+
   measurer.style.height =
     `${containerHeight}px`;
+
   measurer.style.fontSize =
     `${fontSize}px`;
-  measurer.style.overflow = "hidden";
+
+  measurer.style.overflow =
+    "hidden";
 
   document.body.appendChild(
     measurer
   );
 
+  /*
+   * First preserve the original paragraph index.
+   */
+  const initialBlocks =
+    splitLongParagraphs(
+      paragraphs
+    );
+
+  /*
+   * Then dynamically split any individual block
+   * that is still too tall for the actual reader.
+   */
+  const readableBlocks = [];
+
+  for (
+    const block
+    of initialBlocks
+  ) {
+    const fitted =
+      splitBlockToFit(
+        block,
+        measurer
+      );
+
+    readableBlocks.push(
+      ...fitted
+    );
+  }
+
   const pages = [];
 
   let currentPage = [];
+
   let currentStartIndex = 0;
 
   for (
     let index = 0;
-    index < readableBlocks.length;
+    index <
+      readableBlocks.length;
     index += 1
   ) {
     const block =
@@ -57,15 +99,10 @@ export function paginateParagraphs({
       block
     ];
 
-    measurer.innerHTML =
+    renderMeasuredPage(
+      measurer,
       testPage
-        .map(
-          (item) =>
-            `<p>${escapeHtml(
-              item.text
-            )}</p>`
-        )
-        .join("");
+    );
 
     const fits =
       measurer.scrollHeight <=
@@ -123,6 +160,144 @@ export function paginateParagraphs({
 }
 
 
+function renderMeasuredPage(
+  measurer,
+  blocks
+) {
+  measurer.innerHTML =
+    blocks
+      .map(
+        (block) => `
+          <div class="reader-paragraph-row">
+            <span class="paragraph-number">
+              ${
+                block.isContinuation
+                  ? ""
+                  : block.paragraphIndex +
+                    1
+              }
+            </span>
+
+            <p>
+              ${escapeHtml(
+                block.text
+              )}
+            </p>
+          </div>
+        `
+      )
+      .join("");
+}
+
+
+function blockFits(
+  block,
+  measurer
+) {
+  renderMeasuredPage(
+    measurer,
+    [block]
+  );
+
+  return (
+    measurer.scrollHeight <=
+    measurer.clientHeight
+  );
+}
+
+
+function splitBlockToFit(
+  block,
+  measurer
+) {
+  if (
+    blockFits(
+      block,
+      measurer
+    )
+  ) {
+    return [block];
+  }
+
+  const words =
+    block.text
+      .split(/\s+/)
+      .filter(Boolean);
+
+  if (
+    words.length <= 1
+  ) {
+    return [block];
+  }
+
+  const pieces = [];
+
+  let currentText = "";
+
+  for (
+    const word
+    of words
+  ) {
+    const candidate =
+      currentText
+        ? `${currentText} ${word}`
+        : word;
+
+    const candidateBlock = {
+      ...block,
+      text: candidate
+    };
+
+    if (
+      blockFits(
+        candidateBlock,
+        measurer
+      )
+    ) {
+      currentText =
+        candidate;
+
+      continue;
+    }
+
+    if (
+      currentText
+    ) {
+      pieces.push({
+        ...block,
+
+        text:
+          currentText,
+
+        isContinuation:
+          block.isContinuation ||
+          pieces.length > 0
+      });
+    }
+
+    currentText =
+      word;
+  }
+
+  if (
+    currentText
+  ) {
+    pieces.push({
+      ...block,
+
+      text:
+        currentText,
+
+      isContinuation:
+        block.isContinuation ||
+        pieces.length > 0
+    });
+  }
+
+  return pieces;
+}
+
+
 function splitLongParagraphs(
   paragraphs
 ) {
@@ -138,9 +313,13 @@ function splitLongParagraphs(
         MAX_CHUNK_LENGTH
       ) {
         blocks.push({
-          text: paragraph,
+          text:
+            paragraph,
+
           paragraphIndex,
-          isContinuation: false
+
+          isContinuation:
+            false
         });
 
         return;
@@ -149,9 +328,11 @@ function splitLongParagraphs(
       const sentences =
         paragraph.match(
           /[^.!?]+[.!?]+["”']?|.+$/g
-        ) || [paragraph];
+        ) ||
+        [paragraph];
 
       let chunk = "";
+
       let chunkNumber = 0;
 
       for (
@@ -168,7 +349,8 @@ function splitLongParagraphs(
           chunk
         ) {
           blocks.push({
-            text: chunk,
+            text:
+              chunk,
 
             paragraphIndex,
 
@@ -186,9 +368,12 @@ function splitLongParagraphs(
         }
       }
 
-      if (chunk) {
+      if (
+        chunk
+      ) {
         blocks.push({
-          text: chunk,
+          text:
+            chunk,
 
           paragraphIndex,
 
