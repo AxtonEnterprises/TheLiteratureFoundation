@@ -10,6 +10,16 @@ const CACHE_TIME_KEY =
 const CACHE_MAX_AGE =
   1000 * 60 * 60 * 24;
 
+const SEARCH_CACHE_MAX_AGE =
+  1000 * 60 * 30;
+
+const SEARCH_CACHE_PREFIX =
+  "randomReads.search.";
+
+let memoryBookPool = null;
+let bookPoolPromise = null;
+let nextRandomBook = null;
+
 
 /* ============================================================
    FORMAT HELPERS
@@ -605,10 +615,97 @@ async function fetchBooksFromGutendex() {
 ============================================================ */
 
 export async function getCachedBooks() {
-  const cachedBooks =
-    localStorage.getItem(
-      CACHE_KEY
-    );
+  if (memoryBookPool?.length) {
+    return memoryBookPool;
+  }
+
+  if (bookPoolPromise) {
+    return bookPoolPromise;
+  }
+
+  bookPoolPromise =
+    (async () => {
+      const cachedBooks =
+        localStorage.getItem(
+          CACHE_KEY
+        );
+
+      const cachedAt =
+        localStorage.getItem(
+          CACHE_TIME_KEY
+        );
+
+      const cacheIsFresh =
+        cachedBooks &&
+        cachedAt &&
+        Date.now() -
+          Number(cachedAt) <
+          CACHE_MAX_AGE;
+
+      if (cacheIsFresh) {
+        try {
+          const parsed =
+            JSON.parse(
+              cachedBooks
+            );
+
+          const prepared =
+            prepareBooks(
+              parsed
+            );
+
+          memoryBookPool =
+            prepared;
+
+          localStorage.setItem(
+            CACHE_KEY,
+            JSON.stringify(
+              prepared
+            )
+          );
+
+          return prepared;
+        } catch {
+          localStorage.removeItem(
+            CACHE_KEY
+          );
+
+          localStorage.removeItem(
+            CACHE_TIME_KEY
+          );
+        }
+      }
+
+      const books =
+        await fetchBooksFromGutendex();
+
+      memoryBookPool =
+        books;
+
+      localStorage.setItem(
+        CACHE_KEY,
+        JSON.stringify(
+          books
+        )
+      );
+
+      localStorage.setItem(
+        CACHE_TIME_KEY,
+        String(
+          Date.now()
+        )
+      );
+
+      return books;
+    })();
+
+  try {
+    return await bookPoolPromise;
+  } finally {
+    bookPoolPromise =
+      null;
+  }
+}
 
   const cachedAt =
     localStorage.getItem(
@@ -690,24 +787,82 @@ export async function getCachedBooks() {
    RANDOM BOOK
 ============================================================ */
 
+function chooseRandomBook(
+  books,
+  excludeId = null
+) {
+  if (!books.length) {
+    return null;
+  }
+
+  const candidates =
+    books.length > 1 &&
+    excludeId !== null
+      ? books.filter(
+          (book) =>
+            String(book.id) !==
+            String(excludeId)
+        )
+      : books;
+
+  return candidates[
+    Math.floor(
+      Math.random() *
+        candidates.length
+    )
+  ];
+}
+
+
+export async function preloadRandomBook() {
+  const books =
+    await getCachedBooks();
+
+  if (!books.length) {
+    return null;
+  }
+
+  if (!nextRandomBook) {
+    nextRandomBook =
+      chooseRandomBook(
+        books
+      );
+  }
+
+  return nextRandomBook;
+}
+
+
 export async function getRandomBook() {
   const books =
     await getCachedBooks();
 
-  if (
-    !books.length
-  ) {
+  if (!books.length) {
     throw new Error(
       "No books found"
     );
   }
 
-  return books[
-    Math.floor(
-      Math.random() *
-        books.length
-    )
-  ];
+  if (!nextRandomBook) {
+    nextRandomBook =
+      chooseRandomBook(
+        books
+      );
+  }
+
+  const selectedBook =
+    nextRandomBook;
+
+  /*
+   * Prepare the NEXT click immediately.
+   */
+  nextRandomBook =
+    chooseRandomBook(
+      books,
+      selectedBook?.id
+    );
+
+  return selectedBook;
 }
 
 
@@ -715,13 +870,148 @@ export async function getRandomBook() {
    SEARCH
 ============================================================ */
 
+function normalizeSearchQuery(
+  searchQuery
+) {
+  return String(
+    searchQuery || ""
+  )
+    .trim()
+    .toLowerCase()
+    .replace(
+      /\s+/g,
+      " "
+    );
+}
+
+
+function getSearchCacheKey(
+  searchQuery
+) {
+  return (
+    SEARCH_CACHE_PREFIX +
+    encodeURIComponent(
+      normalizeSearchQuery(
+        searchQuery
+      )
+    )
+  );
+}
+
+
+function readSearchCache(
+  searchQuery
+) {
+  const normalizedQuery =
+    normalizeSearchQuery(
+      searchQuery
+    );
+
+  if (!normalizedQuery) {
+    return null;
+  }
+
+  const key =
+    getSearchCacheKey(
+      normalizedQuery
+    );
+
+  try {
+    const raw =
+      localStorage.getItem(
+        key
+      );
+
+    if (!raw) {
+      return null;
+    }
+
+    const cached =
+      JSON.parse(raw);
+
+    if (
+      !cached?.createdAt ||
+      Date.now() -
+        cached.createdAt >
+        SEARCH_CACHE_MAX_AGE
+    ) {
+      localStorage.removeItem(
+        key
+      );
+
+      return null;
+    }
+
+    return prepareBooks(
+      cached.books
+    );
+  } catch {
+    localStorage.removeItem(
+      key
+    );
+
+    return null;
+  }
+}
+
+
+function saveSearchCache(
+  searchQuery,
+  books
+) {
+  const normalizedQuery =
+    normalizeSearchQuery(
+      searchQuery
+    );
+
+  if (!normalizedQuery) {
+    return;
+  }
+
+  try {
+    localStorage.setItem(
+      getSearchCacheKey(
+        normalizedQuery
+      ),
+      JSON.stringify({
+        createdAt:
+          Date.now(),
+
+        books
+      })
+    );
+  } catch {
+    /*
+     * A full localStorage cache should never
+     * prevent search itself from working.
+     */
+  }
+}
+
+
 export async function searchBooks(
   searchQuery = ""
 ) {
+  const normalizedQuery =
+    normalizeSearchQuery(
+      searchQuery
+    );
+
+  if (normalizedQuery) {
+    const cached =
+      readSearchCache(
+        normalizedQuery
+      );
+
+    if (cached) {
+      return cached;
+    }
+  }
+
   const url =
-    searchQuery
+    normalizedQuery
       ? `${API_BASE}/?search=${encodeURIComponent(
-          searchQuery
+          normalizedQuery
         )}`
       : API_BASE;
 
@@ -739,15 +1029,47 @@ export async function searchBooks(
   const data =
     await response.json();
 
-  /*
-   * Search results are:
-   * 1. normalized
-   * 2. filtered to English
-   * 3. deduplicated
-   */
-  return prepareBooks(
-    data.results
-  );
+  const books =
+    prepareBooks(
+      data.results
+    );
+
+  if (normalizedQuery) {
+    saveSearchCache(
+      normalizedQuery,
+      books
+    );
+  }
+
+  return books;
+}
+
+
+export async function prefetchSearchBooks(
+  searchQuery
+) {
+  const normalizedQuery =
+    normalizeSearchQuery(
+      searchQuery
+    );
+
+  if (
+    normalizedQuery.length <
+    3
+  ) {
+    return;
+  }
+
+  try {
+    await searchBooks(
+      normalizedQuery
+    );
+  } catch {
+    /*
+     * Background prefetch failures are silent.
+     * Normal Search still reports errors.
+     */
+  }
 }
 
 
