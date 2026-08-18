@@ -2682,3 +2682,83 @@ p {
 
   color: var(--muted);
 }
+/* ==================================================
+   JOURNAL EDIT FORM — MOBILE CLEANUP
+   ================================================== */
+
+.journal-edit-form {
+  display: grid;
+  gap: 1rem;
+
+  margin-top: 1rem;
+}
+
+.journal-edit-form label {
+  display: grid;
+  gap: 0.45rem;
+
+  color: var(--ink);
+
+  font-weight: 700;
+}
+
+.journal-edit-form textarea,
+.journal-edit-form select,
+.journal-edit-form input {
+  width: 100%;
+  max-width: 100%;
+
+  padding: 0.85rem 1rem;
+
+  border: 1px solid var(--line);
+  border-radius: 14px;
+
+  background: #fff;
+  color: var(--ink);
+
+  font: inherit;
+}
+
+.journal-edit-form textarea {
+  min-height: 130px;
+
+  resize: vertical;
+
+  line-height: 1.5;
+}
+
+.journal-edit-form select {
+  min-height: 48px;
+}
+
+.journal-edit-form input {
+  min-height: 48px;
+}
+
+.journal-edit-form .button-row {
+  margin-top: 0.25rem;
+}
+
+.journal-edit-form .button {
+  min-height: 48px;
+}
+
+@media (max-width: 700px) {
+  .journal-edit-form {
+    gap: 0.9rem;
+  }
+
+  .journal-edit-form textarea {
+    min-height: 150px;
+  }
+
+  .journal-edit-form .button-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.65rem;
+  }
+
+  .journal-edit-form .button {
+    width: 100%;
+  }
+}
