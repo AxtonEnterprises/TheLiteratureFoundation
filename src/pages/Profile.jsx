@@ -30,6 +30,11 @@ import {
   saveUserProfile
 } from "../services/storage.js";
 
+import {
+  PROFILE_AVATARS,
+  getProfileAvatar
+} from "../data/avatars.js";
+
 import SEO from "../components/SEO.jsx";
 
 
@@ -80,7 +85,8 @@ function ProgressBar({
       <div
         className="reading-progress-fill"
         style={{
-          width: `${safePercent}%`
+          width:
+            `${safePercent}%`
         }}
       />
     </div>
@@ -94,18 +100,6 @@ export default function Profile() {
     setSearchParams
   ] = useSearchParams();
 
-  /*
-   * New profile behavior:
-   *
-   * /read/profile
-   *     -> Reading Timeline
-   *
-   * /read/profile?edit=1
-   *     -> Edit Profile
-   *
-   * We also support the old ?tab=profile URL so
-   * existing links don't break.
-   */
   const editingFromUrl =
     searchParams.get("edit") === "1" ||
     searchParams.get("tab") === "profile";
@@ -143,13 +137,13 @@ export default function Profile() {
   ] = useState("");
 
   const [
-    photoURL,
-    setPhotoURL
+    about,
+    setAbout
   ] = useState("");
 
   const [
-    about,
-    setAbout
+    selectedAvatar,
+    setSelectedAvatar
   ] = useState("");
 
   const [
@@ -214,15 +208,15 @@ export default function Profile() {
               ""
             );
 
-            setPhotoURL(
-              loadedProfile
-                ?.photoURL ||
-              ""
-            );
-
             setAbout(
               loadedProfile
                 ?.about ||
+              ""
+            );
+
+            setSelectedAvatar(
+              loadedProfile
+                ?.avatar ||
               ""
             );
 
@@ -252,16 +246,6 @@ export default function Profile() {
   }, []);
 
 
-  /*
-   * Count journal entries once per book.
-   *
-   * Result:
-   *
-   * {
-   *   "84": 4,
-   *   "1342": 2
-   * }
-   */
   const journalCountsByBook =
     useMemo(() => {
       const counts =
@@ -300,6 +284,12 @@ export default function Profile() {
     ]);
 
 
+  const activeAvatar =
+    getProfileAvatar(
+      profile?.avatar
+    );
+
+
   function openEditProfile() {
     setEditingProfile(
       true
@@ -318,6 +308,24 @@ export default function Profile() {
 
     setSearchParams({});
     setStatus("");
+
+    setDisplayName(
+      profile
+        ?.displayName ||
+      ""
+    );
+
+    setAbout(
+      profile
+        ?.about ||
+      ""
+    );
+
+    setSelectedAvatar(
+      profile
+        ?.avatar ||
+      ""
+    );
   }
 
 
@@ -333,8 +341,9 @@ export default function Profile() {
       const saved =
         await saveUserProfile({
           displayName,
-          photoURL,
-          about
+          about,
+          avatar:
+            selectedAvatar
         });
 
       setProfile(
@@ -440,7 +449,14 @@ export default function Profile() {
 
         <section className="profile-header-card">
           <div className="profile-avatar">
-            {profile?.photoURL ? (
+            {activeAvatar ? (
+              <img
+                src={
+                  activeAvatar.image
+                }
+                alt={`${profile?.displayName || "Reader"} avatar`}
+              />
+            ) : profile?.photoURL ? (
               <img
                 src={
                   profile.photoURL
@@ -547,36 +563,64 @@ export default function Profile() {
               </label>
 
 
-              <label>
-                Profile picture URL
+              <div className="profile-avatar-picker">
+                <div>
+                  <p className="profile-field-label">
+                    Choose your avatar
+                  </p>
 
-                <input
-                  type="url"
-                  value={
-                    photoURL
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setPhotoURL(
-                      event.target.value
-                    )
-                  }
-                  placeholder="https://..."
-                />
-              </label>
-
-
-              {photoURL && (
-                <div className="profile-photo-preview">
-                  <img
-                    src={
-                      photoURL
-                    }
-                    alt="Profile preview"
-                  />
+                  <p className="muted">
+                    Select a classic author
+                    or literary character.
+                  </p>
                 </div>
-              )}
+
+                <div className="profile-avatar-grid">
+                  {PROFILE_AVATARS.map(
+                    (avatar) => {
+                      const selected =
+                        selectedAvatar ===
+                        avatar.id;
+
+                      return (
+                        <button
+                          key={
+                            avatar.id
+                          }
+                          type="button"
+                          className={
+                            selected
+                              ? "profile-avatar-option selected"
+                              : "profile-avatar-option"
+                          }
+                          onClick={() =>
+                            setSelectedAvatar(
+                              avatar.id
+                            )
+                          }
+                          aria-pressed={
+                            selected
+                          }
+                          aria-label={
+                            `Choose ${avatar.name}`
+                          }
+                        >
+                          <img
+                            src={
+                              avatar.image
+                            }
+                            alt=""
+                          />
+
+                          <span>
+                            {avatar.name}
+                          </span>
+                        </button>
+                      );
+                    }
+                  )}
+                </div>
+              </div>
 
 
               <label>
