@@ -1,4 +1,7 @@
 import { auth } from "../firebase";
+import {
+  onAuthStateChanged
+} from "firebase/auth";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -63,37 +66,70 @@ export default function Home() {
   continueReading,
   setContinueReading
 ] = useState([]);
-  useEffect(() => {
+  
+
+    useEffect(() => {
   let active = true;
 
-  async function loadContinueReading() {
-    if (!auth.currentUser) {
-      if (active) {
-        setContinueReading([]);
+  const unsubscribe =
+    onAuthStateChanged(
+      auth,
+      async (
+        firebaseUser
+      ) => {
+        if (
+          !firebaseUser
+        ) {
+          if (active) {
+            setContinueReading(
+              []
+            );
+          }
+
+          return;
+        }
+
+        try {
+          const timeline =
+            await getReadingTimeline();
+
+          if (!active) {
+            return;
+          }
+
+          /*
+           * Only unfinished books belong in
+           * Continue Reading.
+           */
+          const unfinished =
+            timeline.filter(
+              (item) =>
+                Number(
+                  item.percentComplete
+                ) < 100
+            );
+
+          setContinueReading(
+            unfinished.slice(
+              0,
+              3
+            )
+          );
+        } catch (error) {
+          console.error(
+            "Could not load continue reading:",
+            error
+          );
+        }
       }
+    );
 
-      return;
-    }
-
-    try {
-      const timeline =
-        await getReadingTimeline();
-
-      if (!active) {
-        return;
-      }
-
-      setContinueReading(
-        timeline.slice(0, 3)
-      );
-    } catch (error) {
-      console.error(
-        "Could not load continue reading:",
-        error
-      );
-    }
-  }
-
+  return () => {
+    active = false;
+    unsubscribe();
+  };
+}, []);
+        
   loadContinueReading();
 
   return () => {
