@@ -5,7 +5,19 @@ import App from './App.jsx';
 import './styles/global.css';
 import { registerSW } from 'virtual:pwa-register';
 
-registerSW({ immediate: true });
+registerSW({
+  immediate: true,
+
+  onNeedRefresh() {
+    window.location.reload();
+  },
+
+  onOfflineReady() {
+    console.log(
+      "Random Reads is ready for offline use."
+    );
+  }
+});
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
