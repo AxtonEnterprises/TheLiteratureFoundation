@@ -78,98 +78,88 @@ export default function PublicProfile() {
     status,
     setStatus
   ] = useState("");
-              
-useEffect(() => {
-  let active = true;
 
-  async function loadProfile() {
-    try {
-      setLoading(true);
-      setStatus("");
 
-      /*
-       * Load the public profile first.
-       *
-       * The profile should still display even if
-       * the public-journal query needs an index
-       * or encounters another error.
-       */
-      const loadedProfile =
-        await getPublicProfile(
-          userId
-        );
+  useEffect(() => {
+    let active = true;
 
-      if (!active) {
-        return;
-      }
-
-      setProfile(
-        loadedProfile
-      );
-
-      if (!loadedProfile) {
-        setStatus(
-          "This reader profile is not available."
-        );
-
-        return;
-      }
-
-      /*
-       * Load journal entries separately so a journal
-       * query failure cannot break the profile itself.
-       */
+    async function loadProfile() {
       try {
-        const publicEntries =
-          await getPublicJournalForUser(
+        setLoading(true);
+        setStatus("");
+
+        const loadedProfile =
+          await getPublicProfile(
             userId
           );
 
-        if (active) {
-          setEntries(
-            publicEntries
-          );
+        if (!active) {
+          return;
         }
-      } catch (journalError) {
-        console.error(
-          "Could not load public journal:",
-          journalError
+
+        setProfile(
+          loadedProfile
         );
 
-        if (active) {
-          setEntries([]);
-
+        if (!loadedProfile) {
           setStatus(
-            "Reader profile loaded, but public journal entries could not be loaded."
+            "This reader profile is not available."
+          );
+
+          return;
+        }
+
+        try {
+          const publicEntries =
+            await getPublicJournalForUser(
+              userId
+            );
+
+          if (active) {
+            setEntries(
+              publicEntries
+            );
+          }
+        } catch (journalError) {
+          console.error(
+            "Could not load public journal:",
+            journalError
+          );
+
+          if (active) {
+            setEntries([]);
+
+            setStatus(
+              "Reader profile loaded, but public journal entries could not be loaded."
+            );
+          }
+        }
+      } catch (error) {
+        console.error(
+          "Could not load public profile:",
+          error
+        );
+
+        if (active) {
+          setStatus(
+            "We couldn't load this reader profile."
           );
         }
-      }
-    } catch (error) {
-      console.error(
-        "Could not load public profile:",
-        error
-      );
-
-      if (active) {
-        setStatus(
-          "We couldn't load this reader profile."
-        );
-      }
-    } finally {
-      if (active) {
-        setLoading(false);
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
       }
     }
-  }
 
-  loadProfile();
+    loadProfile();
 
-  return () => {
-    active = false;
-  };
-}, [
-  userId
-]);
+    return () => {
+      active = false;
+    };
+  }, [
+    userId
+  ]);
 
 
   const avatar =
@@ -283,7 +273,7 @@ useEffect(() => {
                       }
                       className="note-card public-profile-entry"
                     >
-                      <div className="public-entry-book-row">
+                      <div className="public-entry-heading">
                         <div>
                           <p className="eyebrow">
                             Reading
@@ -291,50 +281,89 @@ useEffect(() => {
 
                           <Link
                             to={`/read/reader/${entry.bookId}`}
-                            className="timeline-book-title"
+                            className="public-entry-book-title"
                           >
                             {entry.title ||
                               "Untitled"}
                           </Link>
+
+                          {entry.author && (
+                            <p className="public-entry-author">
+                              {
+                                entry.author
+                              }
+                            </p>
+                          )}
                         </div>
 
-                        <BookOpen
-                          size={20}
-                        />
+                        <Link
+                          to={`/read/reader/${entry.bookId}`}
+                          className="public-entry-book-icon"
+                          aria-label={`Open ${entry.title || "book"}`}
+                        >
+                          <BookOpen
+                            size={20}
+                          />
+                        </Link>
                       </div>
 
 
-                      <small className="muted">
-                        {entry.paragraphNumber
-                          ? `¶${entry.paragraphNumber}`
-                          : ""}
+                      <div className="public-entry-meta">
+                        {entry.paragraphNumber && (
+                          <span>
+                            Paragraph{" "}
+                            {
+                              entry.paragraphNumber
+                            }
+                          </span>
+                        )}
 
-                        {entry.createdAt
-                          ? ` · ${formatDate(
+                        {entry.createdAt && (
+                          <span>
+                            {formatDate(
                               entry.createdAt
-                            )}`
-                          : ""}
+                            )}
+                          </span>
+                        )}
 
-                        {entry.updatedAtISO
-                          ? " · Edited"
-                          : ""}
-                      </small>
+                        {entry.updatedAtISO && (
+                          <span>
+                            Edited
+                          </span>
+                        )}
+                      </div>
 
 
                       {entry.paragraphPreview && (
-                        <p className="journal-paragraph-preview">
-                          “
-                          {
-                            entry.paragraphPreview
-                          }
-                          ”
-                        </p>
+                        <div className="public-entry-quote">
+                          <p>
+                            “
+                            {
+                              entry.paragraphPreview
+                            }
+                            ”
+                          </p>
+                        </div>
                       )}
 
 
                       <p className="public-journal-note">
                         {entry.note}
                       </p>
+
+
+                      <div className="public-entry-actions">
+                        <Link
+                          to={`/read/reader/${entry.bookId}`}
+                          className="public-entry-read-link"
+                        >
+                          <BookOpen
+                            size={16}
+                          />
+
+                          Read book
+                        </Link>
+                      </div>
                     </article>
                   )
                 )}
