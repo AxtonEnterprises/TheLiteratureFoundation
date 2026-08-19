@@ -2903,3 +2903,46 @@ p {
     min-width: 78px;
   }
 }
+.profile-presence-setting {
+  padding: 1rem;
+
+  border: 1px solid var(--line);
+  border-radius: 16px;
+
+  background: rgba(59, 182, 177, 0.05);
+}
+
+.profile-presence-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+
+  cursor: pointer;
+}
+
+.profile-presence-toggle input {
+  width: 20px;
+  height: 20px;
+
+  margin: 0;
+
+  accent-color: var(--teal, #3bb6b1);
+}
+
+.profile-presence-toggle span {
+  font-weight: 700;
+}
+
+.profile-presence-setting p {
+  margin:
+    0.5rem
+    0
+    0
+    2.75rem;
+}
+
+@media (max-width: 600px) {
+  .profile-presence-setting p {
+    margin-left: 0;
+  }
+}
