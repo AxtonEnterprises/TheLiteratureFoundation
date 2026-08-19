@@ -7,13 +7,6 @@ import App from "./App.jsx";
 import "./styles/global.css";
 
 
-/*
- * Recover from stale Vite chunks after a deployment.
- *
- * If an old cached page references a JS chunk that no
- * longer exists, reload so the browser gets the current
- * index.html and current asset filenames.
- */
 window.addEventListener(
   "vite:preloadError",
   (event) => {
@@ -24,27 +17,22 @@ window.addEventListener(
 );
 
 
-const updateSW =
-  registerSW({
-    immediate: true,
+registerSW({
+  immediate: true,
 
-    onNeedRefresh() {
-      updateSW(true);
-    },
+  onOfflineReady() {
+    console.log(
+      "Random Reads is ready for offline use."
+    );
+  },
 
-    onOfflineReady() {
-      console.log(
-        "Random Reads is ready for offline use."
-      );
-    },
-
-    onRegisterError(error) {
-      console.error(
-        "Service worker registration failed:",
-        error
-      );
-    }
-  });
+  onRegisterError(error) {
+    console.error(
+      "Service worker registration failed:",
+      error
+    );
+  }
+});
 
 
 ReactDOM.createRoot(
