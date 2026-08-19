@@ -31,12 +31,14 @@ import {
 
 import {
   addJournalEntry,
+  clearReadingPresence,
   deleteJournalEntry,
   getJournalForBook,
   getReadingProgress,
   saveBook,
   saveReadingProgress,
-  updateJournalEntry
+  updateJournalEntry,
+  updateReadingPresence
 } from "../services/storage.js";
 
 import {
@@ -361,6 +363,105 @@ export default function Reader() {
     progressLoaded
   ]);
 
+useEffect(() => {
+  if (
+    !book?.id ||
+    !progressLoaded ||
+    !auth.currentUser
+  ) {
+    return;
+  }
+
+  let active = true;
+
+  async function heartbeat() {
+    try {
+      await updateReadingPresence({
+        book,
+        percentComplete:
+          progress
+      });
+    } catch (error) {
+      /*
+       * Presence should never interrupt reading.
+       */
+      if (
+        active &&
+        auth.currentUser
+      ) {
+        console.error(
+          "Could not update reading presence:",
+          error
+        );
+      }
+    }
+  }
+
+  /*
+   * Register immediately when the reader is ready.
+   */
+  heartbeat();
+
+  /*
+   * Keep the reader active while this book remains open.
+   *
+   * The public presence window is 10 minutes, so a
+   * 3-minute heartbeat leaves plenty of margin.
+   */
+  const heartbeatInterval =
+    window.setInterval(
+      heartbeat,
+      1000 * 60 * 3
+    );
+
+  return () => {
+    active = false;
+
+    window.clearInterval(
+      heartbeatInterval
+    );
+  };
+}, [
+  book,
+  progress,
+  progressLoaded
+]);
+
+  useEffect(() => {
+  const bookId =
+    book?.id;
+
+  if (!bookId) {
+    return;
+  }
+
+  return () => {
+    /*
+     * Fire-and-forget cleanup.
+     *
+     * If navigation/unloading prevents this request from
+     * completing, the 10-minute activity window still
+     * prevents stale presence from appearing indefinitely.
+     */
+    clearReadingPresence(
+      bookId
+    ).catch(
+      (error) => {
+        if (
+          auth.currentUser
+        ) {
+          console.error(
+            "Could not clear reading presence:",
+            error
+          );
+        }
+      }
+    );
+  };
+}, [
+  book?.id
+]);
+  
   useEffect(() => {
     if (pageIndex > totalPages - 1) {
       setPageIndex(Math.max(totalPages - 1, 0));
