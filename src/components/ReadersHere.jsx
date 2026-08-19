@@ -8,6 +8,10 @@ import {
 } from "lucide-react";
 
 import {
+  Link
+} from "react-router-dom";
+
+import {
   getReadersForBook
 } from "../services/storage.js";
 
@@ -199,13 +203,29 @@ export default function ReadersHere({
                     reader.avatar
                   );
 
+                const safePercent =
+                  Math.min(
+                    Math.max(
+                      Number(
+                        reader.percentComplete
+                      ) ||
+                      0,
+                      0
+                    ),
+                    100
+                  );
+
                 return (
-                  <div
+                  <Link
                     key={
                       reader.id ||
                       reader.userId
                     }
-                    className="readers-here-person"
+                    to={`/read/public/${reader.userId}`}
+                    className="readers-here-person readers-here-person-link"
+                    onClick={() =>
+                      setOpen(false)
+                    }
                   >
                     <div className="reader-avatar-bubble">
                       {avatar ? (
@@ -229,20 +249,10 @@ export default function ReadersHere({
                       </strong>
 
                       <small>
-                        {Math.min(
-                          Math.max(
-                            Number(
-                              reader.percentComplete
-                            ) ||
-                            0,
-                            0
-                          ),
-                          100
-                        )}
-                        % complete
+                        {safePercent}% complete
                       </small>
                     </div>
-                  </div>
+                  </Link>
                 );
               }
             )}
