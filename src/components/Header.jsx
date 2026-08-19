@@ -3,6 +3,7 @@ import {
   Home,
   LogIn,
   LogOut,
+  MessageSquare,
   Search,
   User
 } from "lucide-react";
@@ -92,6 +93,19 @@ export default function Header() {
           <Search size={18} />
           <span>Search</span>
         </NavLink>
+
+        <NavLink
+  to="/read/margins"
+  className={navClass}
+>
+  <MessageSquare
+    size={18}
+  />
+
+  <span>
+    Margins
+  </span>
+</NavLink>
 
         {!authLoading && !user && (
           <NavLink
