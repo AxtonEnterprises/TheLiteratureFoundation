@@ -3097,6 +3097,20 @@ p {
 
 .public-profile-journal {
   overflow: hidden;
+  padding: 1.5rem;
+}
+
+.public-profile-journal .section-heading-row {
+  margin-bottom: 1.25rem;
+}
+
+.public-profile-journal .section-heading-row h2 {
+  margin-bottom: 0;
+}
+
+.public-profile-entry-list {
+  display: grid;
+  gap: 1rem;
 }
 
 .public-profile-entry-list {
