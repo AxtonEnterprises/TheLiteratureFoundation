@@ -271,7 +271,7 @@ export default function PublicProfile() {
                       key={
                         entry.id
                       }
-                      className="note-card public-profile-entry"
+                      className="public-profile-entry"
                     >
                       <div className="public-entry-heading">
                         <div>
