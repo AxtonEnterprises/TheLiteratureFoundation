@@ -78,72 +78,98 @@ export default function PublicProfile() {
     status,
     setStatus
   ] = useState("");
+              
+useEffect(() => {
+  let active = true;
 
+  async function loadProfile() {
+    try {
+      setLoading(true);
+      setStatus("");
 
-  useEffect(() => {
-    let active = true;
+      /*
+       * Load the public profile first.
+       *
+       * The profile should still display even if
+       * the public-journal query needs an index
+       * or encounters another error.
+       */
+      const loadedProfile =
+        await getPublicProfile(
+          userId
+        );
 
-    async function loadProfile() {
+      if (!active) {
+        return;
+      }
+
+      setProfile(
+        loadedProfile
+      );
+
+      if (!loadedProfile) {
+        setStatus(
+          "This reader profile is not available."
+        );
+
+        return;
+      }
+
+      /*
+       * Load journal entries separately so a journal
+       * query failure cannot break the profile itself.
+       */
       try {
-        setLoading(true);
-        setStatus("");
+        const publicEntries =
+          await getPublicJournalForUser(
+            userId
+          );
 
-        const [
-          loadedProfile,
-          publicEntries
-        ] =
-          await Promise.all([
-            getPublicProfile(
-              userId
-            ),
-            getPublicJournalForUser(
-              userId
-            )
-          ]);
-
-        if (!active) {
-          return;
-        }
-
-        setProfile(
-          loadedProfile
-        );
-
-        setEntries(
-          publicEntries
-        );
-
-        if (!loadedProfile) {
-          setStatus(
-            "This reader profile is not available."
+        if (active) {
+          setEntries(
+            publicEntries
           );
         }
-      } catch (error) {
+      } catch (journalError) {
         console.error(
-          "Could not load public profile:",
-          error
+          "Could not load public journal:",
+          journalError
         );
 
         if (active) {
+          setEntries([]);
+
           setStatus(
-            "We couldn't load this reader profile."
+            "Reader profile loaded, but public journal entries could not be loaded."
           );
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
         }
       }
+    } catch (error) {
+      console.error(
+        "Could not load public profile:",
+        error
+      );
+
+      if (active) {
+        setStatus(
+          "We couldn't load this reader profile."
+        );
+      }
+    } finally {
+      if (active) {
+        setLoading(false);
+      }
     }
+  }
 
-    loadProfile();
+  loadProfile();
 
-    return () => {
-      active = false;
-    };
-  }, [
-    userId
-  ]);
+  return () => {
+    active = false;
+  };
+}, [
+  userId
+]);
 
 
   const avatar =
