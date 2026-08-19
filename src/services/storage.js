@@ -1350,7 +1350,144 @@ export async function getPublicJournalForUser(
 
   return entries;
 }
+/* ============================================================
+   THE MARGINS — PUBLIC FEED
+============================================================ */
 
+export async function getMarginsFeed() {
+  const journalRef =
+    collectionGroup(
+      db,
+      "journal"
+    );
+
+  const marginsQuery =
+    query(
+      journalRef,
+      where(
+        "visibility",
+        "==",
+        "public"
+      )
+    );
+
+  const snapshot =
+    await getDocs(
+      marginsQuery
+    );
+
+  const entries =
+    snapshot.docs
+      .map(
+        (entryDoc) =>
+          normalizeJournalEntry({
+            id:
+              entryDoc.id,
+
+            ...entryDoc.data()
+          })
+      )
+      .filter(Boolean);
+
+
+  /*
+   * Resolve each reader's sanitized public profile.
+   *
+   * We only fetch each profile once even if that reader
+   * has multiple entries in the feed.
+   */
+  const userIds =
+    [
+      ...new Set(
+        entries
+          .map(
+            (entry) =>
+              entry.userId
+          )
+          .filter(Boolean)
+      )
+    ];
+
+  const profilePairs =
+    await Promise.all(
+      userIds.map(
+        async (
+          userId
+        ) => {
+          try {
+            const profile =
+              await getPublicProfile(
+                userId
+              );
+
+            return [
+              String(userId),
+              profile
+            ];
+          } catch (error) {
+            console.error(
+              `Could not load public profile ${userId}:`,
+              error
+            );
+
+            return [
+              String(userId),
+              null
+            ];
+          }
+        }
+      )
+    );
+
+  const profiles =
+    new Map(
+      profilePairs
+    );
+
+
+  const feed =
+    entries.map(
+      (entry) => ({
+        ...entry,
+
+        reader:
+          profiles.get(
+            String(
+              entry.userId
+            )
+          ) ||
+          null
+      })
+    );
+
+
+  /*
+   * Newest entries first.
+   */
+  feed.sort(
+    (a, b) => {
+      const aDate =
+        a.updatedAtISO ||
+        a.createdAt ||
+        "";
+
+      const bDate =
+        b.updatedAtISO ||
+        b.createdAt ||
+        "";
+
+      return String(
+        bDate
+      ).localeCompare(
+        String(
+          aDate
+        )
+      );
+    }
+  );
+
+  return feed;
+}
 /* ============================================================
    LIVE READING PRESENCE
 ============================================================ */
