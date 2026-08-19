@@ -14,6 +14,7 @@ import Login from "./pages/Login";
 import Privacy from "./pages/Privacy.jsx";
 import Terms from "./pages/Terms.jsx";
 import Profile from "./pages/Profile";
+import Margins from "./pages/Margins";
 import NotFound from "./pages/NotFound.jsx";
 import PublicProfile from "./pages/PublicProfile";
 
@@ -51,6 +52,7 @@ export default function App() {
 
           {/* Compatibility redirects for the former standalone Random Reads routes. */}
           <Route path="/search" element={<Navigate to="/read/search" replace />} />
+          <Route path="/read/margins" element={<Margins />} />
           <Route path="/reader/:id" element={<LegacyReaderRedirect />} />
           <Route path="/journal" element={<Navigate to="/read/journal" replace />} />
           <Route path="/login" element={<Navigate to="/read/login" replace />} />
