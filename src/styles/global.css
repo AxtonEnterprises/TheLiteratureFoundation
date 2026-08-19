@@ -3091,3 +3091,195 @@ p {
   background:
     rgba(59, 182, 177, 0.08);
 }
+/* ============================================================
+   PUBLIC PROFILE / FROM THE MARGINS
+============================================================ */
+
+.public-profile-journal {
+  overflow: hidden;
+}
+
+.public-profile-entry-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.public-profile-entry {
+  margin: 0;
+
+  padding: 1.25rem;
+
+  border: 1px solid
+    var(--line, #d8dfdc);
+
+  border-radius: 18px;
+
+  background: white;
+}
+
+.public-entry-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.public-entry-heading .eyebrow {
+  margin-bottom: 0.35rem;
+}
+
+.public-entry-book-title {
+  display: inline-block;
+
+  color:
+    var(--navy, #0b3851);
+
+  font-family:
+    "Libre Baskerville",
+    serif;
+
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.2;
+
+  text-decoration: none;
+}
+
+.public-entry-book-title:hover,
+.public-entry-book-title:focus-visible {
+  text-decoration: underline;
+}
+
+.public-entry-author {
+  margin:
+    0.35rem
+    0
+    0;
+
+  color:
+    var(--muted, #6c7a80);
+
+  font-size: 0.95rem;
+}
+
+.public-entry-book-icon {
+  flex: 0 0 auto;
+
+  width: 38px;
+  height: 38px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  background:
+    rgba(59, 182, 177, 0.08);
+
+  color:
+    var(--navy, #0b3851);
+
+  text-decoration: none;
+}
+
+.public-entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+
+  margin-top: 0.8rem;
+
+  color:
+    var(--muted, #6c7a80);
+
+  font-size: 0.82rem;
+}
+
+.public-entry-meta span:not(:last-child)::after {
+  content: "·";
+  margin-left: 0.35rem;
+}
+
+.public-entry-quote {
+  margin-top: 1rem;
+
+  padding:
+    0.9rem
+    1rem;
+
+  border-left: 4px solid
+    var(--teal, #3bb6b1);
+
+  background:
+    rgba(59, 182, 177, 0.05);
+}
+
+.public-entry-quote p {
+  margin: 0;
+
+  color:
+    var(--muted, #6c7a80);
+
+  font-style: italic;
+  line-height: 1.55;
+
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+
+  overflow: hidden;
+}
+
+.public-journal-note {
+  margin:
+    1rem
+    0
+    0;
+
+  color:
+    var(--navy, #0b3851);
+
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.public-entry-actions {
+  display: flex;
+  justify-content: flex-end;
+
+  margin-top: 1rem;
+}
+
+.public-entry-read-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+
+  color:
+    var(--teal, #3bb6b1);
+
+  font-weight: 700;
+
+  text-decoration: none;
+}
+
+.public-entry-read-link:hover,
+.public-entry-read-link:focus-visible {
+  text-decoration: underline;
+}
+
+
+@media (max-width: 600px) {
+  .public-profile-entry {
+    padding: 1rem;
+  }
+
+  .public-entry-book-title {
+    font-size: 1.15rem;
+  }
+
+  .public-entry-actions {
+    justify-content: flex-start;
+  }
+}
