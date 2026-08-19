@@ -1489,6 +1489,490 @@ export async function getMarginsFeed() {
   return feed;
 }
 /* ============================================================
+   THE MARGINS — INTERACTIONS
+============================================================ */
+
+function marginEntryKey(
+  entry
+) {
+  return [
+    entry?.userId || "",
+    entry?.id || ""
+  ]
+    .filter(Boolean)
+    .join("_");
+}
+
+
+/* ============================================================
+   SAVE MARGIN
+============================================================ */
+
+export async function saveMarginEntry(
+  entry
+) {
+  if (
+    !entry?.id ||
+    !entry?.userId
+  ) {
+    throw new Error(
+      "Missing margin entry information."
+    );
+  }
+
+  const user =
+    await requireUser();
+
+  const savedId =
+    marginEntryKey(
+      entry
+    );
+
+  const savedRef =
+    doc(
+      db,
+      "users",
+      user.uid,
+      "savedMargins",
+      savedId
+    );
+
+  const now =
+    new Date()
+      .toISOString();
+
+  const data =
+    cleanForFirestore({
+      sourceEntryId:
+        String(
+          entry.id
+        ),
+
+      sourceUserId:
+        String(
+          entry.userId
+        ),
+
+      bookId:
+        entry.bookId
+          ? String(
+              entry.bookId
+            )
+          : null,
+
+      title:
+        entry.title ||
+        "Untitled",
+
+      author:
+        entry.author ||
+        "",
+
+      note:
+        entry.note ||
+        "",
+
+      paragraphNumber:
+        entry.paragraphNumber ||
+        null,
+
+      paragraphPreview:
+        entry.paragraphPreview ||
+        "",
+
+      savedAtISO:
+        now
+    });
+
+  await setDoc(
+    savedRef,
+    {
+      ...data,
+
+      savedAt:
+        serverTimestamp()
+    },
+    {
+      merge: true
+    }
+  );
+
+  return {
+    id:
+      savedId,
+
+    ...data
+  };
+}
+
+
+/* ============================================================
+   UNSAVE MARGIN
+============================================================ */
+
+export async function unsaveMarginEntry(
+  entry
+) {
+  if (
+    !entry?.id ||
+    !entry?.userId
+  ) {
+    return;
+  }
+
+  const user =
+    await requireUser();
+
+  const savedRef =
+    doc(
+      db,
+      "users",
+      user.uid,
+      "savedMargins",
+      marginEntryKey(
+        entry
+      )
+    );
+
+  await deleteDoc(
+    savedRef
+  );
+}
+
+
+/* ============================================================
+   GET SAVED MARGINS
+============================================================ */
+
+export async function getSavedMargins() {
+  const user =
+    await getCurrentUser();
+
+  if (!user) {
+    return [];
+  }
+
+  const savedRef =
+    collection(
+      db,
+      "users",
+      user.uid,
+      "savedMargins"
+    );
+
+  const snapshot =
+    await getDocs(
+      savedRef
+    );
+
+  const saved =
+    snapshot.docs.map(
+      (
+        savedDoc
+      ) => ({
+        id:
+          savedDoc.id,
+
+        ...savedDoc.data()
+      })
+    );
+
+  saved.sort(
+    (
+      a,
+      b
+    ) =>
+      String(
+        b.savedAtISO ||
+        ""
+      ).localeCompare(
+        String(
+          a.savedAtISO ||
+          ""
+        )
+      )
+  );
+
+  return saved;
+}
+
+
+/* ============================================================
+   REPLY TO MARGIN
+============================================================ */
+
+export async function replyToMargin(
+  entry,
+  {
+    note,
+    visibility,
+    groupId = null
+  }
+) {
+  if (
+    !entry?.id ||
+    !entry?.userId
+  ) {
+    throw new Error(
+      "Missing parent margin."
+    );
+  }
+
+  const cleanNote =
+    String(
+      note ||
+      ""
+    ).trim();
+
+  if (!cleanNote) {
+    throw new Error(
+      "A reply cannot be empty."
+    );
+  }
+
+  const user =
+    await requireUser();
+
+  const normalizedVisibility =
+    normalizeVisibility(
+      visibility
+    );
+
+  const repliesRef =
+    collection(
+      db,
+      "marginReplies"
+    );
+
+  const replyRef =
+    doc(
+      repliesRef
+    );
+
+  const now =
+    new Date()
+      .toISOString();
+
+  const reply =
+    cleanForFirestore({
+      id:
+        replyRef.id,
+
+      userId:
+        user.uid,
+
+      parentEntryId:
+        String(
+          entry.id
+        ),
+
+      parentUserId:
+        String(
+          entry.userId
+        ),
+
+      bookId:
+        entry.bookId
+          ? String(
+              entry.bookId
+            )
+          : null,
+
+      title:
+        entry.title ||
+        "Untitled",
+
+      author:
+        entry.author ||
+        "",
+
+      note:
+        cleanNote,
+
+      visibility:
+        normalizedVisibility,
+
+      groupId:
+        normalizedVisibility ===
+        "group"
+          ? groupId ||
+            null
+          : null,
+
+      createdAtISO:
+        now
+    });
+
+  await setDoc(
+    replyRef,
+    {
+      ...reply,
+
+      createdAt:
+        serverTimestamp()
+    }
+  );
+
+  return reply;
+}
+
+
+/* ============================================================
+   GET REPLIES
+============================================================ */
+
+export async function getMarginReplies(
+  entry
+) {
+  if (
+    !entry?.id
+  ) {
+    return [];
+  }
+
+  const repliesRef =
+    collection(
+      db,
+      "marginReplies"
+    );
+
+  const repliesQuery =
+    query(
+      repliesRef,
+      where(
+        "parentEntryId",
+        "==",
+        String(
+          entry.id
+        )
+      )
+    );
+
+  const snapshot =
+    await getDocs(
+      repliesQuery
+    );
+
+  const replies =
+    snapshot.docs.map(
+      (
+        replyDoc
+      ) => ({
+        id:
+          replyDoc.id,
+
+        ...replyDoc.data()
+      })
+    );
+
+  replies.sort(
+    (
+      a,
+      b
+    ) =>
+      String(
+        a.createdAtISO ||
+        ""
+      ).localeCompare(
+        String(
+          b.createdAtISO ||
+          ""
+        )
+      )
+  );
+
+  return replies;
+}
+
+
+/* ============================================================
+   REPORT MARGIN
+============================================================ */
+
+export async function reportMarginEntry(
+  entry,
+  {
+    reason,
+    details = ""
+  }
+) {
+  if (
+    !entry?.id ||
+    !entry?.userId
+  ) {
+    throw new Error(
+      "Missing margin entry."
+    );
+  }
+
+  const user =
+    await requireUser();
+
+  const reportsRef =
+    collection(
+      db,
+      "marginReports"
+    );
+
+  const reportRef =
+    doc(
+      reportsRef
+    );
+
+  const now =
+    new Date()
+      .toISOString();
+
+  const report =
+    cleanForFirestore({
+      id:
+        reportRef.id,
+
+      reporterUserId:
+        user.uid,
+
+      reportedEntryId:
+        String(
+          entry.id
+        ),
+
+      reportedUserId:
+        String(
+          entry.userId
+        ),
+
+      reason:
+        String(
+          reason ||
+          "other"
+        ),
+
+      details:
+        String(
+          details ||
+          ""
+        ).trim(),
+
+      status:
+        "open",
+
+      createdAtISO:
+        now
+    });
+
+  await setDoc(
+    reportRef,
+    {
+      ...report,
+
+      createdAt:
+        serverTimestamp()
+    }
+  );
+
+  return report;
+}
+/* ============================================================
    LIVE READING PRESENCE
 ============================================================ */
 
