@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 
 import BookCard from "../components/BookCard.jsx";
+import ReadersHere from "../components/ReadersHere.jsx";
 
 import {
   getRandomBook,
@@ -84,18 +85,6 @@ export default function Home() {
     setBook
   ] = useState(null);
 
-  useEffect(() => {
-  preloadRandomBook()
-    .catch(
-      (error) => {
-        console.error(
-          "Could not preload random book:",
-          error
-        );
-      }
-    );
-}, []);
-
   const [
     status,
     setStatus
@@ -126,6 +115,23 @@ export default function Home() {
     SPONSORED_BOOKS[
       sponsoredIndex
     ];
+
+
+  /*
+   * Preload the next random book so Random Book
+   * responds more quickly when tapped.
+   */
+  useEffect(() => {
+    preloadRandomBook()
+      .catch(
+        (error) => {
+          console.error(
+            "Could not preload random book:",
+            error
+          );
+        }
+      );
+  }, []);
 
 
   /*
@@ -485,16 +491,19 @@ export default function Home() {
                         100
                       );
 
+                    const bookId =
+                      item.bookId ||
+                      item.id;
+
                     return (
                       <article
                         key={
-                          item.bookId ||
-                          item.id
+                          bookId
                         }
                         className="continue-reading-item"
                       >
                         <Link
-                          to={`/read/reader/${item.bookId}`}
+                          to={`/read/reader/${bookId}`}
                           className="continue-reading-title"
                         >
                           {item.title ||
@@ -505,6 +514,12 @@ export default function Home() {
                           {item.author ||
                             "Unknown author"}
                         </p>
+
+                        <ReadersHere
+                          bookId={
+                            bookId
+                          }
+                        />
 
                         <div className="continue-reading-progress">
                           <div className="reading-progress-track">
