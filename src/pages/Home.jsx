@@ -642,7 +642,13 @@ export default function Home() {
               </small>
             </div>
           </Link>
-
+          
+<ReadersHere
+  bookId={
+    sponsoredBook.id
+  }
+/>
+          
           <div className="sponsored-dots">
             {SPONSORED_BOOKS.map(
               (
