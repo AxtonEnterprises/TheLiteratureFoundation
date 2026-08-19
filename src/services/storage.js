@@ -1824,11 +1824,12 @@ export async function replyToMargin(
 export async function getMarginReplies(
   entry
 ) {
-  if (
-    !entry?.id
-  ) {
+  if (!entry?.id) {
     return [];
   }
+
+  const parentEntryId =
+    String(entry.id);
 
   const repliesRef =
     collection(
@@ -1836,28 +1837,32 @@ export async function getMarginReplies(
       "marginReplies"
     );
 
-  const repliesQuery =
+  /*
+   * Everyone may retrieve public replies.
+   */
+  const publicQuery =
     query(
       repliesRef,
       where(
         "parentEntryId",
         "==",
-        String(
-          entry.id
-        )
+        parentEntryId
+      ),
+      where(
+        "visibility",
+        "==",
+        "public"
       )
     );
 
-  const snapshot =
+  const publicSnapshot =
     await getDocs(
-      repliesQuery
+      publicQuery
     );
 
-  const replies =
-    snapshot.docs.map(
-      (
-        replyDoc
-      ) => ({
+  const publicReplies =
+    publicSnapshot.docs.map(
+      (replyDoc) => ({
         id:
           replyDoc.id,
 
@@ -1865,11 +1870,61 @@ export async function getMarginReplies(
       })
     );
 
+
+  /*
+   * A signed-in reader can additionally
+   * see their own private replies.
+   */
+  const user =
+    await getCurrentUser();
+
+  let privateReplies = [];
+
+  if (user) {
+    const privateQuery =
+      query(
+        repliesRef,
+        where(
+          "parentEntryId",
+          "==",
+          parentEntryId
+        ),
+        where(
+          "visibility",
+          "==",
+          "private"
+        ),
+        where(
+          "userId",
+          "==",
+          user.uid
+        )
+      );
+
+    const privateSnapshot =
+      await getDocs(
+        privateQuery
+      );
+
+    privateReplies =
+      privateSnapshot.docs.map(
+        (replyDoc) => ({
+          id:
+            replyDoc.id,
+
+          ...replyDoc.data()
+        })
+      );
+  }
+
+
+  const replies = [
+    ...publicReplies,
+    ...privateReplies
+  ];
+
   replies.sort(
-    (
-      a,
-      b
-    ) =>
+    (a, b) =>
       String(
         a.createdAtISO ||
         ""
