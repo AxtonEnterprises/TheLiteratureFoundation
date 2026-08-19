@@ -15,6 +15,7 @@ import Privacy from "./pages/Privacy.jsx";
 import Terms from "./pages/Terms.jsx";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound.jsx";
+import PublicProfile from "./pages/PublicProfile";
 
 export default function App() {
   const location = useLocation();
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="/read/reader/:id" element={<Reader />} />
           <Route path="/read/journal" element={<Journal />} />
           <Route path="/read/profile" element={<Profile />} />
+          <Route path="/read/public/:userId" element={<PublicProfile />} />
           <Route path="/read/about" element={<About />} />
           <Route path="/read/login" element={<Login />} />
 
