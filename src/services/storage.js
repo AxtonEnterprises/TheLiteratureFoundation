@@ -1,5 +1,6 @@
 import {
   collection,
+  collectionGroup,
   deleteDoc,
   doc,
   getDoc,
@@ -1279,7 +1280,76 @@ export async function getPublicProfile(
     ...snapshot.data()
   };
 }
+export async function getPublicJournalForUser(
+  userId
+) {
+  if (!userId) {
+    return [];
+  }
 
+  const user =
+    await getCurrentUser();
+
+  if (!user) {
+    return [];
+  }
+
+  const journalRef =
+    collectionGroup(
+      db,
+      "journal"
+    );
+
+  const journalQuery =
+    query(
+      journalRef,
+      where(
+        "userId",
+        "==",
+        String(userId)
+      ),
+      where(
+        "visibility",
+        "==",
+        "public"
+      )
+    );
+
+  const snapshot =
+    await getDocs(
+      journalQuery
+    );
+
+  const entries =
+    snapshot.docs
+      .map(
+        (entryDoc) =>
+          normalizeJournalEntry({
+            id:
+              entryDoc.id,
+
+            ...entryDoc.data()
+          })
+      )
+      .filter(Boolean);
+
+  entries.sort(
+    (a, b) =>
+      String(
+        b.updatedAtISO ||
+        b.createdAt ||
+        ""
+      ).localeCompare(
+        String(
+          a.updatedAtISO ||
+          a.createdAt ||
+          ""
+        )
+      )
+  );
+
+  return entries;
+}
 
 /* ============================================================
    LIVE READING PRESENCE
