@@ -35,6 +35,7 @@ import {
   getProfileAvatar
 } from "../data/avatars.js";
 
+import ReadersHere from "../components/ReadersHere.jsx";
 import SEO from "../components/SEO.jsx";
 
 
@@ -186,6 +187,7 @@ export default function Profile() {
             setJournalEntries([]);
             setShowReadingPresence(false);
             setLoading(false);
+
             return;
           }
 
@@ -284,7 +286,9 @@ export default function Profile() {
         counts.set(
           key,
           (
-            counts.get(key) ||
+            counts.get(
+              key
+            ) ||
             0
           ) + 1
         );
@@ -551,10 +555,14 @@ export default function Profile() {
                   closeEditProfile
                 }
               >
-                <X size={16} />
+                <X
+                  size={16}
+                />
+
                 Cancel
               </button>
             </div>
+
 
             <form
               className="profile-form"
@@ -596,7 +604,9 @@ export default function Profile() {
 
                 <div className="profile-avatar-grid">
                   {PROFILE_AVATARS.map(
-                    (avatar) => {
+                    (
+                      avatar
+                    ) => {
                       const selected =
                         selectedAvatar ===
                         avatar.id;
@@ -620,9 +630,7 @@ export default function Profile() {
                           aria-pressed={
                             selected
                           }
-                          aria-label={
-                            `Choose ${avatar.name}`
-                          }
+                          aria-label={`Choose ${avatar.name}`}
                         >
                           <img
                             src={
@@ -756,7 +764,8 @@ export default function Profile() {
                         Math.max(
                           Number(
                             item.percentComplete
-                          ) || 0,
+                          ) ||
+                          0,
                           0
                         ),
                         100
@@ -827,6 +836,14 @@ export default function Profile() {
                               "Unknown author"}
                           </p>
 
+
+                          <ReadersHere
+                            bookId={
+                              bookId
+                            }
+                          />
+
+
                           <div className="timeline-progress-row">
                             <ProgressBar
                               percent={
@@ -840,7 +857,8 @@ export default function Profile() {
                           </div>
 
                           <small className="muted">
-                            {percent >= 100
+                            {percent >=
+                            100
                               ? "Completed"
                               : "Last read"}
 
@@ -864,8 +882,7 @@ export default function Profile() {
                                   size={16}
                                 />
 
-                                See journal entries
-                                {" "}
+                                See journal entries{" "}
                                 ({noteCount})
                               </Link>
                             </div>
@@ -883,4 +900,4 @@ export default function Profile() {
       </div>
     </main>
   );
-                }
+}
