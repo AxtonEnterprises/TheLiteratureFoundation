@@ -3076,3 +3076,18 @@ p {
   color:
     var(--muted, #6c7a80);
 }
+.readers-here-person-link {
+  text-decoration: none;
+  color: inherit;
+
+  padding: 0.35rem;
+  margin: -0.35rem;
+
+  border-radius: 12px;
+}
+
+.readers-here-person-link:hover,
+.readers-here-person-link:focus-visible {
+  background:
+    rgba(59, 182, 177, 0.08);
+}
