@@ -147,6 +147,11 @@ export default function Profile() {
   ] = useState("");
 
   const [
+    showReadingPresence,
+    setShowReadingPresence
+  ] = useState(false);
+
+  const [
     loading,
     setLoading
   ] = useState(true);
@@ -179,6 +184,7 @@ export default function Profile() {
             setProfile(null);
             setReadingTimeline([]);
             setJournalEntries([]);
+            setShowReadingPresence(false);
             setLoading(false);
             return;
           }
@@ -218,6 +224,12 @@ export default function Profile() {
               loadedProfile
                 ?.avatar ||
               ""
+            );
+
+            setShowReadingPresence(
+              loadedProfile
+                ?.showReadingPresence ===
+              true
             );
 
             setReadingTimeline(
@@ -326,6 +338,12 @@ export default function Profile() {
         ?.avatar ||
       ""
     );
+
+    setShowReadingPresence(
+      profile
+        ?.showReadingPresence ===
+      true
+    );
   }
 
 
@@ -343,7 +361,8 @@ export default function Profile() {
           displayName,
           about,
           avatar:
-            selectedAvatar
+            selectedAvatar,
+          showReadingPresence
         });
 
       setProfile(
@@ -649,6 +668,35 @@ export default function Profile() {
               </small>
 
 
+              <div className="profile-presence-setting">
+                <label className="profile-presence-toggle">
+                  <input
+                    type="checkbox"
+                    checked={
+                      showReadingPresence
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setShowReadingPresence(
+                        event.target.checked
+                      )
+                    }
+                  />
+
+                  <span>
+                    Show when I'm reading
+                  </span>
+                </label>
+
+                <p className="muted">
+                  When enabled, other signed-in
+                  readers may see your avatar on
+                  books you're actively reading.
+                </p>
+              </div>
+
+
               <div className="button-row">
                 <button
                   type="submit"
@@ -835,4 +883,4 @@ export default function Profile() {
       </div>
     </main>
   );
-}
+                }
