@@ -1756,6 +1756,64 @@ export async function replyToMargin(
 
   const reply =
     cleanForFirestore({
+/* ============================================================
+   REPLY TO MARGIN
+============================================================ */
+
+export async function replyToMargin(
+  entry,
+  {
+    note,
+    visibility,
+    groupId = null,
+    parentReplyId = null
+  }
+) {
+  if (
+    !entry?.id ||
+    !entry?.userId
+  ) {
+    throw new Error(
+      "Missing parent margin."
+    );
+  }
+
+  const cleanNote =
+    String(
+      note || ""
+    ).trim();
+
+  if (!cleanNote) {
+    throw new Error(
+      "A reply cannot be empty."
+    );
+  }
+
+  const user =
+    await requireUser();
+
+  const normalizedVisibility =
+    normalizeVisibility(
+      visibility
+    );
+
+  const repliesRef =
+    collection(
+      db,
+      "marginReplies"
+    );
+
+  const replyRef =
+    doc(
+      repliesRef
+    );
+
+  const now =
+    new Date()
+      .toISOString();
+
+  const reply =
+    cleanForFirestore({
       id:
         replyRef.id,
 
@@ -1803,8 +1861,7 @@ export async function replyToMargin(
       groupId:
         normalizedVisibility ===
         "group"
-          ? groupId ||
-            null
+          ? groupId || null
           : null,
 
       createdAtISO:
@@ -1815,14 +1872,13 @@ export async function replyToMargin(
     replyRef,
     {
       ...reply,
-
       createdAt:
         serverTimestamp()
     }
   );
 
   return reply;
-}
+  }
 
 
 /* ============================================================
