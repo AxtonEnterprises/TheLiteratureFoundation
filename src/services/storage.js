@@ -1702,11 +1702,13 @@ export async function getSavedMargins() {
 ============================================================ */
 
 export async function replyToMargin(
+export async function replyToMargin(
   entry,
   {
     note,
     visibility,
-    groupId = null
+    groupId = null,
+    parentReplyId = null
   }
 ) {
   if (
@@ -1720,8 +1722,7 @@ export async function replyToMargin(
 
   const cleanNote =
     String(
-      note ||
-      ""
+      note || ""
     ).trim();
 
   if (!cleanNote) {
@@ -1770,6 +1771,13 @@ export async function replyToMargin(
         String(
           entry.userId
         ),
+
+      parentReplyId:
+        parentReplyId
+          ? String(
+              parentReplyId
+            )
+          : null,
 
       bookId:
         entry.bookId
