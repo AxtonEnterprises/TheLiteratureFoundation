@@ -2797,3 +2797,731 @@ export async function setReadingProgressVisibility(
       normalized
   };
 }
+/* ============================================================
+   FRIENDS / SOCIAL
+============================================================ */
+
+function friendPairId(
+  firstUserId,
+  secondUserId
+) {
+  return [
+    String(firstUserId),
+    String(secondUserId)
+  ]
+    .sort()
+    .join("__");
+}
+
+
+async function getFriendshipRecord(
+  otherUserId
+) {
+  const user =
+    await getCurrentUser();
+
+  if (
+    !user ||
+    !otherUserId
+  ) {
+    return null;
+  }
+
+  const relationshipRef =
+    doc(
+      db,
+      "friendships",
+      friendPairId(
+        user.uid,
+        otherUserId
+      )
+    );
+
+  const snapshot =
+    await getDoc(
+      relationshipRef
+    );
+
+  if (
+    !snapshot.exists()
+  ) {
+    return null;
+  }
+
+  return {
+    id:
+      snapshot.id,
+
+    ...snapshot.data()
+  };
+}
+
+
+export async function getFriendshipStatus(
+  otherUserId
+) {
+  const user =
+    await getCurrentUser();
+
+  if (
+    !user ||
+    !otherUserId
+  ) {
+    return {
+      status:
+        "none"
+    };
+  }
+
+  if (
+    String(
+      otherUserId
+    ) ===
+    String(
+      user.uid
+    )
+  ) {
+    return {
+      status:
+        "self"
+    };
+  }
+
+  const relationship =
+    await getFriendshipRecord(
+      otherUserId
+    );
+
+  if (!relationship) {
+    return {
+      status:
+        "none"
+    };
+  }
+
+  if (
+    relationship.status ===
+    "accepted"
+  ) {
+    return {
+      status:
+        "friends",
+
+      relationship
+    };
+  }
+
+  if (
+    relationship.status ===
+    "pending"
+  ) {
+    return {
+      status:
+        relationship.requestedBy ===
+        user.uid
+          ? "outgoing"
+          : "incoming",
+
+      relationship
+    };
+  }
+
+  return {
+    status:
+      "none"
+  };
+}
+
+
+export async function sendFriendRequest(
+  otherUserId
+) {
+  const user =
+    await requireUser();
+
+  if (
+    !otherUserId ||
+    String(
+      otherUserId
+    ) ===
+    String(
+      user.uid
+    )
+  ) {
+    throw new Error(
+      "Choose another reader."
+    );
+  }
+
+  const pairId =
+    friendPairId(
+      user.uid,
+      otherUserId
+    );
+
+  const relationshipRef =
+    doc(
+      db,
+      "friendships",
+      pairId
+    );
+
+  const existing =
+    await getDoc(
+      relationshipRef
+    );
+
+  if (
+    existing.exists()
+  ) {
+    const data =
+      existing.data();
+
+    if (
+      data.status ===
+      "accepted"
+    ) {
+      return {
+        id:
+          pairId,
+
+        ...data
+      };
+    }
+
+    /*
+     * If this reader already sent us a request,
+     * sending one back automatically accepts it.
+     */
+    if (
+      data.status ===
+        "pending" &&
+      data.requestedTo ===
+        user.uid
+    ) {
+      const now =
+        new Date()
+          .toISOString();
+
+      await updateDoc(
+        relationshipRef,
+        {
+          status:
+            "accepted",
+
+          acceptedAtISO:
+            now,
+
+          updatedAtISO:
+            now,
+
+          updatedAt:
+            serverTimestamp()
+        }
+      );
+
+      return {
+        id:
+          pairId,
+
+        ...data,
+
+        status:
+          "accepted",
+
+        acceptedAtISO:
+          now
+      };
+    }
+  }
+
+  const now =
+    new Date()
+      .toISOString();
+
+  const relationship =
+    cleanForFirestore({
+      users: [
+        user.uid,
+        String(
+          otherUserId
+        )
+      ].sort(),
+
+      requestedBy:
+        user.uid,
+
+      requestedTo:
+        String(
+          otherUserId
+        ),
+
+      status:
+        "pending",
+
+      createdAtISO:
+        now,
+
+      updatedAtISO:
+        now
+    });
+
+  await setDoc(
+    relationshipRef,
+    {
+      ...relationship,
+
+      createdAt:
+        serverTimestamp(),
+
+      updatedAt:
+        serverTimestamp()
+    },
+    {
+      merge:
+        true
+    }
+  );
+
+  return {
+    id:
+      pairId,
+
+    ...relationship
+  };
+}
+
+
+export async function cancelFriendRequest(
+  otherUserId
+) {
+  const user =
+    await requireUser();
+
+  const relationship =
+    await getFriendshipRecord(
+      otherUserId
+    );
+
+  if (
+    !relationship ||
+    relationship.status !==
+      "pending" ||
+    relationship.requestedBy !==
+      user.uid
+  ) {
+    return;
+  }
+
+  await deleteDoc(
+    doc(
+      db,
+      "friendships",
+      relationship.id
+    )
+  );
+}
+
+
+export async function respondToFriendRequest(
+  otherUserId,
+  accept
+) {
+  const user =
+    await requireUser();
+
+  const relationship =
+    await getFriendshipRecord(
+      otherUserId
+    );
+
+  if (
+    !relationship ||
+    relationship.status !==
+      "pending" ||
+    relationship.requestedTo !==
+      user.uid
+  ) {
+    throw new Error(
+      "Friend request is no longer available."
+    );
+  }
+
+  const relationshipRef =
+    doc(
+      db,
+      "friendships",
+      relationship.id
+    );
+
+  if (!accept) {
+    await deleteDoc(
+      relationshipRef
+    );
+
+    return {
+      status:
+        "declined"
+    };
+  }
+
+  const now =
+    new Date()
+      .toISOString();
+
+  await updateDoc(
+    relationshipRef,
+    {
+      status:
+        "accepted",
+
+      acceptedAtISO:
+        now,
+
+      updatedAtISO:
+        now,
+
+      updatedAt:
+        serverTimestamp()
+    }
+  );
+
+  return {
+    ...relationship,
+
+    status:
+      "accepted",
+
+    acceptedAtISO:
+      now
+  };
+}
+
+
+export async function removeFriend(
+  otherUserId
+) {
+  const user =
+    await requireUser();
+
+  const relationship =
+    await getFriendshipRecord(
+      otherUserId
+    );
+
+  if (
+    !relationship ||
+    relationship.status !==
+      "accepted" ||
+    !relationship.users?.includes(
+      user.uid
+    )
+  ) {
+    return;
+  }
+
+  await deleteDoc(
+    doc(
+      db,
+      "friendships",
+      relationship.id
+    )
+  );
+}
+
+
+async function getRelationshipRecordsForCurrentUser() {
+  const user =
+    await getCurrentUser();
+
+  if (!user) {
+    return [];
+  }
+
+  const relationshipsRef =
+    collection(
+      db,
+      "friendships"
+    );
+
+  const relationshipsQuery =
+    query(
+      relationshipsRef,
+
+      where(
+        "users",
+        "array-contains",
+        user.uid
+      )
+    );
+
+  const snapshot =
+    await getDocs(
+      relationshipsQuery
+    );
+
+  return snapshot.docs.map(
+    (
+      relationshipDoc
+    ) => ({
+      id:
+        relationshipDoc.id,
+
+      ...relationshipDoc.data()
+    })
+  );
+}
+
+
+async function attachPublicProfiles(
+  relationships,
+  currentUserId
+) {
+  return Promise.all(
+    relationships.map(
+      async (
+        relationship
+      ) => {
+        const otherUserId =
+          relationship.users
+            ?.find(
+              (
+                candidate
+              ) =>
+                candidate !==
+                currentUserId
+            ) ||
+          (
+            relationship.requestedBy ===
+            currentUserId
+              ? relationship.requestedTo
+              : relationship.requestedBy
+          );
+
+        const profile =
+          otherUserId
+            ? await getPublicProfile(
+                otherUserId
+              )
+            : null;
+
+        return {
+          ...relationship,
+
+          otherUserId,
+
+          profile
+        };
+      }
+    )
+  );
+}
+
+
+export async function getFriends() {
+  const user =
+    await getCurrentUser();
+
+  if (!user) {
+    return [];
+  }
+
+  const relationships =
+    await getRelationshipRecordsForCurrentUser();
+
+  const accepted =
+    relationships.filter(
+      (
+        relationship
+      ) =>
+        relationship.status ===
+        "accepted"
+    );
+
+  const hydrated =
+    await attachPublicProfiles(
+      accepted,
+      user.uid
+    );
+
+  hydrated.sort(
+    (
+      a,
+      b
+    ) =>
+      String(
+        a.profile
+          ?.displayName ||
+        ""
+      ).localeCompare(
+        String(
+          b.profile
+            ?.displayName ||
+          ""
+        )
+      )
+  );
+
+  return hydrated;
+}
+
+
+export async function getIncomingFriendRequests() {
+  const user =
+    await getCurrentUser();
+
+  if (!user) {
+    return [];
+  }
+
+  const relationships =
+    await getRelationshipRecordsForCurrentUser();
+
+  return attachPublicProfiles(
+    relationships.filter(
+      (
+        relationship
+      ) =>
+        relationship.status ===
+          "pending" &&
+        relationship.requestedTo ===
+          user.uid
+    ),
+
+    user.uid
+  );
+}
+
+
+export async function getOutgoingFriendRequests() {
+  const user =
+    await getCurrentUser();
+
+  if (!user) {
+    return [];
+  }
+
+  const relationships =
+    await getRelationshipRecordsForCurrentUser();
+
+  return attachPublicProfiles(
+    relationships.filter(
+      (
+        relationship
+      ) =>
+        relationship.status ===
+          "pending" &&
+        relationship.requestedBy ===
+          user.uid
+    ),
+
+    user.uid
+  );
+}
+
+
+export async function searchReaders(
+  searchTerm
+) {
+  const user =
+    await getCurrentUser();
+
+  if (!user) {
+    return [];
+  }
+
+  const cleanSearch =
+    String(
+      searchTerm ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
+
+  if (
+    cleanSearch.length <
+    2
+  ) {
+    return [];
+  }
+
+  const profilesRef =
+    collection(
+      db,
+      "publicProfiles"
+    );
+
+  const snapshot =
+    await getDocs(
+      profilesRef
+    );
+
+  return snapshot.docs
+    .map(
+      (
+        profileDoc
+      ) => ({
+        id:
+          profileDoc.id,
+
+        ...profileDoc.data()
+      })
+    )
+    .filter(
+      (
+        profile
+      ) =>
+        profile.id !==
+          user.uid &&
+        String(
+          profile.displayName ||
+          ""
+        )
+          .toLowerCase()
+          .includes(
+            cleanSearch
+          )
+    )
+    .slice(
+      0,
+      20
+    );
+}
+
+
+export async function getFriendsMarginsFeed() {
+  const friends =
+    await getFriends();
+
+  if (
+    !friends.length
+  ) {
+    return [];
+  }
+
+  const friendIds =
+    new Set(
+      friends.map(
+        (
+          friend
+        ) =>
+          String(
+            friend.otherUserId
+          )
+      )
+    );
+
+  const feed =
+    await getMarginsFeed();
+
+  return feed.filter(
+    (
+      entry
+    ) =>
+      friendIds.has(
+        String(
+          entry.userId
+        )
+      )
+  );
+}
