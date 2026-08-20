@@ -2644,3 +2644,156 @@ export async function migrateLocalDataToFirestore() {
     throw error;
   }
 }
+export async function getReadingTimelineVisibility() {
+  const user =
+    await getCurrentUser();
+
+  if (!user) {
+    return "private";
+  }
+
+  const profileRef =
+    doc(
+      db,
+      "users",
+      user.uid
+    );
+
+  const snapshot =
+    await getDoc(
+      profileRef
+    );
+
+  if (!snapshot.exists()) {
+    return "private";
+  }
+
+  return snapshot.data()
+    ?.readingTimelineVisibility ===
+    "public"
+      ? "public"
+      : "private";
+}
+
+
+export async function setReadingTimelineVisibility(
+  visibility
+) {
+  const user =
+    await requireUser();
+
+  const normalized =
+    visibility ===
+    "public"
+      ? "public"
+      : "private";
+
+  const now =
+    new Date()
+      .toISOString();
+
+  const profileRef =
+    doc(
+      db,
+      "users",
+      user.uid
+    );
+
+  const publicProfileRef =
+    doc(
+      db,
+      "publicProfiles",
+      user.uid
+    );
+
+  await Promise.all([
+    setDoc(
+      profileRef,
+      {
+        readingTimelineVisibility:
+          normalized,
+        updatedAt:
+          serverTimestamp()
+      },
+      {
+        merge: true
+      }
+    ),
+
+    setDoc(
+      publicProfileRef,
+      {
+        userId:
+          user.uid,
+        readingTimelineVisibility:
+          normalized,
+        updatedAtISO:
+          now,
+        updatedAt:
+          serverTimestamp()
+      },
+      {
+        merge: true
+      }
+    )
+  ]);
+
+  return normalized;
+}
+
+
+export async function setReadingProgressVisibility(
+  bookId,
+  visibility
+) {
+  if (
+    bookId === undefined ||
+    bookId === null
+  ) {
+    throw new Error(
+      "Missing book ID."
+    );
+  }
+
+  const user =
+    await requireUser();
+
+  const normalized =
+    visibility ===
+    "public"
+      ? "public"
+      : "private";
+
+  const progressRef =
+    doc(
+      db,
+      "users",
+      user.uid,
+      "readingProgress",
+      String(
+        bookId
+      )
+    );
+
+  await setDoc(
+    progressRef,
+    {
+      visibility:
+        normalized,
+      visibilityUpdatedAt:
+        serverTimestamp()
+    },
+    {
+      merge: true
+    }
+  );
+
+  return {
+    bookId:
+      String(
+        bookId
+      ),
+    visibility:
+      normalized
+  };
+}
