@@ -2003,16 +2003,17 @@ export async function getMarginReplies(
   return replies;
 }
 
-
 /* ============================================================
-   REPORT MARGIN
+   REPLY TO MARGIN
 ============================================================ */
 
-export async function reportMarginEntry(
+export async function replyToMargin(
   entry,
   {
-    reason,
-    details = ""
+    note,
+    visibility,
+    groupId = null,
+    parentReplyId = null
   }
 ) {
   if (
@@ -2020,77 +2021,113 @@ export async function reportMarginEntry(
     !entry?.userId
   ) {
     throw new Error(
-      "Missing margin entry."
+      "Missing parent margin."
+    );
+  }
+
+  const cleanNote =
+    String(
+      note || ""
+    ).trim();
+
+  if (!cleanNote) {
+    throw new Error(
+      "A reply cannot be empty."
     );
   }
 
   const user =
     await requireUser();
 
-  const reportsRef =
-    collection(
-      db,
-      "marginReports"
+  const normalizedVisibility =
+    normalizeVisibility(
+      visibility
     );
 
-  const reportRef =
+  const repliesRef =
+    collection(
+      db,
+      "marginReplies"
+    );
+
+  const replyRef =
     doc(
-      reportsRef
+      repliesRef
     );
 
   const now =
     new Date()
       .toISOString();
 
-  const report =
+  const reply =
     cleanForFirestore({
       id:
-        reportRef.id,
+        replyRef.id,
 
-      reporterUserId:
+      userId:
         user.uid,
 
-      reportedEntryId:
+      parentEntryId:
         String(
           entry.id
         ),
 
-      reportedUserId:
+      parentUserId:
         String(
           entry.userId
         ),
 
-      reason:
-        String(
-          reason ||
-          "other"
-        ),
+      parentReplyId:
+        parentReplyId
+          ? String(
+              parentReplyId
+            )
+          : null,
 
-      details:
-        String(
-          details ||
-          ""
-        ).trim(),
+      bookId:
+        entry.bookId
+          ? String(
+              entry.bookId
+            )
+          : null,
 
-      status:
-        "open",
+      title:
+        entry.title ||
+        "Untitled",
+
+      author:
+        entry.author ||
+        "",
+
+      note:
+        cleanNote,
+
+      visibility:
+        normalizedVisibility,
+
+      groupId:
+        normalizedVisibility ===
+        "group"
+          ? groupId || null
+          : null,
 
       createdAtISO:
         now
     });
 
   await setDoc(
-    reportRef,
+    replyRef,
     {
-      ...report,
-
+      ...reply,
       createdAt:
         serverTimestamp()
     }
   );
 
-  return report;
+  return reply;
 }
+
+  
 /* ============================================================
    LIVE READING PRESENCE
 ============================================================ */
