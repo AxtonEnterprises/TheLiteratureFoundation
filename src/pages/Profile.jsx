@@ -27,6 +27,7 @@ import {
   UserCheck,
   UserMinus,
   UserPlus,
+  Plus,
   X
 } from "lucide-react";
 
@@ -49,6 +50,10 @@ import {
   sendFriendRequest,
   cancelFriendRequest,
   checkUsernameAvailability,
+  createGroup,
+  getIncomingGroupInvites,
+  getMyGroups,
+  respondToGroupInvite,
   setReadingProgressVisibility,
   setReadingTimelineVisibility
 } from "../services/storage.js";
@@ -78,6 +83,10 @@ const PROFILE_TABS = [
   {
     id: "friends",
     label: "Friends"
+  },
+  {
+    id: "groups",
+    label: "Groups"
   }
 ];
 
@@ -317,6 +326,15 @@ export default function Profile() {
   ] = useState("");
 
 
+  const [groups, setGroups] = useState([]);
+  const [groupInvites, setGroupInvites] = useState([]);
+  const [groupStatus, setGroupStatus] = useState("");
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [groupName, setGroupName] = useState("");
+  const [groupDescription, setGroupDescription] = useState("");
+  const [groupType, setGroupType] = useState("group");
+
+
   useEffect(() => {
     setEditingProfile(
       searchParams.get("edit") === "1"
@@ -525,6 +543,46 @@ export default function Profile() {
   }, [
     user
   ]);
+
+
+  useEffect(() => {
+    if (!user) return;
+
+    let active = true;
+
+    async function loadGroups() {
+      try {
+        const [loadedGroups, loadedInvites] =
+          await Promise.all([
+            getMyGroups(),
+            getIncomingGroupInvites()
+          ]);
+
+        if (!active) return;
+
+        setGroups(loadedGroups);
+        setGroupInvites(loadedInvites);
+      } catch (error) {
+        console.error("Could not load groups:", error);
+
+        if (active) {
+          setGroupStatus(
+            `Groups error: ${
+              error?.code ||
+              error?.message ||
+              "unknown"
+            }`
+          );
+        }
+      }
+    }
+
+    loadGroups();
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
 
   const journalCountsByBook =
@@ -1009,6 +1067,80 @@ export default function Profile() {
     }
   }
 
+
+
+  async function refreshGroups() {
+    const [loadedGroups, loadedInvites] =
+      await Promise.all([
+        getMyGroups(),
+        getIncomingGroupInvites()
+      ]);
+
+    setGroups(loadedGroups);
+    setGroupInvites(loadedInvites);
+  }
+
+
+  async function handleCreateGroup(event) {
+    event.preventDefault();
+
+    try {
+      setCreatingGroup(true);
+      setGroupStatus("");
+
+      await createGroup({
+        name: groupName,
+        description: groupDescription,
+        type: groupType
+      });
+
+      setGroupName("");
+      setGroupDescription("");
+      setGroupType("group");
+
+      await refreshGroups();
+
+      setGroupStatus("Group created.");
+    } catch (error) {
+      console.error("Could not create group:", error);
+      setGroupStatus(
+        error?.message ||
+        "We couldn't create that group."
+      );
+    } finally {
+      setCreatingGroup(false);
+    }
+  }
+
+
+  async function handleGroupInvite(groupId, accept) {
+    try {
+      setGroupStatus("");
+
+      await respondToGroupInvite(
+        groupId,
+        accept
+      );
+
+      await refreshGroups();
+
+      setGroupStatus(
+        accept
+          ? "Group invitation accepted."
+          : "Group invitation declined."
+      );
+    } catch (error) {
+      console.error(
+        "Could not update group invitation:",
+        error
+      );
+
+      setGroupStatus(
+        error?.message ||
+        "We couldn't update that invitation."
+      );
+    }
+  }
 
 
   function openEditProfile() {
@@ -1576,7 +1708,10 @@ export default function Profile() {
                   {tab.id === "friends" &&
                   incomingRequests.length > 0
                     ? `${tab.label} (${incomingRequests.length})`
-                    : tab.label}
+                    : tab.id === "groups" &&
+                      groupInvites.length > 0
+                      ? `${tab.label} (${groupInvites.length})`
+                      : tab.label}
                 </button>
               );
             }
@@ -2749,6 +2884,209 @@ export default function Profile() {
                 )}
               </div>
             )}
+          </section>
+        )}
+
+
+
+        {activeTab === "groups" && (
+          <section className="panel profile-panel">
+            <div className="section-heading-row">
+              <div>
+                <p className="eyebrow">
+                  Reading Communities
+                </p>
+
+                <h2>
+                  Groups & Classes
+                </h2>
+              </div>
+            </div>
+
+            {groupStatus && (
+              <p className="status">
+                {groupStatus}
+              </p>
+            )}
+
+            {groupInvites.length > 0 && (
+              <>
+                <h3>Invitations</h3>
+
+                <div className="public-profile-entry-list">
+                  {groupInvites.map((invite) => (
+                    <article
+                      key={`${invite.groupId}-${invite.userId}`}
+                      className="public-profile-entry"
+                    >
+                      <strong className="public-entry-book-title">
+                        {invite.group?.name || "Group"}
+                      </strong>
+
+                      <p className="muted">
+                        {invite.group?.type === "class"
+                          ? "Class"
+                          : "Group"}
+
+                        {invite.inviterProfile?.displayName
+                          ? ` · Invited by ${invite.inviterProfile.displayName}`
+                          : ""}
+                      </p>
+
+                      <div className="button-row">
+                        <button
+                          type="button"
+                          className="button primary"
+                          onClick={() =>
+                            handleGroupInvite(
+                              invite.groupId,
+                              true
+                            )
+                          }
+                        >
+                          Accept
+                        </button>
+
+                        <button
+                          type="button"
+                          className="button secondary"
+                          onClick={() =>
+                            handleGroupInvite(
+                              invite.groupId,
+                              false
+                            )
+                          }
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <h3>Your Groups</h3>
+
+            {groups.length === 0 ? (
+              <p className="muted">
+                You haven't joined any groups yet.
+              </p>
+            ) : (
+              <div className="public-profile-entry-list">
+                {groups.map((group) => (
+                  <article
+                    key={group.id}
+                    className="public-profile-entry"
+                  >
+                    <Link
+                      to={`/read/groups/${group.id}`}
+                      className="public-entry-book-title"
+                    >
+                      {group.name}
+                    </Link>
+
+                    <p className="muted">
+                      {group.type === "class"
+                        ? "Class"
+                        : "Group"}
+                      {group.membership?.role
+                        ? ` · ${group.membership.role}`
+                        : ""}
+                    </p>
+
+                    {group.description && (
+                      <p>{group.description}</p>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )}
+
+            <div
+              style={{
+                marginTop: "1.5rem",
+                paddingTop: "1.25rem",
+                borderTop: "1px solid var(--line)"
+              }}
+            >
+              <h3>Create a Group</h3>
+
+              <form
+                onSubmit={handleCreateGroup}
+                className="profile-edit-form"
+              >
+                <label>
+                  Type
+
+                  <select
+                    value={groupType}
+                    onChange={(event) =>
+                      setGroupType(
+                        event.target.value
+                      )
+                    }
+                  >
+                    <option value="group">
+                      Group
+                    </option>
+
+                    <option value="class">
+                      Class
+                    </option>
+                  </select>
+                </label>
+
+                <label>
+                  Name
+
+                  <input
+                    type="text"
+                    value={groupName}
+                    onChange={(event) =>
+                      setGroupName(
+                        event.target.value
+                      )
+                    }
+                    maxLength={80}
+                    placeholder="Classic Literature Club"
+                  />
+                </label>
+
+                <label>
+                  Description
+
+                  <textarea
+                    value={groupDescription}
+                    onChange={(event) =>
+                      setGroupDescription(
+                        event.target.value
+                      )
+                    }
+                    rows={3}
+                    maxLength={500}
+                    placeholder="What is this group reading or studying?"
+                  />
+                </label>
+
+                <button
+                  type="submit"
+                  className="button primary"
+                  disabled={
+                    creatingGroup ||
+                    groupName.trim().length < 2
+                  }
+                >
+                  <Plus size={16} />
+
+                  {creatingGroup
+                    ? "Creating..."
+                    : groupType === "class"
+                      ? "Create Class"
+                      : "Create Group"}
+                </button>
+              </form>
+            </div>
           </section>
         )}
 
