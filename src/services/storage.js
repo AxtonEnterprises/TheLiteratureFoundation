@@ -3914,3 +3914,489 @@ export async function getFriendsMarginsFeed() {
   );
 }
 
+
+
+/* ============================================================
+   GROUPS / CLASSES
+============================================================ */
+
+async function getGroupMemberRecord(groupId, userId) {
+  if (!groupId || !userId) return null;
+
+  const ref = doc(
+    db,
+    "groups",
+    String(groupId),
+    "members",
+    String(userId)
+  );
+
+  const snapshot = await getDoc(ref);
+
+  return snapshot.exists()
+    ? {
+        id: snapshot.id,
+        ...snapshot.data()
+      }
+    : null;
+}
+
+
+export async function createGroup({
+  name,
+  description = "",
+  type = "group"
+}) {
+  const user = await requireUser();
+  const cleanName = String(name || "").trim();
+
+  if (cleanName.length < 2) {
+    throw new Error("Group name must be at least 2 characters.");
+  }
+
+  const groupRef = doc(collection(db, "groups"));
+  const memberRef = doc(
+    db,
+    "groups",
+    groupRef.id,
+    "members",
+    user.uid
+  );
+
+  const now = new Date().toISOString();
+  const cleanType = type === "class" ? "class" : "group";
+
+  const group = cleanForFirestore({
+    id: groupRef.id,
+    name: cleanName,
+    description: String(description || "").trim(),
+    type: cleanType,
+    ownerId: user.uid,
+    createdAtISO: now,
+    updatedAtISO: now
+  });
+
+  await runTransaction(db, async (transaction) => {
+    transaction.set(groupRef, {
+      ...group,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+
+    transaction.set(memberRef, {
+      groupId: groupRef.id,
+      userId: user.uid,
+      role: "owner",
+      joinedAtISO: now,
+      joinedAt: serverTimestamp()
+    });
+  });
+
+  return group;
+}
+
+
+export async function getGroup(groupId) {
+  const user = await getCurrentUser();
+
+  if (!user || !groupId) return null;
+
+  const snapshot = await getDoc(
+    doc(db, "groups", String(groupId))
+  );
+
+  if (!snapshot.exists()) return null;
+
+  return {
+    id: snapshot.id,
+    ...snapshot.data(),
+    membership: await getGroupMemberRecord(groupId, user.uid)
+  };
+}
+
+
+export async function getMyGroups() {
+  const user = await getCurrentUser();
+
+  if (!user) return [];
+
+  const snapshot = await getDocs(
+    query(
+      collectionGroup(db, "members"),
+      where("userId", "==", user.uid)
+    )
+  );
+
+  const groups = await Promise.all(
+    snapshot.docs.map(async (memberDoc) => {
+      const membership = {
+        id: memberDoc.id,
+        ...memberDoc.data()
+      };
+
+      if (!membership.groupId) return null;
+
+      const groupSnapshot = await getDoc(
+        doc(db, "groups", String(membership.groupId))
+      );
+
+      if (!groupSnapshot.exists()) return null;
+
+      return {
+        id: groupSnapshot.id,
+        ...groupSnapshot.data(),
+        membership
+      };
+    })
+  );
+
+  return groups
+    .filter(Boolean)
+    .sort((a, b) =>
+      String(a.name || "").localeCompare(String(b.name || ""))
+    );
+}
+
+
+export async function getGroupMembers(groupId) {
+  const user = await requireUser();
+  const membership = await getGroupMemberRecord(groupId, user.uid);
+
+  if (!membership) {
+    throw new Error("You are not a member of this group.");
+  }
+
+  const snapshot = await getDocs(
+    collection(db, "groups", String(groupId), "members")
+  );
+
+  const members = await Promise.all(
+    snapshot.docs.map(async (memberDoc) => {
+      const member = {
+        id: memberDoc.id,
+        ...memberDoc.data()
+      };
+
+      return {
+        ...member,
+        profile: await getPublicProfile(member.userId)
+      };
+    })
+  );
+
+  const order = {
+    owner: 0,
+    admin: 1,
+    member: 2
+  };
+
+  return members.sort(
+    (a, b) =>
+      (order[a.role] ?? 3) - (order[b.role] ?? 3) ||
+      String(a.profile?.displayName || "").localeCompare(
+        String(b.profile?.displayName || "")
+      )
+  );
+}
+
+
+export async function inviteFriendToGroup(groupId, otherUserId) {
+  const user = await requireUser();
+  const membership = await getGroupMemberRecord(groupId, user.uid);
+
+  if (!["owner", "admin"].includes(membership?.role)) {
+    throw new Error("Only group owners and admins can invite members.");
+  }
+
+  if (!otherUserId || otherUserId === user.uid) {
+    throw new Error("Choose another reader.");
+  }
+
+  if (await getGroupMemberRecord(groupId, otherUserId)) {
+    return {
+      alreadyMember: true
+    };
+  }
+
+  const now = new Date().toISOString();
+
+  await setDoc(
+    doc(
+      db,
+      "groups",
+      String(groupId),
+      "invites",
+      String(otherUserId)
+    ),
+    {
+      groupId: String(groupId),
+      userId: String(otherUserId),
+      invitedBy: user.uid,
+      status: "pending",
+      createdAtISO: now,
+      updatedAtISO: now,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    },
+    {
+      merge: true
+    }
+  );
+
+  return {
+    groupId: String(groupId),
+    userId: String(otherUserId),
+    status: "pending"
+  };
+}
+
+
+export async function getIncomingGroupInvites() {
+  const user = await getCurrentUser();
+
+  if (!user) return [];
+
+  const snapshot = await getDocs(
+    query(
+      collectionGroup(db, "invites"),
+      where("userId", "==", user.uid)
+    )
+  );
+
+  const pending = snapshot.docs
+    .map((inviteDoc) => ({
+      id: inviteDoc.id,
+      ...inviteDoc.data()
+    }))
+    .filter((invite) => invite.status === "pending");
+
+  return Promise.all(
+    pending.map(async (invite) => {
+      const groupSnapshot = await getDoc(
+        doc(db, "groups", String(invite.groupId))
+      );
+
+      return {
+        ...invite,
+        group: groupSnapshot.exists()
+          ? {
+              id: groupSnapshot.id,
+              ...groupSnapshot.data()
+            }
+          : null,
+        inviterProfile: invite.invitedBy
+          ? await getPublicProfile(invite.invitedBy)
+          : null
+      };
+    })
+  );
+}
+
+
+export async function respondToGroupInvite(groupId, accept) {
+  const user = await requireUser();
+
+  const inviteRef = doc(
+    db,
+    "groups",
+    String(groupId),
+    "invites",
+    user.uid
+  );
+
+  const memberRef = doc(
+    db,
+    "groups",
+    String(groupId),
+    "members",
+    user.uid
+  );
+
+  const now = new Date().toISOString();
+
+  await runTransaction(db, async (transaction) => {
+    const inviteSnapshot = await transaction.get(inviteRef);
+
+    if (
+      !inviteSnapshot.exists() ||
+      inviteSnapshot.data()?.userId !== user.uid ||
+      inviteSnapshot.data()?.status !== "pending"
+    ) {
+      throw new Error("This group invitation is no longer available.");
+    }
+
+    transaction.update(inviteRef, {
+      status: accept ? "accepted" : "declined",
+      updatedAtISO: now,
+      updatedAt: serverTimestamp()
+    });
+
+    if (accept) {
+      transaction.set(memberRef, {
+        groupId: String(groupId),
+        userId: user.uid,
+        role: "member",
+        joinedAtISO: now,
+        joinedAt: serverTimestamp()
+      });
+    }
+  });
+
+  return {
+    groupId: String(groupId),
+    status: accept ? "accepted" : "declined"
+  };
+}
+
+
+export async function leaveGroup(groupId) {
+  const user = await requireUser();
+  const membership = await getGroupMemberRecord(groupId, user.uid);
+
+  if (!membership) return;
+
+  if (membership.role === "owner") {
+    throw new Error(
+      "The group owner cannot leave until ownership transfer is added."
+    );
+  }
+
+  await deleteDoc(
+    doc(db, "groups", String(groupId), "members", user.uid)
+  );
+}
+
+
+export async function setGroupMemberRole(
+  groupId,
+  memberUserId,
+  role
+) {
+  const user = await requireUser();
+  const membership = await getGroupMemberRecord(groupId, user.uid);
+
+  if (membership?.role !== "owner") {
+    throw new Error("Only the group owner can change member roles.");
+  }
+
+  const target = await getGroupMemberRecord(groupId, memberUserId);
+
+  if (!target || target.role === "owner") {
+    throw new Error("That member role cannot be changed.");
+  }
+
+  const nextRole = role === "admin" ? "admin" : "member";
+
+  await updateDoc(
+    doc(
+      db,
+      "groups",
+      String(groupId),
+      "members",
+      String(memberUserId)
+    ),
+    {
+      role: nextRole,
+      updatedAt: serverTimestamp()
+    }
+  );
+
+  return {
+    userId: String(memberUserId),
+    role: nextRole
+  };
+}
+
+
+export async function removeGroupMember(
+  groupId,
+  memberUserId
+) {
+  const user = await requireUser();
+  const membership = await getGroupMemberRecord(groupId, user.uid);
+  const target = await getGroupMemberRecord(groupId, memberUserId);
+
+  if (!["owner", "admin"].includes(membership?.role)) {
+    throw new Error("Only group owners and admins can remove members.");
+  }
+
+  if (!target) return;
+
+  if (target.role === "owner") {
+    throw new Error("The group owner cannot be removed.");
+  }
+
+  if (
+    membership.role === "admin" &&
+    target.role === "admin"
+  ) {
+    throw new Error("Admins cannot remove other admins.");
+  }
+
+  await deleteDoc(
+    doc(
+      db,
+      "groups",
+      String(groupId),
+      "members",
+      String(memberUserId)
+    )
+  );
+}
+
+
+export async function getGroupsMarginsFeed() {
+  const groups = await getMyGroups();
+
+  if (!groups.length) return [];
+
+  const feeds = await Promise.all(
+    groups.map(async (group) => {
+      const snapshot = await getDocs(
+        query(
+          collectionGroup(db, "journal"),
+          where("groupId", "==", String(group.id)),
+          where("visibility", "==", "group")
+        )
+      );
+
+      return Promise.all(
+        snapshot.docs.map(async (entryDoc) => {
+          const entry = normalizeJournalEntry({
+            id: entryDoc.id,
+            ...entryDoc.data()
+          });
+
+          return {
+            ...entry,
+            publicProfile: entry?.userId
+              ? await getPublicProfile(entry.userId)
+              : null,
+            group: {
+              id: group.id,
+              name: group.name,
+              type: group.type
+            }
+          };
+        })
+      );
+    })
+  );
+
+  return feeds
+    .flat()
+    .filter(Boolean)
+    .sort((a, b) =>
+      String(
+        b.updatedAtISO ||
+          b.createdAt ||
+          ""
+      ).localeCompare(
+        String(
+          a.updatedAtISO ||
+            a.createdAt ||
+            ""
+        )
+      )
+    );
+}
