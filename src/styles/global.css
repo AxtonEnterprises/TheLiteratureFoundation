@@ -3666,7 +3666,57 @@ p {
 
     font-size: 0.72rem;
   }
+/* ==================================================
+   GROUP / PROFILE FORMS
+   ================================================== */
 
+.profile-edit-form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.profile-edit-form label {
+  display: grid;
+  gap: 0.45rem;
+
+  color: var(--ink);
+
+  font-weight: 700;
+}
+
+.profile-edit-form input,
+.profile-edit-form select,
+.profile-edit-form textarea {
+  width: 100%;
+  min-width: 0;
+
+  padding: 0.8rem 0.9rem;
+
+  background: #fff;
+
+  border: 1px solid var(--line);
+  border-radius: 14px;
+
+  color: var(--ink);
+}
+
+.profile-edit-form textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.profile-edit-form .button {
+  width: fit-content;
+}
+
+@media (max-width: 720px) {
+  .profile-edit-form input,
+  .profile-edit-form select,
+  .profile-edit-form textarea {
+    font-size: 16px;
+  }
+}
   .margin-report-modal {
     padding: 1rem;
   }
