@@ -24,6 +24,7 @@ import {
   getMarginReplies,
   getMarginsFeed,
   getFriendsMarginsFeed,
+  getGroupsMarginsFeed,
   getSavedMargins,
   reportMarginEntry,
   replyToMargin,
@@ -56,32 +57,6 @@ function savedMarginKey(entry) {
     .join("_");
 }
 
-
-function buildReplyTree(replies) {
-  const nodes = new Map();
-  const roots = [];
-
-  replies.forEach((reply) => {
-    nodes.set(reply.id, {
-      ...reply,
-      children: []
-    });
-  });
-
-  nodes.forEach((node) => {
-    const parentId = node.parentReplyId;
-
-    if (parentId && nodes.has(parentId)) {
-      nodes.get(parentId).children.push(node);
-      return;
-    }
-
-    roots.push(node);
-  });
-
-  return roots;
-}
-
 export default function Margins() {
   const [filter, setFilter] = useState("all");
   const [entries, setEntries] = useState([]);
@@ -89,8 +64,7 @@ export default function Margins() {
   const [savedMargins, setSavedMargins] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
-  const [expandedThreadId, setExpandedThreadId] = useState(null);
-  const [replyTarget, setReplyTarget] = useState(null);
+  const [openReplyId, setOpenReplyId] = useState(null);
   const [replyText, setReplyText] = useState("");
   const [replyVisibility, setReplyVisibility] = useState("public");
   const [replying, setReplying] = useState(false);
@@ -111,29 +85,19 @@ export default function Margins() {
     let active = true;
 
     async function loadMargins() {
-      if (
-        filter ===
-        "groups"
-      ) {
-        setEntries([]);
-        setLoading(false);
-        return;
-      }
-
       try {
         setLoading(true);
         setStatus("");
 
         const feed =
-          filter ===
-          "friends"
+          filter === "friends"
             ? await getFriendsMarginsFeed()
-            : await getMarginsFeed();
+            : filter === "groups"
+              ? await getGroupsMarginsFeed()
+              : await getMarginsFeed();
 
         if (active) {
-          setEntries(
-            feed
-          );
+          setEntries(feed);
         }
       } catch (error) {
         console.error(
@@ -158,9 +122,7 @@ export default function Margins() {
     return () => {
       active = false;
     };
-  }, [
-    filter
-  ]);
+  }, [filter]);
 
 
   useEffect(() => {
@@ -260,46 +222,26 @@ export default function Margins() {
     return false;
   }
 
-  function toggleThread(entry) {
-    setStatus("");
-
-    if (expandedThreadId === entry.id) {
-      setExpandedThreadId(null);
-      setReplyTarget(null);
-      setReplyText("");
-      return;
-    }
-
-    setExpandedThreadId(entry.id);
-    setReplyTarget(null);
-    setReplyText("");
-  }
-
-  function openReplyComposer(entry, parentReply = null) {
+  function openReply(entry) {
     if (!requireLogin()) {
       return;
     }
 
     setStatus("");
-    setExpandedThreadId(entry.id);
 
-    setReplyTarget({
-      entryId: entry.id,
-      parentReplyId: parentReply?.id || null
-    });
+    if (openReplyId === entry.id) {
+      setOpenReplyId(null);
+      setReplyText("");
+      return;
+    }
 
+    setOpenReplyId(entry.id);
     setReplyText("");
-
     setReplyVisibility(
-      parentReply?.visibility === "private"
+      entry.visibility === "private"
         ? "private"
         : "public"
     );
-  }
-
-  function closeReplyComposer() {
-    setReplyTarget(null);
-    setReplyText("");
   }
 
   async function refreshReplies(entry) {
@@ -346,14 +288,11 @@ export default function Margins() {
 
       await replyToMargin(entry, {
         note: cleanReply,
-        visibility: replyVisibility,
-        parentReplyId:
-          replyTarget?.parentReplyId || null
+        visibility: replyVisibility
       });
 
       setReplyText("");
-      setReplyTarget(null);
-      setExpandedThreadId(entry.id);
+      setOpenReplyId(null);
 
       await refreshReplies(entry);
 
@@ -368,136 +307,6 @@ export default function Margins() {
     } finally {
       setReplying(false);
     }
-  }
-
-  function renderReplyNode(entry, reply, depth = 0) {
-    const replyingHere =
-      replyTarget?.entryId === entry.id &&
-      replyTarget?.parentReplyId === reply.id;
-
-    return (
-      <div
-        key={reply.id}
-        className="margin-reply"
-        style={{
-          marginLeft:
-            depth > 0
-              ? `${Math.min(depth, 4) * 1.1}rem`
-              : 0,
-          paddingLeft:
-            depth > 0
-              ? "0.8rem"
-              : 0,
-          borderLeft:
-            depth > 0
-              ? "2px solid var(--line)"
-              : "none"
-        }}
-      >
-        <div className="margin-reply-meta">
-          <strong>
-            {reply.userId === user?.uid
-              ? "You"
-              : "Reader"}
-          </strong>
-
-          <span>
-            {formatDate(
-              reply.createdAtISO ||
-                reply.createdAt
-            )}
-          </span>
-
-          {reply.visibility === "private" && (
-            <span>Private</span>
-          )}
-        </div>
-
-        <p>{reply.note}</p>
-
-        <button
-          type="button"
-          className="margin-action"
-          onClick={() =>
-            openReplyComposer(entry, reply)
-          }
-        >
-          <MessageCircle size={15} />
-          Reply
-        </button>
-
-        {replyingHere && (
-          <div className="margin-reply-box">
-            <div className="margin-reply-heading">
-              <strong>Reply to comment</strong>
-
-              <button
-                type="button"
-                className="margin-close-button"
-                onClick={closeReplyComposer}
-                aria-label="Close reply"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <textarea
-              value={replyText}
-              onChange={(event) =>
-                setReplyText(event.target.value)
-              }
-              rows={3}
-              maxLength={1000}
-              placeholder="Write a reply..."
-            />
-
-            <div className="margin-reply-options">
-              <label>
-                Visibility
-
-                <select
-                  value={replyVisibility}
-                  onChange={(event) =>
-                    setReplyVisibility(
-                      event.target.value
-                    )
-                  }
-                >
-                  <option value="public">
-                    Public
-                  </option>
-                  <option value="private">
-                    Private Journal
-                  </option>
-                </select>
-              </label>
-            </div>
-
-            <div className="button-row">
-              <button
-                type="button"
-                className="button primary"
-                disabled={replying}
-                onClick={() => handleReply(entry)}
-              >
-                <Send size={16} />
-                {replying
-                  ? "Posting..."
-                  : "Post Reply"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {reply.children?.map((child) =>
-          renderReplyNode(
-            entry,
-            child,
-            depth + 1
-          )
-        )}
-      </div>
-    );
   }
 
   async function handleSave(entry) {
@@ -647,21 +456,7 @@ export default function Margins() {
 
         {status && <p className="status">{status}</p>}
 
-        {filter === "groups" && (
-          <section className="panel margins-coming-soon">
-            <Users size={22} />
-            <div>
-              <strong>
-                Groups feed
-              </strong>
-              <p className="muted">
-                Groups will be added in the next social phase.
-              </p>
-            </div>
-          </section>
-        )}
-
-        {filter !== "groups" && (
+        {["all", "friends", "groups"].includes(filter) && (
           <>
             {loading && (
               <section className="panel margins-loading">
@@ -683,13 +478,8 @@ export default function Margins() {
                   const reader = entry.reader;
                   const avatar = getProfileAvatar(reader?.avatar);
                   const isSaved = savedKeys.has(savedMarginKey(entry));
+                  const replyOpen = openReplyId === entry.id;
                   const replies = repliesByEntry[entry.id] || [];
-                  const replyTree = buildReplyTree(replies);
-                  const threadExpanded =
-                    expandedThreadId === entry.id;
-                  const rootReplyOpen =
-                    replyTarget?.entryId === entry.id &&
-                    replyTarget?.parentReplyId === null;
                   const isLoadingReplies = Boolean(
                     repliesLoading[entry.id]
                   );
@@ -777,18 +567,15 @@ export default function Margins() {
                         <button
                           type="button"
                           className={
-                            threadExpanded
+                            replyOpen
                               ? "margin-action active"
                               : "margin-action"
                           }
-                          onClick={() => toggleThread(entry)}
+                          onClick={() => openReply(entry)}
                         >
                           <MessageCircle size={17} />
-                          {threadExpanded
-                            ? "Hide Replies"
-                            : replies.length > 0
-                              ? `Replies (${replies.length})`
-                              : "Replies"}
+                          Reply
+                          {replies.length > 0 && ` (${replies.length})`}
                         </button>
 
                         <button
@@ -826,115 +613,110 @@ export default function Margins() {
                         </button>
                       </div>
 
-                      {threadExpanded && (
+                      {replyOpen && (
+                        <div className="margin-reply-box">
+                          <div className="margin-reply-heading">
+                            <strong>Reply</strong>
+
+                            <button
+                              type="button"
+                              className="margin-close-button"
+                              onClick={() => {
+                                setOpenReplyId(null);
+                                setReplyText("");
+                              }}
+                              aria-label="Close reply"
+                            >
+                              <X size={18} />
+                            </button>
+                          </div>
+
+                          <textarea
+                            value={replyText}
+                            onChange={(event) =>
+                              setReplyText(event.target.value)
+                            }
+                            rows={4}
+                            maxLength={1000}
+                            placeholder={`Reply to ${
+                              reader?.displayName || "this reader"
+                            }...`}
+                          />
+
+                          <div className="margin-reply-options">
+                            <label>
+                              Visibility
+
+                              <select
+                                value={replyVisibility}
+                                onChange={(event) =>
+                                  setReplyVisibility(event.target.value)
+                                }
+                              >
+                                <option value="public">Public</option>
+                                <option value="private">
+                                  Private Journal
+                                </option>
+                              </select>
+                            </label>
+
+                            <small className="muted">
+                              Public replies can be seen by everyone.
+                              Private replies are visible only to you.
+                            </small>
+                          </div>
+
+                          <div className="button-row">
+                            <button
+                              type="button"
+                              className="button primary"
+                              disabled={replying}
+                              onClick={() => handleReply(entry)}
+                            >
+                              <Send size={16} />
+                              {replying
+                                ? "Posting..."
+                                : "Post Reply"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {isLoadingReplies && (
                         <div className="margin-replies">
-                          {isLoadingReplies && (
-                            <p className="muted">
-                              Loading replies...
-                            </p>
-                          )}
+                          <p className="muted">Loading replies...</p>
+                        </div>
+                      )}
 
-                          {!isLoadingReplies && (
-                            <>
-                              {!rootReplyOpen && (
-                                <button
-                                  type="button"
-                                  className="margin-action"
-                                  onClick={() =>
-                                    openReplyComposer(
-                                      entry,
-                                      null
-                                    )
-                                  }
-                                >
-                                  <MessageCircle size={15} />
-                                  Reply to Margin
-                                </button>
-                              )}
+                      {!isLoadingReplies && replies.length > 0 && (
+                        <div className="margin-replies">
+                          {replies.map((reply) => (
+                            <div
+                              key={reply.id}
+                              className="margin-reply"
+                            >
+                              <div className="margin-reply-meta">
+                                <strong>
+                                  {reply.userId === user?.uid
+                                    ? "You"
+                                    : "Reader"}
+                                </strong>
 
-                              {rootReplyOpen && (
-                                <div className="margin-reply-box">
-                                  <div className="margin-reply-heading">
-                                    <strong>
-                                      Reply to Margin
-                                    </strong>
+                                <span>
+                                  {formatDate(
+                                    reply.createdAtISO ||
+                                      reply.createdAt
+                                  )}
+                                </span>
 
-                                    <button
-                                      type="button"
-                                      className="margin-close-button"
-                                      onClick={closeReplyComposer}
-                                      aria-label="Close reply"
-                                    >
-                                      <X size={18} />
-                                    </button>
-                                  </div>
+                                {reply.visibility === "private" && (
+                                  <span>Private</span>
+                                )}
+                              </div>
 
-                                  <textarea
-                                    value={replyText}
-                                    onChange={(event) =>
-                                      setReplyText(
-                                        event.target.value
-                                      )
-                                    }
-                                    rows={3}
-                                    maxLength={1000}
-                                    placeholder="Write a reply..."
-                                  />
-
-                                  <div className="margin-reply-options">
-                                    <label>
-                                      Visibility
-
-                                      <select
-                                        value={replyVisibility}
-                                        onChange={(event) =>
-                                          setReplyVisibility(
-                                            event.target.value
-                                          )
-                                        }
-                                      >
-                                        <option value="public">
-                                          Public
-                                        </option>
-                                        <option value="private">
-                                          Private Journal
-                                        </option>
-                                      </select>
-                                    </label>
-                                  </div>
-
-                                  <div className="button-row">
-                                    <button
-                                      type="button"
-                                      className="button primary"
-                                      disabled={replying}
-                                      onClick={() =>
-                                        handleReply(entry)
-                                      }
-                                    >
-                                      <Send size={16} />
-                                      {replying
-                                        ? "Posting..."
-                                        : "Post Reply"}
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-
-                              {replies.length === 0 ? (
-                                <p className="muted">
-                                  No replies yet.
-                                </p>
-                              ) : (
-                                replyTree.map((reply) =>
-                                  renderReplyNode(
-                                    entry,
-                                    reply
-                                  )
-                                )
-                              )}
-                            </>
-                          )}
+                              <p>{reply.note}</p>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </article>
