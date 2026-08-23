@@ -107,7 +107,13 @@ export default function Margins() {
 
         if (active) {
           setStatus(
-            "We couldn't load The Margins."
+            filter === "groups"
+              ? `Groups feed error: ${
+                  error?.code ||
+                  error?.message ||
+                  "unknown"
+                }`
+              : "We couldn't load The Margins."
           );
         }
       } finally {
@@ -515,6 +521,50 @@ export default function Margins() {
                           </div>
                         </Link>
                       </div>
+
+                      {entry.group && (
+                        <div
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.55rem",
+                            marginBottom: "0.9rem",
+                            padding: "0.4rem 0.65rem",
+                            borderRadius: 999,
+                            background: "#eef4f3"
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 30,
+                              height: 30,
+                              borderRadius: "50%",
+                              overflow: "hidden",
+                              background: "#fff",
+                              display: "grid",
+                              placeItems: "center"
+                            }}
+                          >
+                            {entry.group.avatar ? (
+                              <img
+                                src={entry.group.avatar}
+                                alt=""
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "cover"
+                                }}
+                              />
+                            ) : (
+                              <Users size={16} />
+                            )}
+                          </div>
+
+                          <strong>
+                            {entry.group.name}
+                          </strong>
+                        </div>
+                      )}
 
                       <div className="public-entry-heading">
                         <div>

@@ -16,12 +16,12 @@ import {
 
 import {
   ArrowLeft,
-  Copy,
   Crown,
   LogOut,
   Shield,
   UserMinus,
-  UserPlus
+  UserPlus,
+  Users
 } from "lucide-react";
 
 import { auth } from "../firebase";
@@ -40,9 +40,59 @@ import SEO from "../components/SEO.jsx";
 
 
 function roleLabel(role) {
-  if (role === "owner") return "Owner";
-  if (role === "admin") return "Admin";
+  if (role === "owner") {
+    return "Owner";
+  }
+
+  if (role === "admin") {
+    return "Admin";
+  }
+
+  if (role === "moderator") {
+    return "Moderator";
+  }
+
   return "Member";
+}
+
+
+function GroupAvatar({
+  group,
+  size = 92
+}) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        overflow: "hidden",
+        display: "grid",
+        placeItems: "center",
+        flex: "0 0 auto",
+        background: "#eef4f3",
+        border: "1px solid var(--line)"
+      }}
+    >
+      {group?.avatar ? (
+        <img
+          src={group.avatar}
+          alt=""
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover"
+          }}
+        />
+      ) : (
+        <Users
+          size={Math.round(
+            size * 0.42
+          )}
+        />
+      )}
+    </div>
+  );
 }
 
 
@@ -119,16 +169,22 @@ export default function Group() {
     [members]
   );
 
-  const inviteableFriends = friends.filter(
-    (friend) =>
-      !memberIds.has(
-        String(friend.otherUserId)
-      )
-  );
+
+  const inviteableFriends =
+    friends.filter(
+      (friend) =>
+        !memberIds.has(
+          String(
+            friend.otherUserId
+          )
+        )
+    );
+
 
   const myRole =
     group?.membership?.role ||
     "member";
+
 
   const canManage =
     myRole === "owner" ||
@@ -137,7 +193,9 @@ export default function Group() {
 
   async function invite(friend) {
     try {
-      setBusyUserId(friend.otherUserId);
+      setBusyUserId(
+        friend.otherUserId
+      );
       setStatus("");
 
       await inviteFriendToGroup(
@@ -162,20 +220,23 @@ export default function Group() {
   }
 
 
-  async function changeRole(member) {
+  async function changeRole(
+    member,
+    role
+  ) {
     try {
       setBusyUserId(member.userId);
 
       await setGroupMemberRole(
         groupId,
         member.userId,
-        member.role === "admin"
-          ? "member"
-          : "admin"
+        role
       );
 
       await refresh();
-      setStatus("Member role updated.");
+      setStatus(
+        "Member role updated."
+      );
     } catch (error) {
       setStatus(
         error?.message ||
@@ -208,7 +269,10 @@ export default function Group() {
       );
 
       await refresh();
-      setStatus("Member removed.");
+
+      setStatus(
+        "Member removed."
+      );
     } catch (error) {
       setStatus(
         error?.message ||
@@ -221,7 +285,11 @@ export default function Group() {
 
 
   async function leave() {
-    if (!window.confirm("Leave this group?")) {
+    if (
+      !window.confirm(
+        "Leave this group?"
+      )
+    ) {
       return;
     }
 
@@ -240,24 +308,13 @@ export default function Group() {
   }
 
 
-  async function copyId() {
-    try {
-      await navigator.clipboard.writeText(
-        groupId
-      );
-
-      setStatus("Group ID copied.");
-    } catch {
-      setStatus(`Group ID: ${groupId}`);
-    }
-  }
-
-
   if (loading) {
     return (
       <main className="page-wrap">
         <section className="hero-card small">
-          <h1>Loading group...</h1>
+          <h1>
+            Loading group...
+          </h1>
         </section>
       </main>
     );
@@ -268,7 +325,9 @@ export default function Group() {
     return (
       <main className="page-wrap">
         <section className="hero-card small">
-          <h1>Log in to view groups.</h1>
+          <h1>
+            Log in to view groups.
+          </h1>
 
           <Link
             to="/read/login"
@@ -286,7 +345,9 @@ export default function Group() {
     return (
       <main className="page-wrap">
         <section className="hero-card small">
-          <h1>Group not found.</h1>
+          <h1>
+            Group not found.
+          </h1>
 
           {status && (
             <p className="status">
@@ -320,24 +381,47 @@ export default function Group() {
 
       <div className="stack-lg">
         <section className="hero-card small">
-          <p className="eyebrow">
-            {group.type === "class"
-              ? "Class"
-              : "Reading Group"}
-          </p>
+          <div
+            style={{
+              display: "flex",
+              gap: "1.25rem",
+              alignItems: "center",
+              flexWrap: "wrap"
+            }}
+          >
+            <GroupAvatar
+              group={group}
+            />
 
-          <h1>{group.name}</h1>
+            <div
+              style={{
+                flex: "1 1 260px"
+              }}
+            >
+              <p className="eyebrow">
+                {group.type === "class"
+                  ? "Class"
+                  : "Reading Group"}
+              </p>
 
-          {group.description && (
-            <p>{group.description}</p>
-          )}
+              <h1>
+                {group.name}
+              </h1>
 
-          <p className="muted">
-            Your role:{" "}
-            <strong>
-              {roleLabel(myRole)}
-            </strong>
-          </p>
+              {group.description && (
+                <p>
+                  {group.description}
+                </p>
+              )}
+
+              <p className="muted">
+                Your role:{" "}
+                <strong>
+                  {roleLabel(myRole)}
+                </strong>
+              </p>
+            </div>
+          </div>
 
           {status && (
             <p className="status">
@@ -353,15 +437,6 @@ export default function Group() {
               <ArrowLeft size={16} />
               My Groups
             </Link>
-
-            <button
-              type="button"
-              className="button secondary"
-              onClick={copyId}
-            >
-              <Copy size={16} />
-              Copy Group ID
-            </button>
 
             {myRole !== "owner" && (
               <button
@@ -417,22 +492,29 @@ export default function Group() {
 
                 {myRole === "owner" &&
                   member.role !== "owner" && (
-                  <button
-                    type="button"
-                    className="button secondary"
-                    disabled={
-                      busyUserId ===
-                      member.userId
-                    }
-                    onClick={() =>
-                      changeRole(member)
-                    }
-                  >
-                    <Shield size={15} />
-                    {member.role === "admin"
-                      ? "Make Member"
-                      : "Make Admin"}
-                  </button>
+                  <div className="button-row">
+                    <button
+                      type="button"
+                      className="button secondary"
+                      disabled={
+                        busyUserId ===
+                        member.userId
+                      }
+                      onClick={() =>
+                        changeRole(
+                          member,
+                          member.role === "admin"
+                            ? "member"
+                            : "admin"
+                        )
+                      }
+                    >
+                      <Shield size={15} />
+                      {member.role === "admin"
+                        ? "Make Member"
+                        : "Make Admin"}
+                    </button>
+                  </div>
                 )}
 
                 {canManage &&
@@ -461,7 +543,9 @@ export default function Group() {
 
         {canManage && (
           <section className="panel profile-panel">
-            <h2>Invite Friends</h2>
+            <h2>
+              Invite Friends
+            </h2>
 
             {inviteableFriends.length === 0 ? (
               <p className="muted">
@@ -473,7 +557,9 @@ export default function Group() {
                 {inviteableFriends.map(
                   (friend) => (
                     <article
-                      key={friend.otherUserId}
+                      key={
+                        friend.otherUserId
+                      }
                       className="public-profile-entry"
                     >
                       <Link
@@ -511,27 +597,6 @@ export default function Group() {
             )}
           </section>
         )}
-
-
-        <section className="panel profile-panel">
-          <h2>Group Margins</h2>
-
-          <p className="muted">
-            Journal entries set to Group
-            visibility can be shared with
-            this group. For now, use this
-            Group ID in the Journal editor:
-          </p>
-
-          <button
-            type="button"
-            className="button secondary"
-            onClick={copyId}
-          >
-            <Copy size={16} />
-            {groupId}
-          </button>
-        </section>
       </div>
     </main>
   );

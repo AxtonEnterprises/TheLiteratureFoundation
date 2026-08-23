@@ -28,6 +28,7 @@ import {
   UserMinus,
   UserPlus,
   Plus,
+  Users,
   X
 } from "lucide-react";
 
@@ -70,7 +71,7 @@ import SEO from "../components/SEO.jsx";
 const PROFILE_TABS = [
   {
     id: "timeline",
-    label: "Reading Timeline"
+    label: "Timeline"
   },
   {
     id: "journal",
@@ -78,7 +79,7 @@ const PROFILE_TABS = [
   },
   {
     id: "margins",
-    label: "Saved Margins"
+    label: "Saved"
   },
   {
     id: "friends",
@@ -546,32 +547,39 @@ export default function Profile() {
 
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      return;
+    }
 
     let active = true;
 
     async function loadGroups() {
       try {
-        const [loadedGroups, loadedInvites] =
-          await Promise.all([
-            getMyGroups(),
-            getIncomingGroupInvites()
-          ]);
+        const [
+          loadedGroups,
+          loadedInvites
+        ] = await Promise.all([
+          getMyGroups(),
+          getIncomingGroupInvites()
+        ]);
 
-        if (!active) return;
+        if (!active) {
+          return;
+        }
 
         setGroups(loadedGroups);
         setGroupInvites(loadedInvites);
       } catch (error) {
-        console.error("Could not load groups:", error);
+        console.error(
+          "Could not load groups:",
+          error
+        );
 
         if (active) {
           setGroupStatus(
-            `Groups error: ${
-              error?.code ||
-              error?.message ||
-              "unknown"
-            }`
+            error?.message ||
+            error?.code ||
+            "We couldn't load groups."
           );
         }
       }
@@ -1070,11 +1078,13 @@ export default function Profile() {
 
 
   async function refreshGroups() {
-    const [loadedGroups, loadedInvites] =
-      await Promise.all([
-        getMyGroups(),
-        getIncomingGroupInvites()
-      ]);
+    const [
+      loadedGroups,
+      loadedInvites
+    ] = await Promise.all([
+      getMyGroups(),
+      getIncomingGroupInvites()
+    ]);
 
     setGroups(loadedGroups);
     setGroupInvites(loadedInvites);
@@ -1100,9 +1110,15 @@ export default function Profile() {
 
       await refreshGroups();
 
-      setGroupStatus("Group created.");
+      setGroupStatus(
+        "Group created."
+      );
     } catch (error) {
-      console.error("Could not create group:", error);
+      console.error(
+        "Could not create group:",
+        error
+      );
+
       setGroupStatus(
         error?.message ||
         "We couldn't create that group."
@@ -1113,7 +1129,10 @@ export default function Profile() {
   }
 
 
-  async function handleGroupInvite(groupId, accept) {
+  async function handleGroupInvite(
+    groupId,
+    accept
+  ) {
     try {
       setGroupStatus("");
 
@@ -2911,62 +2930,105 @@ export default function Profile() {
 
             {groupInvites.length > 0 && (
               <>
-                <h3>Invitations</h3>
+                <h3>
+                  Invitations
+                </h3>
 
                 <div className="public-profile-entry-list">
-                  {groupInvites.map((invite) => (
-                    <article
-                      key={`${invite.groupId}-${invite.userId}`}
-                      className="public-profile-entry"
-                    >
-                      <strong className="public-entry-book-title">
-                        {invite.group?.name || "Group"}
-                      </strong>
-
-                      <p className="muted">
-                        {invite.group?.type === "class"
-                          ? "Class"
-                          : "Group"}
-
-                        {invite.inviterProfile?.displayName
-                          ? ` · Invited by ${invite.inviterProfile.displayName}`
-                          : ""}
-                      </p>
-
-                      <div className="button-row">
-                        <button
-                          type="button"
-                          className="button primary"
-                          onClick={() =>
-                            handleGroupInvite(
-                              invite.groupId,
-                              true
-                            )
-                          }
+                  {groupInvites.map(
+                    (invite) => (
+                      <article
+                        key={`${invite.groupId}-${invite.userId}`}
+                        className="public-profile-entry"
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "0.8rem",
+                            alignItems: "center"
+                          }}
                         >
-                          Accept
-                        </button>
+                          <div
+                            style={{
+                              width: 52,
+                              height: 52,
+                              borderRadius: "50%",
+                              overflow: "hidden",
+                              background: "#eef4f3",
+                              display: "grid",
+                              placeItems: "center",
+                              flex: "0 0 auto"
+                            }}
+                          >
+                            {invite.group?.avatar ? (
+                              <img
+                                src={invite.group.avatar}
+                                alt=""
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "cover"
+                                }}
+                              />
+                            ) : (
+                              <Users size={24} />
+                            )}
+                          </div>
 
-                        <button
-                          type="button"
-                          className="button secondary"
-                          onClick={() =>
-                            handleGroupInvite(
-                              invite.groupId,
-                              false
-                            )
-                          }
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    </article>
-                  ))}
+                          <div>
+                            <strong className="public-entry-book-title">
+                              {invite.group?.name || "Group"}
+                            </strong>
+
+                            <p className="muted">
+                              {invite.group?.type === "class"
+                                ? "Class"
+                                : "Group"}
+
+                              {invite.inviterProfile?.displayName
+                                ? ` · Invited by ${invite.inviterProfile.displayName}`
+                                : ""}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="button-row">
+                          <button
+                            type="button"
+                            className="button primary"
+                            onClick={() =>
+                              handleGroupInvite(
+                                invite.groupId,
+                                true
+                              )
+                            }
+                          >
+                            Accept
+                          </button>
+
+                          <button
+                            type="button"
+                            className="button secondary"
+                            onClick={() =>
+                              handleGroupInvite(
+                                invite.groupId,
+                                false
+                              )
+                            }
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </article>
+                    )
+                  )}
                 </div>
               </>
             )}
 
-            <h3>Your Groups</h3>
+            <h3>
+              Your Groups
+            </h3>
 
             {groups.length === 0 ? (
               <p className="muted">
@@ -2979,24 +3041,64 @@ export default function Profile() {
                     key={group.id}
                     className="public-profile-entry"
                   >
-                    <Link
-                      to={`/read/groups/${group.id}`}
-                      className="public-entry-book-title"
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.9rem",
+                        alignItems: "center"
+                      }}
                     >
-                      {group.name}
-                    </Link>
+                      <div
+                        style={{
+                          width: 62,
+                          height: 62,
+                          borderRadius: "50%",
+                          overflow: "hidden",
+                          background: "#eef4f3",
+                          display: "grid",
+                          placeItems: "center",
+                          flex: "0 0 auto"
+                        }}
+                      >
+                        {group.avatar ? (
+                          <img
+                            src={group.avatar}
+                            alt=""
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover"
+                            }}
+                          />
+                        ) : (
+                          <Users size={27} />
+                        )}
+                      </div>
 
-                    <p className="muted">
-                      {group.type === "class"
-                        ? "Class"
-                        : "Group"}
-                      {group.membership?.role
-                        ? ` · ${group.membership.role}`
-                        : ""}
-                    </p>
+                      <div>
+                        <Link
+                          to={`/read/groups/${group.id}`}
+                          className="public-entry-book-title"
+                        >
+                          {group.name}
+                        </Link>
+
+                        <p className="muted">
+                          {group.type === "class"
+                            ? "Class"
+                            : "Group"}
+
+                          {group.membership?.role
+                            ? ` · ${group.membership.role}`
+                            : ""}
+                        </p>
+                      </div>
+                    </div>
 
                     {group.description && (
-                      <p>{group.description}</p>
+                      <p>
+                        {group.description}
+                      </p>
                     )}
                   </article>
                 ))}
@@ -3007,10 +3109,13 @@ export default function Profile() {
               style={{
                 marginTop: "1.5rem",
                 paddingTop: "1.25rem",
-                borderTop: "1px solid var(--line)"
+                borderTop:
+                  "1px solid var(--line)"
               }}
             >
-              <h3>Create a Group</h3>
+              <h3>
+                Create a Group
+              </h3>
 
               <form
                 onSubmit={handleCreateGroup}

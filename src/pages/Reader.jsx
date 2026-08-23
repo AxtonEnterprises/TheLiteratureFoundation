@@ -9,7 +9,7 @@ import ReaderControls from "../components/ReaderControls.jsx";
 import { getBookById, getStructuredBookText } from "../services/booksApi.js";
 import {
   addJournalEntry, clearReadingPresence, deleteJournalEntry,
-  getJournalForBook, getReadingProgress, saveBook, saveReadingProgress,
+  getJournalForBook, getMyGroups, getReadingProgress, saveBook, saveReadingProgress,
   updateJournalEntry, updateReadingPresence
 } from "../services/storage.js";
 import { paginateParagraphs } from "../utils/paginateText.js";
@@ -51,6 +51,7 @@ export default function Reader() {
   const [chapters, setChapters] = useState([]);
   const [journalEntries, setJournalEntries] = useState([]);
   const [journalLoading, setJournalLoading] = useState(false);
+  const [myGroups, setMyGroups] = useState([]);
 
   // This changes only when the user explicitly chooses a paragraph.
   const [selectedParagraphIndex, setSelectedParagraphIndex] = useState(null);
@@ -155,6 +156,37 @@ export default function Reader() {
     loadBook();
     return () => { active = false; };
   }, [id, location.state]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadMyGroups() {
+      try {
+        const groups =
+          await getMyGroups();
+
+        if (active) {
+          setMyGroups(groups);
+        }
+      } catch (error) {
+        if (active) {
+          console.error(
+            "Could not load reader groups:",
+            error
+          );
+
+          setMyGroups([]);
+        }
+      }
+    }
+
+    loadMyGroups();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
 
   // Notes load independently after the book identity is known.
   useEffect(() => {
@@ -287,6 +319,17 @@ export default function Reader() {
   const currentParagraphIndexes = useMemo(() => [
     ...new Set(currentPage.map((block) => block.paragraphIndex))
   ], [currentPage]);
+
+  const groupsById = useMemo(
+    () =>
+      new Map(
+        myGroups.map((group) => [
+          String(group.id),
+          group
+        ])
+      ),
+    [myGroups]
+  );
 
   const notesForCurrentPage = useMemo(() => {
     const currentSet = new Set(currentParagraphIndexes);
@@ -423,7 +466,7 @@ export default function Reader() {
     if (!book || !note.trim() || targetParagraphIndex === null) return;
 
     if (noteVisibility === "group" && !noteGroupId.trim()) {
-      setStatus("Enter a group ID for group-visible journal entries.");
+      setStatus("Choose a group for this note.");
       return;
     }
 
@@ -765,13 +808,29 @@ export default function Reader() {
 
                           {editVisibility === "group" && (
                             <label className="journal-edit-field">
-                              <span>Group ID</span>
-                              <input
-                                type="text"
+                              <span>Share with</span>
+
+                              <select
                                 value={editGroupId}
-                                onChange={(event) => setEditGroupId(event.target.value)}
-                                placeholder="Group ID"
-                              />
+                                onChange={(event) =>
+                                  setEditGroupId(
+                                    event.target.value
+                                  )
+                                }
+                              >
+                                <option value="">
+                                  Choose a group
+                                </option>
+
+                                {myGroups.map((group) => (
+                                  <option
+                                    key={group.id}
+                                    value={group.id}
+                                  >
+                                    {group.name}
+                                  </option>
+                                ))}
+                              </select>
                             </label>
                           )}
 
@@ -802,7 +861,10 @@ export default function Reader() {
                           <p>{entry.note}</p>
                           {visibility === "group" && entry.groupId && (
                             <small className="journal-group-label">
-                              Group: {entry.groupId}
+                              Group:{" "}
+                              {groupsById.get(
+                                String(entry.groupId)
+                              )?.name || "Reading group"}
                             </small>
                           )}
 
@@ -924,13 +986,34 @@ export default function Reader() {
 
             {noteVisibility === "group" && (
               <label className="paragraph-select-label">
-                Group ID
-                <input
-                  type="text"
+                Share with
+                <select
                   value={noteGroupId}
-                  onChange={(event) => setNoteGroupId(event.target.value)}
-                  placeholder="Group ID"
-                />
+                  onChange={(event) =>
+                    setNoteGroupId(
+                      event.target.value
+                    )
+                  }
+                >
+                  <option value="">
+                    Choose a group
+                  </option>
+
+                  {myGroups.map((group) => (
+                    <option
+                      key={group.id}
+                      value={group.id}
+                    >
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+
+                {myGroups.length === 0 && (
+                  <small className="muted">
+                    Join or create a group from your profile first.
+                  </small>
+                )}
               </label>
             )}
 
