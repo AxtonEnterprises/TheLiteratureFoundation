@@ -17,6 +17,7 @@ import Profile from "./pages/Profile";
 import Margins from "./pages/Margins";
 import NotFound from "./pages/NotFound.jsx";
 import PublicProfile from "./pages/PublicProfile";
+import Group from "./pages/Group";
 
 export default function App() {
   const location = useLocation();
@@ -59,6 +60,7 @@ export default function App() {
           <Route path="/about" element={<Navigate to="/read/about" replace />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
+          <Route path="/read/groups/:groupId"element={<Group />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
