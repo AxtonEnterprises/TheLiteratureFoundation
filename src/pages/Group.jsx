@@ -902,7 +902,7 @@ export default function Group() {
                           onClick={() =>
                             setSettings((current) => ({
                               ...current,
-                              avatar: avatar.image
+                              avatar: avatar.id
                             }))
                           }
                           aria-label={`Use ${avatar.name} avatar`}
