@@ -4678,6 +4678,23 @@ export async function setGroupMemberRole(
     }
   );
 
+  const groupSnapshot = await getDoc(
+    doc(db, "groups", String(groupId))
+  );
+
+  await createNotification({
+    recipientUserId: String(memberUserId),
+    type: "group_role_changed",
+    actorUserId: user.uid,
+    groupId: String(groupId),
+    groupName:
+      groupSnapshot.exists()
+        ? groupSnapshot.data()?.name || ""
+        : "",
+    targetPath: `/read/groups/${groupId}`,
+    message: `Your group role was changed to ${normalizedRole}.`
+  });
+
   return {
     userId:
       String(memberUserId),
@@ -4823,7 +4840,10 @@ export async function getGroupsMarginsFeed() {
                       group.type,
                     avatar:
                       group.avatar ||
-                      ""
+                      "",
+                    membership:
+                      group.membership ||
+                      null
                   }
                 };
               }

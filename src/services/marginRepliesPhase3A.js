@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -221,3 +222,52 @@ export async function getMarginReplies(entry) {
     )
   );
 }
+
+export async function deleteMarginReply(reply) {
+  if (!reply?.id) {
+    throw new Error("Missing reply.");
+  }
+
+  const user = await requireUser();
+  const replyRef = doc(
+    db,
+    "marginReplies",
+    String(reply.id)
+  );
+
+  const snapshot = await getDoc(replyRef);
+
+  if (!snapshot.exists()) {
+    return;
+  }
+
+  const storedReply = snapshot.data();
+
+  if (storedReply.userId === user.uid) {
+    await deleteDoc(replyRef);
+    return;
+  }
+
+  if (
+    storedReply.visibility !== "group" ||
+    !storedReply.groupId
+  ) {
+    throw new Error("You cannot remove this reply.");
+  }
+
+  const membership = await requireGroupMember(
+    storedReply.groupId,
+    user.uid
+  );
+
+  if (
+    !["owner", "admin", "moderator"].includes(
+      membership.role
+    )
+  ) {
+    throw new Error("Only group moderators can remove this reply.");
+  }
+
+  await deleteDoc(replyRef);
+}
+

@@ -301,7 +301,61 @@ export async function deleteGroupForumPost(groupId, postId) {
     throw new Error("You cannot remove this topic.");
   }
 
+  const repliesSnapshot = await getDocs(
+    collection(
+      db,
+      "groups",
+      String(groupId),
+      "forumPosts",
+      String(postId),
+      "replies"
+    )
+  );
+
+  await Promise.all(
+    repliesSnapshot.docs.map((replyDoc) =>
+      deleteDoc(replyDoc.ref)
+    )
+  );
+
   await deleteDoc(postRef);
+}
+
+export async function deleteGroupForumReply(
+  groupId,
+  postId,
+  replyId
+) {
+  const { user, membership } = await requireMembership(groupId);
+
+  const replyRef = doc(
+    db,
+    "groups",
+    String(groupId),
+    "forumPosts",
+    String(postId),
+    "replies",
+    String(replyId)
+  );
+
+  const snapshot = await getDoc(replyRef);
+
+  if (!snapshot.exists()) {
+    return;
+  }
+
+  const reply = snapshot.data();
+  const canModerate = [
+    "owner",
+    "admin",
+    "moderator"
+  ].includes(membership.role);
+
+  if (!canModerate && reply.userId !== user.uid) {
+    throw new Error("You cannot remove this reply.");
+  }
+
+  await deleteDoc(replyRef);
 }
 
 export async function getGroupForumReplies(groupId, postId) {
