@@ -11,6 +11,7 @@ import {
   MessageCircle,
   Send,
   Share2,
+  Trash2,
   Users,
   X
 } from "lucide-react";
@@ -31,6 +32,7 @@ import {
 } from "../services/storage.js";
 
 import {
+  deleteMarginReply,
   getMarginReplies,
   replyToMargin
 } from "../services/marginRepliesPhase3A.js";
@@ -316,6 +318,30 @@ export default function Margins() {
       setStatus("We couldn't post your reply.");
     } finally {
       setReplying(false);
+    }
+  }
+
+  async function handleDeleteReply(entry, reply) {
+    if (
+      !window.confirm(
+        "Delete this reply? This cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setStatus("");
+
+      await deleteMarginReply(reply);
+      await refreshReplies(entry);
+
+      setStatus("Reply removed.");
+    } catch (error) {
+      console.error("Could not delete Margin reply:", error);
+      setStatus(
+        error?.message || "We couldn't remove that reply."
+      );
     }
   }
 
@@ -733,34 +759,66 @@ export default function Margins() {
 
                       {replyOpen && !isLoadingReplies && replies.length > 0 && (
                         <div className="margin-replies">
-                          {replies.map((reply) => (
-                            <div
-                              key={reply.id}
-                              className="margin-reply"
-                            >
-                              <div className="margin-reply-meta">
-                                <strong>
-                                  {reply.userId === user?.uid
-                                    ? "You"
-                                    : reply.reader?.displayName ||
-                                      "Reader"}
-                                </strong>
+                          {replies.map((reply) => {
+                            const groupRole =
+                              entry.group?.membership?.role ||
+                              entry.membership?.role ||
+                              "";
 
-                                <span>
-                                  {formatDate(
-                                    reply.createdAtISO ||
-                                      reply.createdAt
+                            const canModerateReply =
+                              reply.visibility === "group" &&
+                              ["owner", "admin", "moderator"].includes(
+                                groupRole
+                              );
+
+                            const canDeleteReply =
+                              reply.userId === user?.uid ||
+                              canModerateReply;
+
+                            return (
+                              <div
+                                key={reply.id}
+                                className="margin-reply"
+                              >
+                                <div className="margin-reply-meta">
+                                  <strong>
+                                    {reply.userId === user?.uid
+                                      ? "You"
+                                      : reply.reader?.displayName ||
+                                        "Reader"}
+                                  </strong>
+
+                                  <span>
+                                    {formatDate(
+                                      reply.createdAtISO ||
+                                        reply.createdAt
+                                    )}
+                                  </span>
+
+                                  {reply.visibility === "private" && (
+                                    <span>Private</span>
                                   )}
-                                </span>
 
-                                {reply.visibility === "private" && (
-                                  <span>Private</span>
-                                )}
+                                  {canDeleteReply && (
+                                    <button
+                                      type="button"
+                                      className="margin-reply-delete"
+                                      onClick={() =>
+                                        handleDeleteReply(entry, reply)
+                                      }
+                                      aria-label="Delete reply"
+                                      title="Delete reply"
+                                    >
+                                      <Trash2 size={14} />
+                                      Delete
+                                    </button>
+                                  )}
+                                </div>
+
+                                <p>{reply.note}</p>
                               </div>
-
-                              <p>{reply.note}</p>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </article>

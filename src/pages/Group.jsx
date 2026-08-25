@@ -38,6 +38,7 @@ import {
 import {
   createGroupForumPost,
   deleteGroupForumPost,
+  deleteGroupForumReply,
   getGroupForumPosts,
   getGroupForumReplies,
   replyToGroupForumPost,
@@ -393,6 +394,38 @@ export default function Group() {
     }
   }
 
+  async function deleteForumReply(post, reply) {
+    if (!window.confirm("Delete this reply? This cannot be undone.")) {
+      return;
+    }
+
+    try {
+      setBusyTopicId(post.id);
+      setStatus("");
+
+      await deleteGroupForumReply(
+        groupId,
+        post.id,
+        reply.id
+      );
+
+      const replies = await getGroupForumReplies(groupId, post.id);
+
+      setForumReplies((current) => ({
+        ...current,
+        [post.id]: replies
+      }));
+
+      setStatus("Reply removed.");
+    } catch (error) {
+      setStatus(
+        error?.message || "We couldn't remove that reply."
+      );
+    } finally {
+      setBusyTopicId(null);
+    }
+  }
+
   if (loading) {
     return (
       <main className="page-wrap">
@@ -662,20 +695,53 @@ export default function Group() {
                             {replies.length === 0 ? (
                               <p className="muted">No replies yet.</p>
                             ) : (
-                              <div className="stack-md">
-                                {replies.map((reply) => (
-                                  <div key={reply.id}>
-                                    <strong>
-                                      {reply.authorProfile?.displayName ||
-                                        "Reader"}
-                                    </strong>
-                                    <small className="muted">
-                                      {" "}
-                                      · {formatDate(reply.createdAtISO)}
-                                    </small>
-                                    <p>{reply.body}</p>
-                                  </div>
-                                ))}
+                              <div className="stack-md profile-edit-form">
+                                {replies.map((reply) => {
+                                  const isReplyAuthor =
+                                    reply.userId === user.uid;
+
+                                  return (
+                                    <div
+                                      key={reply.id}
+                                      style={{
+                                        display: "grid",
+                                        gridTemplateColumns: "1fr auto",
+                                        gap: "0.75rem",
+                                        alignItems: "start"
+                                      }}
+                                    >
+                                      <div>
+                                        <strong>
+                                          {reply.authorProfile?.displayName ||
+                                            "Reader"}
+                                        </strong>
+                                        <small className="muted">
+                                          {" "}
+                                          · {formatDate(reply.createdAtISO)}
+                                        </small>
+                                        <p>{reply.body}</p>
+                                      </div>
+
+                                      {(canModerate || isReplyAuthor) && (
+                                        <button
+                                          type="button"
+                                          className="button secondary"
+                                          disabled={busyTopicId === post.id}
+                                          onClick={() =>
+                                            deleteForumReply(post, reply)
+                                          }
+                                          title="Delete reply"
+                                          aria-label="Delete reply"
+                                          style={{
+                                            padding: "0.4rem 0.55rem"
+                                          }}
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             )}
 
@@ -880,41 +946,37 @@ export default function Group() {
                 </label>
 
                 <div>
-  <strong>Group avatar</strong>
+                  <strong>Group avatar</strong>
+                  <div className="profile-avatar-grid">
+                    {GROUP_AVATARS.map((avatar) => {
+                      const selected =
+                        settings.avatar === avatar.image ||
+                        settings.avatar === avatar.id;
 
-  <div className="profile-avatar-grid">
-    {GROUP_AVATARS.map((avatar) => {
-      const selected =
-        settings.avatar === avatar.image ||
-        settings.avatar === avatar.id;
-
-      return (
-        <button
-          key={avatar.id}
-          type="button"
-          className={
-            selected
-              ? "profile-avatar-option selected"
-              : "profile-avatar-option"
-          }
-          onClick={() =>
-            setSettings((current) => ({
-              ...current,
-              avatar: avatar.id
-            }))
-          }
-          aria-label={`Use ${avatar.name} avatar`}
-        >
-          <img
-            src={avatar.image}
-            alt={avatar.name}
-          />
-          <span>{avatar.name}</span>
-        </button>
-      );
-    })}
-  </div>
-</div>
+                      return (
+                        <button
+                          key={avatar.id}
+                          type="button"
+                          className={
+                            selected
+                              ? "profile-avatar-option selected"
+                              : "profile-avatar-option"
+                          }
+                          onClick={() =>
+                            setSettings((current) => ({
+                              ...current,
+                              avatar: avatar.id
+                            }))
+                          }
+                          aria-label={`Use ${avatar.name} avatar`}
+                        >
+                          <img src={avatar.image} alt="" />
+                          <span>{avatar.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 <label>
                   Group type
