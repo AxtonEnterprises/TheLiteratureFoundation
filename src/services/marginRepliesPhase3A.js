@@ -74,21 +74,20 @@ export async function replyToMargin(
 
   const user = await requireUser();
 
-  // Group replies are never allowed to escape the parent group.
-  const isGroupMargin =
-    entry.visibility === "group" || Boolean(entry.groupId);
+  // Replies always inherit the parent Margin's visibility.
+  const normalizedVisibility =
+    entry.visibility === "group"
+      ? "group"
+      : entry.visibility === "private"
+        ? "private"
+        : "public";
 
-  const normalizedVisibility = isGroupMargin
-    ? "group"
-    : visibility === "private"
-      ? "private"
-      : "public";
+  const inheritedGroupId =
+    normalizedVisibility === "group"
+      ? String(entry.groupId || groupId || "")
+      : null;
 
-  const inheritedGroupId = isGroupMargin
-    ? String(entry.groupId || groupId || "")
-    : null;
-
-  if (isGroupMargin) {
+  if (normalizedVisibility === "group") {
     if (!inheritedGroupId) {
       throw new Error("This group Margin is missing its group.");
     }
