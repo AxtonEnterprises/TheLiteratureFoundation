@@ -5,6 +5,7 @@ import {
   LogIn,
   LogOut,
   MessageSquare,
+  Bell,
   User
 } from "lucide-react";
 
@@ -19,6 +20,7 @@ import {
 } from "firebase/auth";
 
 import { auth } from "../firebase";
+import { subscribeToUnreadNotifications } from "../services/notifications.js";
 
 
 export default function Header() {
@@ -30,6 +32,11 @@ export default function Header() {
     setUser
   ] =
     useState(null);
+
+  const [
+    unreadCount,
+    setUnreadCount
+  ] = useState(0);
 
   const [
     authLoading,
@@ -53,6 +60,15 @@ export default function Header() {
       }
     );
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setUnreadCount(0);
+      return undefined;
+    }
+
+    return subscribeToUnreadNotifications(setUnreadCount);
+  }, [user]);
 
 
   async function handleLogout() {
@@ -150,6 +166,26 @@ export default function Header() {
         {!authLoading &&
           user && (
           <>
+            <NavLink
+              to="/read/notifications"
+              className={navClass}
+              aria-label={
+                unreadCount
+                  ? `Notifications, ${unreadCount} unread`
+                  : "Notifications"
+              }
+            >
+              <span className="notification-bell-wrap">
+                <Bell size={18} />
+                {unreadCount > 0 && (
+                  <span className="notification-badge">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </span>
+              <span>Notifications</span>
+            </NavLink>
+
             <NavLink
               to="/read/profile"
               className={
