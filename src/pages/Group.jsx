@@ -880,56 +880,41 @@ export default function Group() {
                 </label>
 
                 <div>
-                  <strong>Group avatar</strong>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "repeat(auto-fit, minmax(82px, 1fr))",
-                      gap: "0.75rem",
-                      marginTop: "0.75rem"
-                    }}
-                  >
-                    {GROUP_AVATARS.map((avatar) => {
-                      const selected =
-                        settings.avatar === avatar.image ||
-                        settings.avatar === avatar.id;
+  <strong>Group avatar</strong>
 
-                      return (
-                        <button
-                          key={avatar.id}
-                          type="button"
-                          onClick={() =>
-                            setSettings((current) => ({
-                              ...current,
-                              avatar: avatar.id
-                            }))
-                          }
-                          aria-label={`Use ${avatar.name} avatar`}
-                          style={{
-                            border: selected
-                              ? "3px solid var(--brand)"
-                              : "1px solid var(--line)",
-                            borderRadius: 14,
-                            padding: 6,
-                            background: "#fff"
-                          }}
-                        >
-                          <img
-                            src={avatar.image}
-                            alt=""
-                            style={{
-                              width: "100%",
-                              aspectRatio: "1",
-                              objectFit: "cover",
-                              borderRadius: 10
-                            }}
-                          />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+  <div className="profile-avatar-grid">
+    {GROUP_AVATARS.map((avatar) => {
+      const selected =
+        settings.avatar === avatar.image ||
+        settings.avatar === avatar.id;
+
+      return (
+        <button
+          key={avatar.id}
+          type="button"
+          className={
+            selected
+              ? "profile-avatar-option selected"
+              : "profile-avatar-option"
+          }
+          onClick={() =>
+            setSettings((current) => ({
+              ...current,
+              avatar: avatar.id
+            }))
+          }
+          aria-label={`Use ${avatar.name} avatar`}
+        >
+          <img
+            src={avatar.image}
+            alt={avatar.name}
+          />
+          <span>{avatar.name}</span>
+        </button>
+      );
+    })}
+  </div>
+</div>
 
                 <label>
                   Group type
