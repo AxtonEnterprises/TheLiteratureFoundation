@@ -3666,6 +3666,7 @@ p {
 
     font-size: 0.72rem;
   }
+}
 /* ==================================================
    GROUP / PROFILE FORMS
    ================================================== */
@@ -3716,7 +3717,7 @@ p {
   .profile-edit-form textarea {
     font-size: 16px;
   }
-}
+
   .margin-report-modal {
     padding: 1rem;
   }
