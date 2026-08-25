@@ -21,16 +21,19 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase";
 
 import {
-  getMarginReplies,
   getMarginsFeed,
   getFriendsMarginsFeed,
   getGroupsMarginsFeed,
   getSavedMargins,
   reportMarginEntry,
-  replyToMargin,
   saveMarginEntry,
   unsaveMarginEntry
 } from "../services/storage.js";
+
+import {
+  getMarginReplies,
+  replyToMargin
+} from "../services/marginRepliesPhase3A.js";
 
 import { getProfileAvatar } from "../data/avatars.js";
 import SEO from "../components/SEO.jsx";
@@ -66,7 +69,6 @@ export default function Margins() {
   const [status, setStatus] = useState("");
   const [openReplyId, setOpenReplyId] = useState(null);
   const [replyText, setReplyText] = useState("");
-  const [replyVisibility, setReplyVisibility] = useState("public");
   const [replying, setReplying] = useState(false);
   const [repliesByEntry, setRepliesByEntry] = useState({});
   const [repliesLoading, setRepliesLoading] = useState({});
@@ -243,11 +245,6 @@ export default function Margins() {
 
     setOpenReplyId(entry.id);
     setReplyText("");
-    setReplyVisibility(
-      entry.visibility === "private"
-        ? "private"
-        : "public"
-    );
   }
 
   async function refreshReplies(entry) {
@@ -294,7 +291,11 @@ export default function Margins() {
 
       await replyToMargin(entry, {
         note: cleanReply,
-        visibility: replyVisibility
+        visibility: entry.visibility,
+        groupId:
+          entry.visibility === "group"
+            ? entry.groupId
+            : null
       });
 
       setReplyText("");
@@ -303,9 +304,11 @@ export default function Margins() {
       await refreshReplies(entry);
 
       setStatus(
-        replyVisibility === "private"
-          ? "Private reply saved."
-          : "Reply posted."
+        entry.visibility === "group"
+          ? "Reply posted to the group."
+          : entry.visibility === "private"
+            ? "Private reply saved."
+            : "Reply posted."
       );
     } catch (error) {
       console.error("Could not post reply:", error);
@@ -694,25 +697,14 @@ export default function Margins() {
                           />
 
                           <div className="margin-reply-options">
-                            <label>
-                              Visibility
-
-                              <select
-                                value={replyVisibility}
-                                onChange={(event) =>
-                                  setReplyVisibility(event.target.value)
-                                }
-                              >
-                                <option value="public">Public</option>
-                                <option value="private">
-                                  Private Journal
-                                </option>
-                              </select>
-                            </label>
-
                             <small className="muted">
-                              Public replies can be seen by everyone.
-                              Private replies are visible only to you.
+                              {entry.visibility === "group"
+                                ? `Replying in ${
+                                    entry.group?.name || "this group"
+                                  }.`
+                                : entry.visibility === "private"
+                                  ? "This reply will remain private."
+                                  : "This reply will be public."}
                             </small>
                           </div>
 
@@ -749,7 +741,8 @@ export default function Margins() {
                                 <strong>
                                   {reply.userId === user?.uid
                                     ? "You"
-                                    : "Reader"}
+                                    : reply.reader?.displayName ||
+                                      "Reader"}
                                 </strong>
 
                                 <span>
