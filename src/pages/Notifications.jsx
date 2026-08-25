@@ -7,6 +7,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead
 } from "../services/notifications.js";
+import { getProfileAvatar } from "../data/avatars.js";
 
 function labelFor(item) {
   if (item.message) return item.message;
@@ -129,33 +130,47 @@ export default function Notifications() {
           </div>
         ) : (
           <div className="notification-list">
-            {items.map(item => (
-              <button
-                type="button"
-                key={item.id}
-                className={`notification-item${item.read ? "" : " unread"}`}
-                onClick={() => openNotification(item)}
-              >
-                <span className="notification-avatar">
-                  {item.actorAvatar ? (
-                    <img src={item.actorAvatar} alt="" />
-                  ) : (
-                    <Bell size={20} />
-                  )}
-                </span>
+            {{items.map((item) => {
+  const actorAvatar =
+    getProfileAvatar(item.actorAvatar);
 
-                <span className="notification-copy">
-                  <span className="notification-message">{labelFor(item)}</span>
-                  <span className="notification-date">
-                    {formatDate(item.createdAtISO)}
-                  </span>
-                </span>
+  return (
+    <button
+      type="button"
+      key={item.id}
+      className={`notification-item${item.read ? "" : " unread"}`}
+      onClick={() => openNotification(item)}
+    >
+      <span className="notification-avatar">
+        {actorAvatar ? (
+          <img
+            src={actorAvatar.image}
+            alt=""
+          />
+        ) : (
+          <Bell size={20} />
+        )}
+      </span>
 
-                {!item.read && (
-                  <span className="notification-unread-dot" aria-label="Unread" />
-                )}
-              </button>
-            ))}
+      <span className="notification-copy">
+        <span className="notification-message">
+          {labelFor(item)}
+        </span>
+
+        <span className="notification-date">
+          {formatDate(item.createdAtISO)}
+        </span>
+      </span>
+
+      {!item.read && (
+        <span
+          className="notification-unread-dot"
+          aria-label="Unread"
+        />
+      )}
+    </button>
+  );
+})}
           </div>
         )}
       </div>
