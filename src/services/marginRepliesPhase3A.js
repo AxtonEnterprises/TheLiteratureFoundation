@@ -10,6 +10,7 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "../firebase";
+import { createNotification } from "./notifications.js";
 
 async function requireUser() {
   const user = auth.currentUser;
@@ -120,6 +121,21 @@ export async function replyToMargin(
   await setDoc(replyRef, {
     ...reply,
     createdAt: serverTimestamp()
+  });
+
+  await createNotification({
+    recipientUserId: String(entry.userId),
+    type:
+      normalizedVisibility === "group"
+        ? "group_margin_reply"
+        : "margin_reply",
+    actorUserId: user.uid,
+    groupId: inheritedGroupId,
+    marginId: String(entry.id),
+    targetPath:
+      normalizedVisibility === "group"
+        ? "/read/margins?tab=groups"
+        : "/read/margins"
   });
 
   return reply;

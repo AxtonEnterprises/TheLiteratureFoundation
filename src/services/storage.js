@@ -32,6 +32,8 @@ import {
   getBookById
 } from "./booksApi.js";
 
+import { createNotification } from "./notifications.js";
+
 
 const LOCAL_SAVED_BOOKS_KEY =
   "randomReads.savedBooks";
@@ -3362,6 +3364,13 @@ export async function sendFriendRequest(
     }
   );
 
+  await createNotification({
+    recipientUserId: String(otherUserId),
+    type: "friend_request",
+    actorUserId: user.uid,
+    targetPath: "/read/profile?tab=friends"
+  });
+
   return {
     id:
       pairId,
@@ -3463,6 +3472,13 @@ export async function respondToFriendRequest(
         serverTimestamp()
     }
   );
+
+  await createNotification({
+    recipientUserId: relationship.requestedBy,
+    type: "friend_accepted",
+    actorUserId: user.uid,
+    targetPath: "/read/profile?tab=friends"
+  });
 
   return {
     ...relationship,
@@ -4349,6 +4365,19 @@ export async function inviteFriendToGroup(
     }
   );
 
+  const invitedGroup = await getDoc(
+    doc(db, "groups", String(groupId))
+  );
+
+  await createNotification({
+    recipientUserId: String(otherUserId),
+    type: "group_invite",
+    actorUserId: user.uid,
+    groupId: String(groupId),
+    groupName: invitedGroup.exists() ? invitedGroup.data()?.name || "" : "",
+    targetPath: "/read/profile?tab=groups"
+  });
+
   return inviteData;
 }
 
@@ -4447,6 +4476,11 @@ export async function respondToGroupInvite(
   const now =
     new Date().toISOString();
 
+  const inviteBeforeResponse = await getDoc(inviteRef);
+  const inviteBeforeData = inviteBeforeResponse.exists()
+    ? inviteBeforeResponse.data()
+    : null;
+
   await runTransaction(
     db,
     async (transaction) => {
@@ -4512,6 +4546,21 @@ export async function respondToGroupInvite(
       }
     }
   );
+
+  if (accept && inviteBeforeData?.invitedBy) {
+    const groupSnapshot = await getDoc(
+      doc(db, "groups", String(groupId))
+    );
+
+    await createNotification({
+      recipientUserId: inviteBeforeData.invitedBy,
+      type: "group_invite_accepted",
+      actorUserId: user.uid,
+      groupId: String(groupId),
+      groupName: groupSnapshot.exists() ? groupSnapshot.data()?.name || "" : "",
+      targetPath: `/read/groups/${groupId}`
+    });
+  }
 
   return {
     groupId:

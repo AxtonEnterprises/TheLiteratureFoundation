@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "../firebase";
+import { createNotification } from "./notifications.js";
 
 async function requireUser() {
   const user = auth.currentUser;
@@ -412,6 +413,23 @@ export async function replyToGroupForumPost(
     },
     { merge: true }
   );
+
+  const postData = postSnapshot.data();
+  if (postData?.userId) {
+    const groupSnapshot = await getDoc(
+      doc(db, "groups", String(groupId))
+    );
+
+    await createNotification({
+      recipientUserId: postData.userId,
+      type: "forum_reply",
+      actorUserId: user.uid,
+      groupId: String(groupId),
+      groupName: groupSnapshot.exists() ? groupSnapshot.data()?.name || "" : "",
+      postId: String(postId),
+      targetPath: `/read/groups/${groupId}`
+    });
+  }
 
   return reply;
 }
