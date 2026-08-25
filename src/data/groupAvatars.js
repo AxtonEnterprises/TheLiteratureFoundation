@@ -15,9 +15,9 @@ export const GROUP_AVATARS = [
     image: "/branding/group-avatars/wonderland.png"
   },
   {
-    id: "fellowship",
-    name: "The Fellowship",
-    image: "/branding/group-avatars/fellowship.png"
+    id: "oz",
+    name: "The Wizard of Oz",
+    image: "/branding/group-avatars/oz.png"
   },
   {
     id: "bennet-sisters",
