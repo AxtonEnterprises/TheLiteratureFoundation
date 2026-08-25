@@ -36,6 +36,7 @@ import {
 } from "../services/marginRepliesPhase3A.js";
 
 import { getProfileAvatar } from "../data/avatars.js";
+import { getGroupAvatar } from "../data/groupAvatars.js";
 import SEO from "../components/SEO.jsx";
 
 function formatDate(value) {
@@ -548,9 +549,9 @@ export default function Margins() {
                               placeItems: "center"
                             }}
                           >
-                            {entry.group.avatar ? (
+                            {getGroupAvatar(entry.group.avatar) ? (
                               <img
-                                src={entry.group.avatar}
+                                src={getGroupAvatar(entry.group.avatar).image}
                                 alt=""
                                 style={{
                                   width: "100%",
@@ -724,13 +725,13 @@ export default function Margins() {
                         </div>
                       )}
 
-                      {isLoadingReplies && (
+                      {replyOpen && isLoadingReplies && (
                         <div className="margin-replies">
                           <p className="muted">Loading replies...</p>
                         </div>
                       )}
 
-                      {!isLoadingReplies && replies.length > 0 && (
+                      {replyOpen && !isLoadingReplies && replies.length > 0 && (
                         <div className="margin-replies">
                           {replies.map((reply) => (
                             <div

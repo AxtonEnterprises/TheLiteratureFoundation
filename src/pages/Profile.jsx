@@ -64,6 +64,8 @@ import {
   getProfileAvatar
 } from "../data/avatars.js";
 
+import { getGroupAvatar } from "../data/groupAvatars.js";
+
 import ReadersHere from "../components/ReadersHere.jsx";
 import SEO from "../components/SEO.jsx";
 
@@ -2960,9 +2962,9 @@ export default function Profile() {
                               flex: "0 0 auto"
                             }}
                           >
-                            {invite.group?.avatar ? (
+                            {getGroupAvatar(invite.group?.avatar) ? (
                               <img
-                                src={invite.group.avatar}
+                                src={getGroupAvatar(invite.group?.avatar).image}
                                 alt=""
                                 style={{
                                   width: "100%",
@@ -3060,9 +3062,9 @@ export default function Profile() {
                           flex: "0 0 auto"
                         }}
                       >
-                        {group.avatar ? (
+                        {getGroupAvatar(group.avatar) ? (
                           <img
-                            src={group.avatar}
+                            src={getGroupAvatar(group.avatar).image}
                             alt=""
                             style={{
                               width: "100%",
