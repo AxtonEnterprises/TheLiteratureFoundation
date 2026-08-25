@@ -517,7 +517,7 @@ export default function Group() {
           <>
             <section className="panel profile-panel">
               <h2>Start a Discussion</h2>
-              <form onSubmit={createTopic} className="stack-md">
+              <form onSubmit={createTopic} className="stack-md profile-edit-form">
                 <label>
                   Topic
                   <input
@@ -850,7 +850,7 @@ export default function Group() {
                 Only the owner or an admin can edit group settings.
               </p>
             ) : (
-              <form onSubmit={saveSettings} className="stack-md">
+              <form onSubmit={saveSettings} className="stack-md profile-edit-form">
                 <label>
                   Group name
                   <input
