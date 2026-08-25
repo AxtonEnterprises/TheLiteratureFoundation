@@ -18,6 +18,7 @@ import Margins from "./pages/Margins";
 import NotFound from "./pages/NotFound.jsx";
 import PublicProfile from "./pages/PublicProfile";
 import Group from "./pages/Group";
+import Notifications from "./pages/Notifications";
 
 export default function App() {
   const location = useLocation();
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="/read/reader/:id" element={<Reader />} />
           <Route path="/read/journal" element={<Journal />} />
           <Route path="/read/profile" element={<Profile />} />
+          <Route path="/read/notifications" element={<Notifications />} />
           <Route path="/read/public/:userId" element={<PublicProfile />} />
           <Route path="/read/about" element={<About />} />
           <Route path="/read/login" element={<Login />} />
