@@ -4770,6 +4770,337 @@ export async function removeGroupMember(
 }
 
 
+
+export async function getDiscoverableGroups() {
+  const user = await requireUser();
+
+  const groupsRef = collection(db, "groups");
+  const snapshot = await getDocs(groupsRef);
+
+  const groups = await Promise.all(
+    snapshot.docs.map(async (groupDoc) => {
+      const data = groupDoc.data();
+
+      if (
+        !["discoverable", "public"].includes(data.visibility)
+      ) {
+        return null;
+      }
+
+      const membership = await getGroupMemberRecord(
+        groupDoc.id,
+        user.uid
+      );
+
+      let joinRequest = null;
+
+      const requestRef = doc(
+        db,
+        "groups",
+        groupDoc.id,
+        "joinRequests",
+        user.uid
+      );
+
+      const requestSnapshot = await getDoc(requestRef);
+
+      if (requestSnapshot.exists()) {
+        joinRequest = {
+          id: requestSnapshot.id,
+          ...requestSnapshot.data()
+        };
+      }
+
+      return {
+        id: groupDoc.id,
+        ...data,
+        membership,
+        joinRequest
+      };
+    })
+  );
+
+  return groups
+    .filter(Boolean)
+    .sort((a, b) =>
+      String(a.name || "").localeCompare(
+        String(b.name || "")
+      )
+    );
+}
+
+
+export async function requestToJoinGroup(groupId) {
+  const user = await requireUser();
+
+  const groupRef = doc(
+    db,
+    "groups",
+    String(groupId)
+  );
+
+  const groupSnapshot = await getDoc(groupRef);
+
+  if (!groupSnapshot.exists()) {
+    throw new Error("Group not found.");
+  }
+
+  const group = groupSnapshot.data();
+
+  if (
+    !["discoverable", "public"].includes(group.visibility)
+  ) {
+    throw new Error("This group is not accepting discovery requests.");
+  }
+
+  const existingMembership = await getGroupMemberRecord(
+    groupId,
+    user.uid
+  );
+
+  if (
+    existingMembership &&
+    !["removed", "suspended"].includes(existingMembership.status)
+  ) {
+    return {
+      status: "already_member"
+    };
+  }
+
+  if (group.joinPolicy === "invite_only") {
+    throw new Error("This group is invite only.");
+  }
+
+  const now = new Date().toISOString();
+
+  if (group.joinPolicy === "open") {
+    const memberRef = doc(
+      db,
+      "groups",
+      String(groupId),
+      "members",
+      user.uid
+    );
+
+    await setDoc(
+      memberRef,
+      {
+        groupId: String(groupId),
+        userId: user.uid,
+        role: "member",
+        status: "active",
+        joinedAtISO: now,
+        joinedAt: serverTimestamp()
+      },
+      { merge: true }
+    );
+
+    return {
+      status: "joined"
+    };
+  }
+
+  const requestRef = doc(
+    db,
+    "groups",
+    String(groupId),
+    "joinRequests",
+    user.uid
+  );
+
+  await setDoc(
+    requestRef,
+    {
+      groupId: String(groupId),
+      userId: user.uid,
+      status: "pending",
+      createdAtISO: now,
+      updatedAtISO: now,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    },
+    { merge: true }
+  );
+
+  const ownerId = group.ownerId;
+
+  if (ownerId) {
+    await createNotification({
+      recipientUserId: ownerId,
+      type: "group_join_request",
+      actorUserId: user.uid,
+      groupId: String(groupId),
+      groupName: group.name || "",
+      targetPath: `/read/groups/${groupId}`
+    });
+  }
+
+  return {
+    status: "pending"
+  };
+}
+
+
+export async function cancelGroupJoinRequest(groupId) {
+  const user = await requireUser();
+
+  const requestRef = doc(
+    db,
+    "groups",
+    String(groupId),
+    "joinRequests",
+    user.uid
+  );
+
+  const snapshot = await getDoc(requestRef);
+
+  if (!snapshot.exists()) {
+    return;
+  }
+
+  if (snapshot.data()?.userId !== user.uid) {
+    throw new Error("You cannot cancel this request.");
+  }
+
+  await deleteDoc(requestRef);
+}
+
+
+export async function getGroupJoinRequests(groupId) {
+  const user = await requireUser();
+
+  const ownMembership = await getGroupMemberRecord(
+    groupId,
+    user.uid
+  );
+
+  if (
+    !ownMembership ||
+    !["owner", "admin"].includes(ownMembership.role)
+  ) {
+    return [];
+  }
+
+  const snapshot = await getDocs(
+    collection(
+      db,
+      "groups",
+      String(groupId),
+      "joinRequests"
+    )
+  );
+
+  const pending = snapshot.docs
+    .map((requestDoc) => ({
+      id: requestDoc.id,
+      ...requestDoc.data()
+    }))
+    .filter((request) => request.status === "pending");
+
+  return Promise.all(
+    pending.map(async (request) => ({
+      ...request,
+      profile: request.userId
+        ? await getPublicProfile(request.userId)
+        : null
+    }))
+  );
+}
+
+
+export async function respondToGroupJoinRequest(
+  groupId,
+  userId,
+  accept
+) {
+  const user = await requireUser();
+
+  const ownMembership = await getGroupMemberRecord(
+    groupId,
+    user.uid
+  );
+
+  if (
+    !ownMembership ||
+    !["owner", "admin"].includes(ownMembership.role)
+  ) {
+    throw new Error("Only owners and admins can manage join requests.");
+  }
+
+  const requestRef = doc(
+    db,
+    "groups",
+    String(groupId),
+    "joinRequests",
+    String(userId)
+  );
+
+  const requestSnapshot = await getDoc(requestRef);
+
+  if (
+    !requestSnapshot.exists() ||
+    requestSnapshot.data()?.status !== "pending"
+  ) {
+    throw new Error("This join request is no longer available.");
+  }
+
+  const memberRef = doc(
+    db,
+    "groups",
+    String(groupId),
+    "members",
+    String(userId)
+  );
+
+  const now = new Date().toISOString();
+
+  await runTransaction(db, async (transaction) => {
+    transaction.update(requestRef, {
+      status: accept ? "accepted" : "declined",
+      updatedAtISO: now,
+      updatedAt: serverTimestamp()
+    });
+
+    if (accept) {
+      transaction.set(
+        memberRef,
+        {
+          groupId: String(groupId),
+          userId: String(userId),
+          role: "member",
+          status: "active",
+          joinedAtISO: now,
+          joinedAt: serverTimestamp()
+        },
+        { merge: true }
+      );
+    }
+  });
+
+  if (accept) {
+    const groupSnapshot = await getDoc(
+      doc(db, "groups", String(groupId))
+    );
+
+    await createNotification({
+      recipientUserId: String(userId),
+      type: "group_join_approved",
+      actorUserId: user.uid,
+      groupId: String(groupId),
+      groupName:
+        groupSnapshot.exists()
+          ? groupSnapshot.data()?.name || ""
+          : "",
+      targetPath: `/read/groups/${groupId}`
+    });
+  }
+
+  return {
+    status: accept ? "accepted" : "declined"
+  };
+}
+
+
 export async function getGroupsMarginsFeed() {
   const groups =
     await getMyGroups();
