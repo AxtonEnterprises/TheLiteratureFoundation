@@ -116,7 +116,6 @@ function GroupAvatar({ group, size = 92 }) {
 export default function Group() {
   const { groupId } = useParams();
   const navigate = useNavigate();
-  const navigate = useNavigate();
 
   const [user, setUser] = useState(null);
   const [group, setGroup] = useState(null);
