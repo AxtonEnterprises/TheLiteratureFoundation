@@ -19,6 +19,7 @@ import NotFound from "./pages/NotFound.jsx";
 import PublicProfile from "./pages/PublicProfile";
 import Group from "./pages/Group";
 import Notifications from "./pages/Notifications";
+import DiscoverGroups from "./pages/DiscoverGroups";
 
 export default function App() {
   const location = useLocation();
@@ -62,7 +63,8 @@ export default function App() {
           <Route path="/about" element={<Navigate to="/read/about" replace />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
-          <Route path="/read/groups/:groupId"element={<Group />} />
+          <Route path="/read/groups" element={<DiscoverGroups />} />
+          <Route path="/read/groups/:groupId" element={<Group />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
