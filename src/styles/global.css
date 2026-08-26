@@ -3998,3 +3998,42 @@ p {
     grid-template-columns: 1fr;
   }
 }
+/* ============================================================
+   PHASE 3D — PHASE 3 CLOSEOUT
+============================================================ */
+
+.group-danger-zone {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.group-danger-zone select {
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.group-danger-zone hr {
+  width: 100%;
+  margin: 1rem 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.button.danger {
+  background: #8b3030;
+  color: #fff;
+  border-color: #8b3030;
+}
+
+.button.danger:hover,
+.button.danger:focus-visible {
+  filter: brightness(0.94);
+}
