@@ -11,7 +11,8 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
-  where
+  where,
+  writeBatch
 } from "firebase/firestore";
 
 import {
@@ -2273,6 +2274,16 @@ export async function reportMarginEntry(
 
       status:
         "open",
+
+      visibility:
+        normalizeVisibility(
+          entry.visibility
+        ),
+
+      groupId:
+        entry.visibility === "group"
+          ? entry.groupId || null
+          : null,
 
       createdAtISO:
         now
@@ -5098,6 +5109,438 @@ export async function respondToGroupJoinRequest(
   return {
     status: accept ? "accepted" : "declined"
   };
+}
+
+
+
+export async function transferGroupOwnership(
+  groupId,
+  newOwnerUserId
+) {
+  const user = await requireUser();
+
+  if (!groupId || !newOwnerUserId) {
+    throw new Error("Choose a member to receive ownership.");
+  }
+
+  if (String(newOwnerUserId) === String(user.uid)) {
+    throw new Error("You already own this group.");
+  }
+
+  const groupRef = doc(
+    db,
+    "groups",
+    String(groupId)
+  );
+
+  const currentOwnerRef = doc(
+    db,
+    "groups",
+    String(groupId),
+    "members",
+    user.uid
+  );
+
+  const newOwnerRef = doc(
+    db,
+    "groups",
+    String(groupId),
+    "members",
+    String(newOwnerUserId)
+  );
+
+  const now = new Date().toISOString();
+
+  await runTransaction(
+    db,
+    async (transaction) => {
+      const [
+        groupSnapshot,
+        currentOwnerSnapshot,
+        newOwnerSnapshot
+      ] = await Promise.all([
+        transaction.get(groupRef),
+        transaction.get(currentOwnerRef),
+        transaction.get(newOwnerRef)
+      ]);
+
+      if (!groupSnapshot.exists()) {
+        throw new Error("Group not found.");
+      }
+
+      if (
+        groupSnapshot.data()?.ownerId !== user.uid ||
+        currentOwnerSnapshot.data()?.role !== "owner"
+      ) {
+        throw new Error("Only the current owner can transfer ownership.");
+      }
+
+      if (
+        !newOwnerSnapshot.exists() ||
+        ["removed", "suspended"].includes(
+          newOwnerSnapshot.data()?.status
+        )
+      ) {
+        throw new Error("Choose an active group member.");
+      }
+
+      transaction.update(groupRef, {
+        ownerId: String(newOwnerUserId),
+        updatedAtISO: now,
+        updatedAt: serverTimestamp()
+      });
+
+      transaction.update(currentOwnerRef, {
+        role: "admin",
+        updatedAtISO: now,
+        updatedAt: serverTimestamp()
+      });
+
+      transaction.update(newOwnerRef, {
+        role: "owner",
+        updatedAtISO: now,
+        updatedAt: serverTimestamp()
+      });
+    }
+  );
+
+  const groupSnapshot = await getDoc(groupRef);
+
+  await createNotification({
+    recipientUserId: String(newOwnerUserId),
+    type: "group_role_changed",
+    actorUserId: user.uid,
+    groupId: String(groupId),
+    groupName:
+      groupSnapshot.exists()
+        ? groupSnapshot.data()?.name || ""
+        : "",
+    targetPath: `/read/groups/${groupId}`,
+    message: "You are now the owner of this group."
+  });
+
+  return {
+    groupId: String(groupId),
+    newOwnerUserId: String(newOwnerUserId)
+  };
+}
+
+
+async function deleteCollectionDocuments(collectionRef) {
+  const snapshot = await getDocs(collectionRef);
+
+  if (snapshot.empty) {
+    return;
+  }
+
+  const batch = writeBatch(db);
+
+  snapshot.docs.forEach((document) => {
+    batch.delete(document.ref);
+  });
+
+  await batch.commit();
+}
+
+
+export async function deleteGroupPermanently(groupId) {
+  const user = await requireUser();
+
+  const groupRef = doc(
+    db,
+    "groups",
+    String(groupId)
+  );
+
+  const groupSnapshot = await getDoc(groupRef);
+
+  if (!groupSnapshot.exists()) {
+    return;
+  }
+
+  if (groupSnapshot.data()?.ownerId !== user.uid) {
+    throw new Error("Only the group owner can delete this group.");
+  }
+
+  /*
+   * Firestore does not automatically delete subcollections.
+   * Clean up all Phase 3 group-owned subcollections first.
+   */
+  const forumSnapshot = await getDocs(
+    collection(
+      db,
+      "groups",
+      String(groupId),
+      "forumPosts"
+    )
+  );
+
+  for (const forumDoc of forumSnapshot.docs) {
+    await deleteCollectionDocuments(
+      collection(
+        db,
+        "groups",
+        String(groupId),
+        "forumPosts",
+        forumDoc.id,
+        "replies"
+      )
+    );
+
+    await deleteDoc(forumDoc.ref);
+  }
+
+  await deleteCollectionDocuments(
+    collection(
+      db,
+      "groups",
+      String(groupId),
+      "invites"
+    )
+  );
+
+  await deleteCollectionDocuments(
+    collection(
+      db,
+      "groups",
+      String(groupId),
+      "joinRequests"
+    )
+  );
+
+  await deleteCollectionDocuments(
+    collection(
+      db,
+      "groups",
+      String(groupId),
+      "members"
+    )
+  );
+
+  await deleteDoc(groupRef);
+
+  return {
+    deleted: true,
+    groupId: String(groupId)
+  };
+}
+
+
+export async function getGroupModerationQueue(groupId) {
+  const user = await requireUser();
+
+  const membership = await getGroupMemberRecord(
+    groupId,
+    user.uid
+  );
+
+  if (
+    !membership ||
+    !["owner", "admin", "moderator"].includes(
+      membership.role
+    )
+  ) {
+    throw new Error("You do not have moderation access.");
+  }
+
+  const reportsRef = collection(
+    db,
+    "marginReports"
+  );
+
+  const snapshot = await getDocs(
+    query(
+      reportsRef,
+      where(
+        "groupId",
+        "==",
+        String(groupId)
+      )
+    )
+  );
+
+  const reports = snapshot.docs
+    .map((reportDoc) => ({
+      id: reportDoc.id,
+      ...reportDoc.data()
+    }))
+    .filter((report) => report.status === "open");
+
+  const hydrated = await Promise.all(
+    reports.map(async (report) => {
+      let margin = null;
+      let reportedProfile = null;
+      let reporterProfile = null;
+
+      try {
+        const marginSnapshot = await getDoc(
+          doc(
+            db,
+            "users",
+            String(report.reportedUserId),
+            "journal",
+            String(report.reportedEntryId)
+          )
+        );
+
+        if (marginSnapshot.exists()) {
+          margin = {
+            id: marginSnapshot.id,
+            ...marginSnapshot.data()
+          };
+        }
+      } catch (error) {
+        console.warn("Could not load reported Margin:", error);
+      }
+
+      try {
+        reportedProfile = await getPublicProfile(
+          report.reportedUserId
+        );
+      } catch {}
+
+      try {
+        reporterProfile = await getPublicProfile(
+          report.reporterUserId
+        );
+      } catch {}
+
+      return {
+        ...report,
+        margin,
+        reportedProfile,
+        reporterProfile
+      };
+    })
+  );
+
+  return hydrated.sort(
+    (a, b) =>
+      String(
+        b.createdAtISO || ""
+      ).localeCompare(
+        String(a.createdAtISO || "")
+      )
+  );
+}
+
+
+export async function resolveGroupMarginReport(
+  groupId,
+  reportId,
+  resolution = "resolved"
+) {
+  const user = await requireUser();
+
+  const membership = await getGroupMemberRecord(
+    groupId,
+    user.uid
+  );
+
+  if (
+    !membership ||
+    !["owner", "admin", "moderator"].includes(
+      membership.role
+    )
+  ) {
+    throw new Error("You do not have moderation access.");
+  }
+
+  const reportRef = doc(
+    db,
+    "marginReports",
+    String(reportId)
+  );
+
+  const snapshot = await getDoc(reportRef);
+
+  if (!snapshot.exists()) {
+    return;
+  }
+
+  if (
+    snapshot.data()?.groupId !== String(groupId)
+  ) {
+    throw new Error("This report does not belong to this group.");
+  }
+
+  const now = new Date().toISOString();
+
+  await updateDoc(reportRef, {
+    status:
+      resolution === "dismissed"
+        ? "dismissed"
+        : "resolved",
+    resolvedBy: user.uid,
+    resolvedAtISO: now,
+    resolvedAt: serverTimestamp()
+  });
+}
+
+
+export async function deleteReportedGroupMargin(
+  groupId,
+  report
+) {
+  const user = await requireUser();
+
+  const membership = await getGroupMemberRecord(
+    groupId,
+    user.uid
+  );
+
+  if (
+    !membership ||
+    !["owner", "admin", "moderator"].includes(
+      membership.role
+    )
+  ) {
+    throw new Error("You do not have moderation access.");
+  }
+
+  if (
+    report?.groupId !== String(groupId) ||
+    !report?.reportedUserId ||
+    !report?.reportedEntryId
+  ) {
+    throw new Error("Invalid moderation report.");
+  }
+
+  const marginRef = doc(
+    db,
+    "users",
+    String(report.reportedUserId),
+    "journal",
+    String(report.reportedEntryId)
+  );
+
+  const marginSnapshot = await getDoc(marginRef);
+
+  if (!marginSnapshot.exists()) {
+    await resolveGroupMarginReport(
+      groupId,
+      report.id,
+      "resolved"
+    );
+    return;
+  }
+
+  const margin = marginSnapshot.data();
+
+  if (
+    margin.visibility !== "group" ||
+    margin.groupId !== String(groupId)
+  ) {
+    throw new Error("This Margin is not part of this group.");
+  }
+
+  await deleteDoc(marginRef);
+
+  await resolveGroupMarginReport(
+    groupId,
+    report.id,
+    "resolved"
+  );
 }
 
 
