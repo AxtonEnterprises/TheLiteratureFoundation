@@ -29,9 +29,11 @@ import {
   getFriends,
   getGroup,
   getGroupMembers,
+  getGroupJoinRequests,
   inviteFriendToGroup,
   leaveGroup,
   removeGroupMember,
+  respondToGroupJoinRequest,
   setGroupMemberRole
 } from "../services/storage.js";
 
@@ -114,6 +116,7 @@ export default function Group() {
   const [group, setGroup] = useState(null);
   const [members, setMembers] = useState([]);
   const [friends, setFriends] = useState([]);
+  const [joinRequests, setJoinRequests] = useState([]);
   const [forumPosts, setForumPosts] = useState([]);
   const [forumReplies, setForumReplies] = useState({});
   const [openTopicId, setOpenTopicId] = useState(null);
@@ -201,6 +204,63 @@ export default function Group() {
   const myRole = group?.membership?.role || "member";
   const canManage = ["owner", "admin"].includes(myRole);
   const canModerate = ["owner", "admin", "moderator"].includes(myRole);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadJoinRequests() {
+      if (!canManage) {
+        setJoinRequests([]);
+        return;
+      }
+
+      try {
+        const requests = await getGroupJoinRequests(groupId);
+        if (active) {
+          setJoinRequests(requests);
+        }
+      } catch (error) {
+        console.error("Could not load join requests:", error);
+      }
+    }
+
+    loadJoinRequests();
+
+    return () => {
+      active = false;
+    };
+  }, [groupId, canManage]);
+
+  async function handleJoinRequest(request, accept) {
+    try {
+      setBusyUserId(request.userId);
+      setStatus("");
+
+      await respondToGroupJoinRequest(
+        groupId,
+        request.userId,
+        accept
+      );
+
+      setJoinRequests(
+        await getGroupJoinRequests(groupId)
+      );
+
+      await refresh();
+
+      setStatus(
+        accept
+          ? "Join request approved."
+          : "Join request declined."
+      );
+    } catch (error) {
+      setStatus(
+        error?.message || "We couldn't update that join request."
+      );
+    } finally {
+      setBusyUserId(null);
+    }
+  }
 
   async function invite(friend) {
     try {
@@ -787,6 +847,58 @@ export default function Group() {
 
         {activeTab === "members" && (
           <>
+            {canManage && joinRequests.length > 0 && (
+              <section className="panel profile-panel">
+                <h2>Join Requests ({joinRequests.length})</h2>
+
+                <div className="public-profile-entry-list">
+                  {joinRequests.map((request) => (
+                    <article
+                      key={request.userId}
+                      className="public-profile-entry"
+                    >
+                      <Link
+                        to={`/read/public/${request.userId}`}
+                        className="public-entry-book-title"
+                      >
+                        {request.profile?.displayName || "Reader"}
+                      </Link>
+
+                      {request.profile?.username && (
+                        <p className="muted">
+                          @{request.profile.username}
+                        </p>
+                      )}
+
+                      <div className="button-row">
+                        <button
+                          type="button"
+                          className="button primary"
+                          disabled={busyUserId === request.userId}
+                          onClick={() =>
+                            handleJoinRequest(request, true)
+                          }
+                        >
+                          Accept
+                        </button>
+
+                        <button
+                          type="button"
+                          className="button secondary"
+                          disabled={busyUserId === request.userId}
+                          onClick={() =>
+                            handleJoinRequest(request, false)
+                          }
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
+
             <section className="panel profile-panel">
               <h2>Members ({members.length})</h2>
 

@@ -2922,6 +2922,14 @@ export default function Profile() {
                   Groups & Classes
                 </h2>
               </div>
+
+              <Link
+                to="/read/groups"
+                className="button secondary"
+              >
+                <Search size={16} />
+                Discover Groups
+              </Link>
             </div>
 
             {groupStatus && (
