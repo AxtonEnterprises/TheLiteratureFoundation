@@ -754,21 +754,32 @@ export default function Group() {
           {[
             ["forum", "Forum"],
             ["members", "Members"],
+            ["moderation", "Moderation"],
             ["settings", "Settings"]
-          ].map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={
-                activeTab === value
-                  ? "margins-filter active"
-                  : "margins-filter"
-              }
-              onClick={() => setActiveTab(value)}
-            >
-              {label}
-            </button>
-          ))}
+          ].map(([value, label]) => {
+            if (value === "moderation" && !canModerate) {
+              return null;
+            }
+
+            if (value === "settings" && !canManage) {
+              return null;
+            }
+
+            return (
+              <button
+                key={value}
+                type="button"
+                className={
+                  activeTab === value
+                    ? "margins-filter active"
+                    : "margins-filter"
+                }
+                onClick={() => setActiveTab(value)}
+              >
+                {label}
+              </button>
+            );
+          })}
         </section>
 
         {activeTab === "forum" && (
@@ -1182,6 +1193,117 @@ export default function Group() {
           </>
         )}
 
+        {activeTab === "moderation" && canModerate && (
+          <section className="panel profile-panel">
+            <div>
+              <p className="eyebrow">Group Moderation</p>
+              <h2>Reported Margins</h2>
+            </div>
+
+            {moderationQueue.length === 0 ? (
+              <p className="muted">
+                No open group Margin reports.
+              </p>
+            ) : (
+              <div className="public-profile-entry-list">
+                {moderationQueue.map((report) => (
+                  <article
+                    key={report.id}
+                    className="public-profile-entry"
+                  >
+                    <strong>
+                      {report.reportedProfile?.displayName ||
+                        "Reported reader"}
+                    </strong>
+
+                    <p className="muted">
+                      Reported by{" "}
+                      {report.reporterProfile?.displayName ||
+                        "a group member"}
+                    </p>
+
+                    <p>
+                      <strong>Reason:</strong>{" "}
+                      {report.reason || "Other"}
+                    </p>
+
+                    {report.details && (
+                      <p>
+                        <strong>Details:</strong>{" "}
+                        {report.details}
+                      </p>
+                    )}
+
+                    {report.margin ? (
+                      <>
+                        <p className="muted">
+                          {report.margin.title || "Untitled"}
+                          {report.margin.author
+                            ? ` · ${report.margin.author}`
+                            : ""}
+                        </p>
+
+                        {report.margin.paragraphPreview && (
+                          <blockquote>
+                            {report.margin.paragraphPreview}
+                          </blockquote>
+                        )}
+
+                        <p>{report.margin.note}</p>
+                      </>
+                    ) : (
+                      <p className="muted">
+                        The reported Margin is no longer available.
+                      </p>
+                    )}
+
+                    <div className="button-row">
+                      {report.margin && (
+                        <button
+                          type="button"
+                          className="button danger"
+                          onClick={() =>
+                            handleDeleteReportedMargin(report)
+                          }
+                        >
+                          <Trash2 size={16} />
+                          Delete Margin
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        className="button secondary"
+                        onClick={() =>
+                          handleResolveReport(
+                            report,
+                            "dismissed"
+                          )
+                        }
+                      >
+                        Dismiss Report
+                      </button>
+
+                      <button
+                        type="button"
+                        className="button secondary"
+                        onClick={() =>
+                          handleResolveReport(
+                            report,
+                            "resolved"
+                          )
+                        }
+                      >
+                        Mark Resolved
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
         {activeTab === "settings" && (
           <section className="panel profile-panel">
             <h2>
@@ -1311,6 +1433,79 @@ export default function Group() {
                   Save Group Settings
                 </button>
               </form>
+            )}
+
+            {myRole === "owner" && (
+              <div className="group-danger-zone">
+                <p className="eyebrow">Owner Controls</p>
+
+                <h3>Transfer Ownership</h3>
+
+                <p className="muted">
+                  Transfer this group to another active member.
+                  You will become an admin.
+                </p>
+
+                <select
+                  value={transferOwnerId}
+                  onChange={(event) =>
+                    setTransferOwnerId(event.target.value)
+                  }
+                  disabled={dangerBusy}
+                >
+                  <option value="">
+                    Choose a member...
+                  </option>
+
+                  {members
+                    .filter(
+                      (member) =>
+                        member.userId !== user.uid &&
+                        member.status !== "removed" &&
+                        member.status !== "suspended"
+                    )
+                    .map((member) => (
+                      <option
+                        key={member.userId}
+                        value={member.userId}
+                      >
+                        {member.profile?.displayName || "Reader"}
+                      </option>
+                    ))}
+                </select>
+
+                <button
+                  type="button"
+                  className="button secondary"
+                  disabled={
+                    dangerBusy ||
+                    !transferOwnerId
+                  }
+                  onClick={handleTransferOwnership}
+                >
+                  <Crown size={16} />
+                  Transfer Ownership
+                </button>
+
+                <hr />
+
+                <h3>Delete Group</h3>
+
+                <p className="muted">
+                  Permanently remove this group and its
+                  membership/forum data.
+                </p>
+
+                <button
+                  type="button"
+                  className="button danger"
+                  disabled={dangerBusy}
+                  onClick={handleDeleteGroup}
+                >
+                  <Trash2 size={16} />
+                  Delete Group
+                </button>
+              </div>
             )}
           </section>
         )}
