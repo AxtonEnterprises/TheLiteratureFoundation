@@ -28,13 +28,18 @@ import { auth } from "../firebase";
 import {
   getFriends,
   getGroup,
+  deleteGroupPermanently,
+  deleteReportedGroupMargin,
   getGroupMembers,
   getGroupJoinRequests,
+  getGroupModerationQueue,
   inviteFriendToGroup,
   leaveGroup,
   removeGroupMember,
   respondToGroupJoinRequest,
-  setGroupMemberRole
+  resolveGroupMarginReport,
+  setGroupMemberRole,
+  transferGroupOwnership
 } from "../services/storage.js";
 
 import {
@@ -111,12 +116,16 @@ function GroupAvatar({ group, size = 92 }) {
 export default function Group() {
   const { groupId } = useParams();
   const navigate = useNavigate();
+  const navigate = useNavigate();
 
   const [user, setUser] = useState(null);
   const [group, setGroup] = useState(null);
   const [members, setMembers] = useState([]);
   const [friends, setFriends] = useState([]);
   const [joinRequests, setJoinRequests] = useState([]);
+  const [moderationQueue, setModerationQueue] = useState([]);
+  const [transferOwnerId, setTransferOwnerId] = useState("");
+  const [dangerBusy, setDangerBusy] = useState(false);
   const [forumPosts, setForumPosts] = useState([]);
   const [forumReplies, setForumReplies] = useState({});
   const [openTopicId, setOpenTopicId] = useState(null);
@@ -231,6 +240,32 @@ export default function Group() {
     };
   }, [groupId, canManage]);
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadModerationQueue() {
+      if (!canModerate) {
+        setModerationQueue([]);
+        return;
+      }
+
+      try {
+        const reports = await getGroupModerationQueue(groupId);
+        if (active) {
+          setModerationQueue(reports);
+        }
+      } catch (error) {
+        console.error("Could not load moderation queue:", error);
+      }
+    }
+
+    loadModerationQueue();
+
+    return () => {
+      active = false;
+    };
+  }, [groupId, canModerate]);
+
   async function handleJoinRequest(request, accept) {
     try {
       setBusyUserId(request.userId);
@@ -259,6 +294,137 @@ export default function Group() {
       );
     } finally {
       setBusyUserId(null);
+    }
+  }
+
+  async function handleTransferOwnership() {
+    if (!transferOwnerId) {
+      setStatus("Choose a member to receive ownership.");
+      return;
+    }
+
+    const nextOwner = members.find(
+      (member) => member.userId === transferOwnerId
+    );
+
+    const confirmed = window.confirm(
+      `Transfer ownership to ${
+        nextOwner?.profile?.displayName || "this member"
+      }? You will become an admin.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setDangerBusy(true);
+      setStatus("");
+
+      await transferGroupOwnership(
+        groupId,
+        transferOwnerId
+      );
+
+      await refresh();
+
+      setTransferOwnerId("");
+      setStatus("Ownership transferred.");
+    } catch (error) {
+      setStatus(
+        error?.message || "We couldn't transfer ownership."
+      );
+    } finally {
+      setDangerBusy(false);
+    }
+  }
+
+  async function handleDeleteGroup() {
+    const confirmed = window.confirm(
+      `Permanently delete "${group?.name || "this group"}"? This removes members, invitations, join requests, forum posts, and forum replies. This cannot be undone.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const secondConfirmation = window.prompt(
+      'Type DELETE to permanently remove this group.'
+    );
+
+    if (secondConfirmation !== "DELETE") {
+      setStatus("Group deletion canceled.");
+      return;
+    }
+
+    try {
+      setDangerBusy(true);
+      setStatus("");
+
+      await deleteGroupPermanently(groupId);
+
+      navigate("/read/profile?tab=groups");
+    } catch (error) {
+      setStatus(
+        error?.message || "We couldn't delete this group."
+      );
+    } finally {
+      setDangerBusy(false);
+    }
+  }
+
+  async function handleResolveReport(report, resolution) {
+    try {
+      setStatus("");
+
+      await resolveGroupMarginReport(
+        groupId,
+        report.id,
+        resolution
+      );
+
+      setModerationQueue(
+        await getGroupModerationQueue(groupId)
+      );
+
+      setStatus(
+        resolution === "dismissed"
+          ? "Report dismissed."
+          : "Report resolved."
+      );
+    } catch (error) {
+      setStatus(
+        error?.message || "We couldn't update that report."
+      );
+    }
+  }
+
+  async function handleDeleteReportedMargin(report) {
+    if (
+      !window.confirm(
+        "Delete this reported group Margin? This cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setStatus("");
+
+      await deleteReportedGroupMargin(
+        groupId,
+        report
+      );
+
+      setModerationQueue(
+        await getGroupModerationQueue(groupId)
+      );
+
+      setStatus("Reported Margin removed.");
+    } catch (error) {
+      setStatus(
+        error?.message || "We couldn't remove that Margin."
+      );
     }
   }
 
