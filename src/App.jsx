@@ -54,9 +54,11 @@ export default function App() {
           <Route path="/read/about" element={<About />} />
           <Route path="/read/login" element={<Login />} />
 
+          <Route path="/read/chain" element={<Margins />} />
+          <Route path="/read/margins" element={<Navigate to="/read/chain" replace />} />
+
           {/* Compatibility redirects for the former standalone Random Reads routes. */}
           <Route path="/search" element={<Navigate to="/read/search" replace />} />
-          <Route path="/read/margins" element={<Margins />} />
           <Route path="/reader/:id" element={<LegacyReaderRedirect />} />
           <Route path="/journal" element={<Navigate to="/read/journal" replace />} />
           <Route path="/login" element={<Navigate to="/read/login" replace />} />
