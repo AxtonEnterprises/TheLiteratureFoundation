@@ -26,18 +26,21 @@ import {
 import { auth } from "../firebase";
 
 import {
+  deleteReportedGroupChainEntry,
+  getGroupModerationQueue,
+  resolveGroupChainReport
+} from "../services/chainStorage.js";
+
+import {
   getFriends,
   getGroup,
   deleteGroupPermanently,
-  deleteReportedGroupMargin,
   getGroupMembers,
   getGroupJoinRequests,
-  getGroupModerationQueue,
   inviteFriendToGroup,
   leaveGroup,
   removeGroupMember,
   respondToGroupJoinRequest,
-  resolveGroupMarginReport,
   setGroupMemberRole,
   transferGroupOwnership
 } from "../services/storage.js";
@@ -376,7 +379,7 @@ export default function Group() {
     try {
       setStatus("");
 
-      await resolveGroupMarginReport(
+      await resolveGroupChainReport(
         groupId,
         report.id,
         resolution
@@ -398,7 +401,7 @@ export default function Group() {
     }
   }
 
-  async function handleDeleteReportedMargin(report) {
+  async function handleDeleteReportedChainEntry(report) {
     if (
       !window.confirm(
         "Delete this reported group Chain post? This cannot be undone."
@@ -410,7 +413,7 @@ export default function Group() {
     try {
       setStatus("");
 
-      await deleteReportedGroupMargin(
+      await deleteReportedGroupChainEntry(
         groupId,
         report
       );
@@ -419,7 +422,7 @@ export default function Group() {
         await getGroupModerationQueue(groupId)
       );
 
-      setStatus("Reported Chain Post removed.");
+      setStatus("Reported Chain post removed.");
     } catch (error) {
       setStatus(
         error?.message || "We couldn't remove that Chain post."
@@ -1234,22 +1237,22 @@ export default function Group() {
                       </p>
                     )}
 
-                    {report.margin ? (
+                    {report.chainEntry ? (
                       <>
                         <p className="muted">
-                          {report.margin.title || "Untitled"}
-                          {report.margin.author
-                            ? ` · ${report.margin.author}`
+                          {report.chainEntry.title || "Untitled"}
+                          {report.chainEntry.author
+                            ? ` · ${report.chainEntry.author}`
                             : ""}
                         </p>
 
-                        {report.margin.paragraphPreview && (
+                        {report.chainEntry.paragraphPreview && (
                           <blockquote>
-                            {report.margin.paragraphPreview}
+                            {report.chainEntry.paragraphPreview}
                           </blockquote>
                         )}
 
-                        <p>{report.margin.note}</p>
+                        <p>{report.chainEntry.note}</p>
                       </>
                     ) : (
                       <p className="muted">
@@ -1258,12 +1261,12 @@ export default function Group() {
                     )}
 
                     <div className="button-row">
-                      {report.margin && (
+                      {report.chainEntry && (
                         <button
                           type="button"
                           className="button danger"
                           onClick={() =>
-                            handleDeleteReportedMargin(report)
+                            handleDeleteReportedChainEntry(report)
                           }
                         >
                           <Trash2 size={16} />

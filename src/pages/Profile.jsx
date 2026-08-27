@@ -34,12 +34,13 @@ import {
 
 import { auth } from "../firebase";
 
+import { getSavedChainEntries } from "../services/chainStorage.js";
+
 import {
   getJournal,
   getReadingTimeline,
   getReadingTimelineVisibility,
   getSavedBooks,
-  getSavedMargins,
   getUserProfile,
   getFriends,
   getIncomingFriendRequests,
@@ -80,7 +81,7 @@ const PROFILE_TABS = [
     label: "Journal"
   },
   {
-    id: "margins",
+    id: "chain",
     label: "Saved"
   },
   {
@@ -203,8 +204,8 @@ export default function Profile() {
   ] = useState([]);
 
   const [
-    savedMargins,
-    setSavedMargins
+    savedChainEntries,
+    setSavedChainEntries
   ] = useState([]);
 
   const [
@@ -363,7 +364,7 @@ export default function Profile() {
             setReadingTimeline([]);
             setJournalEntries([]);
             setSavedBooks([]);
-            setSavedMargins([]);
+            setSavedChainEntries([]);
             setFriends([]);
             setIncomingRequests([]);
             setOutgoingRequests([]);
@@ -392,7 +393,7 @@ export default function Profile() {
                 getReadingTimeline(),
                 getJournal(),
                 getSavedBooks(),
-                getSavedMargins(),
+                getSavedChainEntries(),
                 getReadingTimelineVisibility()
               ]);
 
@@ -442,7 +443,7 @@ export default function Profile() {
               books
             );
 
-            setSavedMargins(
+            setSavedChainEntries(
               margins
             );
 
@@ -3206,7 +3207,7 @@ export default function Profile() {
         )}
 
 
-        {activeTab === "margins" && (
+        {activeTab === "chain" && (
           <section className="panel profile-panel">
             <div className="section-heading-row">
               <div>
@@ -3232,7 +3233,7 @@ export default function Profile() {
             </div>
 
 
-            {savedMargins.length ===
+            {savedChainEntries.length ===
             0 ? (
               <p className="muted">
                 Chain posts you save will
@@ -3240,7 +3241,7 @@ export default function Profile() {
               </p>
             ) : (
               <div className="public-profile-entry-list">
-                {savedMargins.map(
+                {savedChainEntries.map(
                   (
                     entry,
                     index
@@ -3255,7 +3256,7 @@ export default function Profile() {
                       <article
                         key={
                           entry.id ||
-                          `saved-margin-${index}`
+                          `saved-chain-${index}`
                         }
                         className="public-profile-entry"
                       >
@@ -3342,7 +3343,7 @@ export default function Profile() {
 
                           {entry.sourceEntryId && (
                             <Link
-                              to={`/read/chain#margin-${entry.sourceEntryId}`}
+                              to={`/read/chain#chain-${entry.sourceEntryId}`}
                               className="button secondary"
                             >
                               <MessageCircle

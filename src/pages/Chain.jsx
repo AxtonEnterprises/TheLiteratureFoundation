@@ -22,20 +22,20 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase";
 
 import {
-  getMarginsFeed,
-  getFriendsMarginsFeed,
-  getGroupsMarginsFeed,
-  getSavedMargins,
-  reportMarginEntry,
-  saveMarginEntry,
-  unsaveMarginEntry
-} from "../services/storage.js";
+  getChainFeed,
+  getFriendsChainFeed,
+  getGroupsChainFeed,
+  getSavedChainEntries,
+  reportChainEntry,
+  saveChainEntry,
+  unsaveChainEntry
+} from "../services/chainStorage.js";
 
 import {
-  deleteMarginReply,
-  getMarginReplies,
-  replyToMargin
-} from "../services/marginRepliesPhase3A.js";
+  deleteChainReply,
+  getChainReplies,
+  replyToChain
+} from "../services/chainRepliesPhase3A.js";
 
 import { getProfileAvatar } from "../data/avatars.js";
 import { getGroupAvatar } from "../data/groupAvatars.js";
@@ -57,17 +57,17 @@ function formatDate(value) {
   });
 }
 
-function savedMarginKey(entry) {
+function savedChainKey(entry) {
   return [entry?.userId || "", entry?.id || ""]
     .filter(Boolean)
     .join("_");
 }
 
-export default function Margins() {
+export default function Chain() {
   const [filter, setFilter] = useState("all");
   const [entries, setEntries] = useState([]);
   const [user, setUser] = useState(null);
-  const [savedMargins, setSavedMargins] = useState([]);
+  const [savedChainEntries, setSavedChainEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [openReplyId, setOpenReplyId] = useState(null);
@@ -89,17 +89,17 @@ export default function Margins() {
   useEffect(() => {
     let active = true;
 
-    async function loadMargins() {
+    async function loadChain() {
       try {
         setLoading(true);
         setStatus("");
 
         const feed =
           filter === "friends"
-            ? await getFriendsMarginsFeed()
+            ? await getFriendsChainFeed()
             : filter === "groups"
-              ? await getGroupsMarginsFeed()
-              : await getMarginsFeed();
+              ? await getGroupsChainFeed()
+              : await getChainFeed();
 
         if (active) {
           setEntries(feed);
@@ -128,7 +128,7 @@ export default function Margins() {
       }
     }
 
-    loadMargins();
+    loadChain();
 
     return () => {
       active = false;
@@ -141,15 +141,15 @@ export default function Margins() {
 
     async function loadSaved() {
       if (!user) {
-        setSavedMargins([]);
+        setSavedChainEntries([]);
         return;
       }
 
       try {
-        const saved = await getSavedMargins();
+        const saved = await getSavedChainEntries();
 
         if (active) {
-          setSavedMargins(saved);
+          setSavedChainEntries(saved);
         }
       } catch (error) {
         console.error("Could not load saved Chain posts:", error);
@@ -185,7 +185,7 @@ export default function Margins() {
       const replyPairs = await Promise.all(
         entries.map(async (entry) => {
           try {
-            const replies = await getMarginReplies(entry);
+            const replies = await getChainReplies(entry);
             return [entry.id, replies];
           } catch (error) {
             console.error(
@@ -215,13 +215,13 @@ export default function Margins() {
   const savedKeys = useMemo(
     () =>
       new Set(
-        savedMargins.map((saved) =>
+        savedChainEntries.map((saved) =>
           [saved.sourceUserId, saved.sourceEntryId]
             .filter(Boolean)
             .join("_")
         )
       ),
-    [savedMargins]
+    [savedChainEntries]
   );
 
   function requireLogin() {
@@ -257,7 +257,7 @@ export default function Margins() {
         [entry.id]: true
       }));
 
-      const replies = await getMarginReplies(entry);
+      const replies = await getChainReplies(entry);
 
       setRepliesByEntry((current) => ({
         ...current,
@@ -292,7 +292,7 @@ export default function Margins() {
       setReplying(true);
       setStatus("");
 
-      await replyToMargin(entry, {
+      await replyToChain(entry, {
         note: cleanReply,
         visibility: entry.visibility,
         groupId:
@@ -333,7 +333,7 @@ export default function Margins() {
     try {
       setStatus("");
 
-      await deleteMarginReply(reply);
+      await deleteChainReply(reply);
       await refreshReplies(entry);
 
       setStatus("Reply removed.");
@@ -350,16 +350,16 @@ export default function Margins() {
       return;
     }
 
-    const key = savedMarginKey(entry);
+    const key = savedChainKey(entry);
     const alreadySaved = savedKeys.has(key);
 
     try {
       setStatus("");
 
       if (alreadySaved) {
-        await unsaveMarginEntry(entry);
+        await unsaveChainEntry(entry);
 
-        setSavedMargins((current) =>
+        setSavedChainEntries((current) =>
           current.filter(
             (saved) =>
               [saved.sourceUserId, saved.sourceEntryId]
@@ -372,9 +372,9 @@ export default function Margins() {
         return;
       }
 
-      const saved = await saveMarginEntry(entry);
+      const saved = await saveChainEntry(entry);
 
-      setSavedMargins((current) => [saved, ...current]);
+      setSavedChainEntries((current) => [saved, ...current]);
       setStatus("Chain post saved.");
     } catch (error) {
       console.error("Could not save Chain post:", error);
@@ -383,13 +383,13 @@ export default function Margins() {
   }
 
   async function handleShare(entry) {
-    const marginUrl =
-      `${window.location.origin}/read/chain#margin-${entry.id}`;
+    const chainUrl =
+      `${window.location.origin}/read/chain#chain-${entry.id}`;
 
     const shareData = {
       title: `${entry.title || "The Chain"} | Random Reads`,
       text: entry.note || "Read this Chain post on Random Reads.",
-      url: marginUrl
+      url: chainUrl
     };
 
     try {
@@ -398,7 +398,7 @@ export default function Margins() {
         return;
       }
 
-      await navigator.clipboard.writeText(marginUrl);
+      await navigator.clipboard.writeText(chainUrl);
       setStatus("Chain post link copied.");
     } catch (error) {
       if (error?.name !== "AbortError") {
@@ -439,7 +439,7 @@ export default function Margins() {
       setReporting(true);
       setStatus("");
 
-      await reportMarginEntry(reportEntry, {
+      await reportChainEntry(reportEntry, {
         reason: reportReason,
         details: reportDetails
       });
@@ -513,7 +513,7 @@ export default function Margins() {
                 {entries.map((entry) => {
                   const reader = entry.reader;
                   const avatar = getProfileAvatar(reader?.avatar);
-                  const isSaved = savedKeys.has(savedMarginKey(entry));
+                  const isSaved = savedKeys.has(savedChainKey(entry));
                   const replyOpen = openReplyId === entry.id;
                   const replies = repliesByEntry[entry.id] || [];
                   const isLoadingReplies = Boolean(
@@ -523,7 +523,7 @@ export default function Margins() {
                   return (
                     <article
                       key={entry.id}
-                      id={`margin-${entry.id}`}
+                      id={`chain-${entry.id}`}
                       className="margins-entry"
                     >
                       <div className="margins-reader-row">
@@ -840,13 +840,13 @@ export default function Margins() {
             className="margin-report-modal"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="margin-report-title"
+            aria-labelledby="chain-report-title"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="margin-report-heading">
               <div>
                 <p className="eyebrow">Community Safety</p>
-                <h2 id="margin-report-title">Report Chain Post</h2>
+                <h2 id="chain-report-title">Report Chain Post</h2>
               </div>
 
               <button

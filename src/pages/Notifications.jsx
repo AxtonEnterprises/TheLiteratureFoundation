@@ -52,11 +52,10 @@ function labelFor(item) {
         item.groupName || "your group"
       }.`;
 
-    // Internal notification type remains margin_reply for compatibility.
-    case "margin_reply":
+    case "chain_reply":
       return `${actor} replied to your Chain post.`;
 
-    case "group_margin_reply":
+    case "group_chain_reply":
       return `${actor} replied to your Chain post${group}.`;
 
     case "forum_reply":
@@ -148,12 +147,7 @@ export default function Notifications() {
     }
 
     if (item.targetPath) {
-      const targetPath =
-        item.targetPath.startsWith("/read/margins")
-          ? item.targetPath.replace("/read/margins", "/read/chain")
-          : item.targetPath;
-
-      navigate(targetPath);
+      navigate(item.targetPath);
     }
   }
 
