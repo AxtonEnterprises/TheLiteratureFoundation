@@ -67,7 +67,7 @@ export default function Header() {
 
         <NavLink to="/read/chain" className={navClass}>
           <MessageSquare size={18} />
-          <span>Chain</span>
+          <span>The Chain</span>
         </NavLink>
 
         {!authLoading && !user && (
