@@ -1,3 +1,16 @@
+async function tryBookUrl(url) {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'Random Reads Reader' }
+  });
+
+  if (!response.ok) throw new Error(`Book source returned ${response.status}`);
+
+  const text = await response.text();
+  if (!text || text.trim().length <= 100) throw new Error('Book source was empty');
+
+  return text;
+}
+
 export async function onRequestGet(context) {
   const requestUrl = new URL(context.request.url);
   const id = requestUrl.searchParams.get('id');
@@ -12,29 +25,19 @@ export async function onRequestGet(context) {
     `https://www.gutenberg.org/cache/epub/${id}/pg${id}.txt`
   ];
 
-  for (const bookUrl of possibleUrls) {
-    const response = await fetch(bookUrl, {
+  try {
+    const text = await Promise.any(possibleUrls.map(tryBookUrl));
+
+    return new Response(text, {
+      status: 200,
       headers: {
-        'User-Agent': 'Random Reads Reader'
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'public, max-age=2592000, stale-while-revalidate=604800'
       }
     });
-
-    if (response.ok) {
-      const text = await response.text();
-
-      if (text && text.trim().length > 100) {
-        return new Response(text, {
-          status: 200,
-          headers: {
-            'Content-Type': 'text/plain; charset=utf-8',
-            'Cache-Control': 'public, max-age=86400'
-          }
-        });
-      }
-    }
+  } catch {
+    return new Response(`Could not find readable text for book ID ${id}`, {
+      status: 404
+    });
   }
-
-  return new Response(`Could not find readable text for book ID ${id}`, {
-    status: 404
-  });
 }

@@ -13,20 +13,13 @@ function cleanGutenbergText(rawText) {
     /\*\*\*\s*END OF THE PROJECT GUTENBERG EBOOK[\s\S]*/i
   ];
 
-  for (const pattern of startPatterns) {
-    text = text.replace(pattern, '');
-  }
+  for (const pattern of startPatterns) text = text.replace(pattern, '');
+  for (const pattern of endPatterns) text = text.replace(pattern, '');
 
-  for (const pattern of endPatterns) {
-    text = text.replace(pattern, '');
-  }
-
-  text = text
+  return text
     .replace(/\n{4,}/g, '\n\n\n')
     .replace(/[ \t]+$/gm, '')
     .trim();
-
-  return text;
 }
 
 function splitIntoParagraphs(text) {
@@ -43,18 +36,30 @@ function detectChapters(paragraphs) {
   const chapters = [];
 
   paragraphs.forEach((paragraph, index) => {
-    const shortLine = paragraph.length <= 80;
-    const looksLikeChapter = chapterPattern.test(paragraph);
-
-    if (shortLine && looksLikeChapter) {
-      chapters.push({
-        title: paragraph,
-        paragraphIndex: index
-      });
+    if (paragraph.length <= 80 && chapterPattern.test(paragraph)) {
+      chapters.push({ title: paragraph, paragraphIndex: index });
     }
   });
 
   return chapters;
+}
+
+async function tryBookUrl(url) {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'Random Reads Reader' }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Book source returned ${response.status}`);
+  }
+
+  const text = await response.text();
+
+  if (!text || text.trim().length <= 100) {
+    throw new Error('Book source was empty');
+  }
+
+  return { sourceUrl: url, rawText: text };
 }
 
 async function fetchBookText(id) {
@@ -64,26 +69,11 @@ async function fetchBookText(id) {
     `https://www.gutenberg.org/cache/epub/${id}/pg${id}.txt`
   ];
 
-  for (const url of possibleUrls) {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Random Reads Reader'
-      }
-    });
-
-    if (response.ok) {
-      const text = await response.text();
-
-      if (text && text.trim().length > 100) {
-        return {
-          sourceUrl: url,
-          rawText: text
-        };
-      }
-    }
+  try {
+    return await Promise.any(possibleUrls.map(tryBookUrl));
+  } catch {
+    throw new Error(`Could not find readable text for book ID ${id}`);
   }
-
-  throw new Error(`Could not find readable text for book ID ${id}`);
 }
 
 export async function onRequestGet(context) {
@@ -91,15 +81,10 @@ export async function onRequestGet(context) {
   const id = requestUrl.searchParams.get('id');
 
   if (!id || !/^\d+$/.test(id)) {
-    return new Response(
-      JSON.stringify({ error: 'Missing or invalid book ID' }),
-      {
-        status: 400,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
-    );
+    return new Response(JSON.stringify({ error: 'Missing or invalid book ID' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 
   try {
@@ -121,20 +106,13 @@ export async function onRequestGet(context) {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=86400'
+        'Cache-Control': 'public, max-age=2592000, stale-while-revalidate=604800'
       }
     });
   } catch (error) {
-    return new Response(
-      JSON.stringify({
-        error: error.message
-      }),
-      {
-        status: 404,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
-    );
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }
