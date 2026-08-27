@@ -1370,7 +1370,7 @@ export default function Profile() {
           <p>
             Your reading timeline,
             profile, journal, saved books,
-            and saved Margins are connected
+            and saved Chain posts are connected
             to your Random Reads account.
           </p>
 
@@ -3215,19 +3215,19 @@ export default function Profile() {
                 </p>
 
                 <h2>
-                  Saved Margins
+                  Saved Chain Posts
                 </h2>
               </div>
 
               <Link
-                to="/read/margins"
+                to="/read/chain"
                 className="button secondary"
               >
                 <MessageCircle
                   size={16}
                 />
 
-                The Margins
+                The Chain
               </Link>
             </div>
 
@@ -3235,7 +3235,7 @@ export default function Profile() {
             {savedMargins.length ===
             0 ? (
               <p className="muted">
-                Margins you save will
+                Chain posts you save will
                 appear here.
               </p>
             ) : (
@@ -3262,7 +3262,7 @@ export default function Profile() {
                         <div className="public-entry-heading">
                           <div>
                             <p className="eyebrow">
-                              Saved Margin
+                              Saved Chain Post
                             </p>
 
                             {bookId ? (
@@ -3342,14 +3342,14 @@ export default function Profile() {
 
                           {entry.sourceEntryId && (
                             <Link
-                              to={`/read/margins#margin-${entry.sourceEntryId}`}
+                              to={`/read/chain#margin-${entry.sourceEntryId}`}
                               className="button secondary"
                             >
                               <MessageCircle
                                 size={16}
                               />
 
-                              Open Margin
+                              Open Chain Post
                             </Link>
                           )}
                         </div>

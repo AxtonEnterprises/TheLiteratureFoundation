@@ -521,7 +521,7 @@ export default function PublicProfile() {
                 </p>
 
                 <h2>
-                  From the Margins
+                  From the Chain
                 </h2>
               </div>
             </div>

@@ -401,7 +401,7 @@ export default function Group() {
   async function handleDeleteReportedMargin(report) {
     if (
       !window.confirm(
-        "Delete this reported group Margin? This cannot be undone."
+        "Delete this reported group Chain post? This cannot be undone."
       )
     ) {
       return;
@@ -419,10 +419,10 @@ export default function Group() {
         await getGroupModerationQueue(groupId)
       );
 
-      setStatus("Reported Margin removed.");
+      setStatus("Reported Chain Post removed.");
     } catch (error) {
       setStatus(
-        error?.message || "We couldn't remove that Margin."
+        error?.message || "We couldn't remove that Chain post."
       );
     }
   }
@@ -1197,12 +1197,12 @@ export default function Group() {
           <section className="panel profile-panel">
             <div>
               <p className="eyebrow">Group Moderation</p>
-              <h2>Reported Margins</h2>
+              <h2>Reported Chain Posts</h2>
             </div>
 
             {moderationQueue.length === 0 ? (
               <p className="muted">
-                No open group Margin reports.
+                No open group Chain post reports.
               </p>
             ) : (
               <div className="public-profile-entry-list">
@@ -1253,7 +1253,7 @@ export default function Group() {
                       </>
                     ) : (
                       <p className="muted">
-                        The reported Margin is no longer available.
+                        The reported Chain post is no longer available.
                       </p>
                     )}
 
@@ -1267,7 +1267,7 @@ export default function Group() {
                           }
                         >
                           <Trash2 size={16} />
-                          Delete Margin
+                          Delete Chain Post
                         </button>
                       )}
 

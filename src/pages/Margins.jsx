@@ -106,7 +106,7 @@ export default function Margins() {
         }
       } catch (error) {
         console.error(
-          "Could not load The Margins:",
+          "Could not load The Chain:",
           error
         );
 
@@ -118,7 +118,7 @@ export default function Margins() {
                   error?.message ||
                   "unknown"
                 }`
-              : "We couldn't load The Margins."
+              : "We couldn't load The Chain."
           );
         }
       } finally {
@@ -152,7 +152,7 @@ export default function Margins() {
           setSavedMargins(saved);
         }
       } catch (error) {
-        console.error("Could not load saved Margins:", error);
+        console.error("Could not load saved Chain posts:", error);
       }
     }
 
@@ -189,7 +189,7 @@ export default function Margins() {
             return [entry.id, replies];
           } catch (error) {
             console.error(
-              `Could not load replies for Margin ${entry.id}:`,
+              `Could not load replies for Chain post ${entry.id}:`,
               error
             );
             return [entry.id, []];
@@ -229,7 +229,7 @@ export default function Margins() {
       return true;
     }
 
-    setStatus("Log in to reply, save, or report Margins.");
+    setStatus("Log in to reply, save, or report Chain posts.");
     return false;
   }
 
@@ -265,7 +265,7 @@ export default function Margins() {
       }));
     } catch (error) {
       console.error(
-        `Could not refresh replies for Margin ${entry.id}:`,
+        `Could not refresh replies for Chain post ${entry.id}:`,
         error
       );
     } finally {
@@ -338,7 +338,7 @@ export default function Margins() {
 
       setStatus("Reply removed.");
     } catch (error) {
-      console.error("Could not delete Margin reply:", error);
+      console.error("Could not delete Chain reply:", error);
       setStatus(
         error?.message || "We couldn't remove that reply."
       );
@@ -368,27 +368,27 @@ export default function Margins() {
           )
         );
 
-        setStatus("Removed from saved Margins.");
+        setStatus("Removed from saved Chain posts.");
         return;
       }
 
       const saved = await saveMarginEntry(entry);
 
       setSavedMargins((current) => [saved, ...current]);
-      setStatus("Margin saved.");
+      setStatus("Chain post saved.");
     } catch (error) {
-      console.error("Could not save Margin:", error);
-      setStatus("We couldn't update your saved Margins.");
+      console.error("Could not save Chain post:", error);
+      setStatus("We couldn't update your saved Chain posts.");
     }
   }
 
   async function handleShare(entry) {
     const marginUrl =
-      `${window.location.origin}/read/margins#margin-${entry.id}`;
+      `${window.location.origin}/read/chain#margin-${entry.id}`;
 
     const shareData = {
-      title: `${entry.title || "The Margins"} | Random Reads`,
-      text: entry.note || "Read this Margin on Random Reads.",
+      title: `${entry.title || "The Chain"} | Random Reads`,
+      text: entry.note || "Read this Chain post on Random Reads.",
       url: marginUrl
     };
 
@@ -399,11 +399,11 @@ export default function Margins() {
       }
 
       await navigator.clipboard.writeText(marginUrl);
-      setStatus("Margin link copied.");
+      setStatus("Chain post link copied.");
     } catch (error) {
       if (error?.name !== "AbortError") {
-        console.error("Could not share Margin:", error);
-        setStatus("We couldn't share that Margin.");
+        console.error("Could not share Chain post:", error);
+        setStatus("We couldn't share that Chain post.");
       }
     }
   }
@@ -448,7 +448,7 @@ export default function Margins() {
       setReportDetails("");
       setStatus("Report submitted. Thank you.");
     } catch (error) {
-      console.error("Could not report Margin:", error);
+      console.error("Could not report Chain post:", error);
       setStatus("We couldn't submit your report.");
     } finally {
       setReporting(false);
@@ -458,15 +458,15 @@ export default function Margins() {
   return (
     <main className="page-wrap">
       <SEO
-        title="The Margins | Random Reads"
+        title="The Chain | Random Reads"
         description="See what readers are discovering, questioning, and discussing across classic literature."
-        path="/read/margins"
+        path="/read/chain"
       />
 
       <div className="stack-lg">
         <section className="hero-card small margins-hero">
           <p className="eyebrow">Reader Community</p>
-          <h1>The Margins</h1>
+          <h1>The Chain</h1>
           <p className="muted">
             Notes, questions, observations, and discoveries
             from readers across the library.
@@ -496,14 +496,14 @@ export default function Margins() {
           <>
             {loading && (
               <section className="panel margins-loading">
-                <p className="muted">Loading The Margins...</p>
+                <p className="muted">Loading The Chain...</p>
               </section>
             )}
 
             {!loading && !status && entries.length === 0 && (
               <section className="panel margins-empty">
                 <p className="muted">
-                  Nothing has been written in The Margins yet.
+                  Nothing has been posted to The Chain yet.
                 </p>
               </section>
             )}
@@ -846,7 +846,7 @@ export default function Margins() {
             <div className="margin-report-heading">
               <div>
                 <p className="eyebrow">Community Safety</p>
-                <h2 id="margin-report-title">Report Margin</h2>
+                <h2 id="margin-report-title">Report Chain Post</h2>
               </div>
 
               <button
