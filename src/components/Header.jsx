@@ -65,7 +65,7 @@ export default function Header() {
           <span>Home</span>
         </NavLink>
 
-        <NavLink to="/read/margins" className={navClass}>
+        <NavLink to="/read/chain" className={navClass}>
           <MessageSquare size={18} />
           <span>Chain</span>
         </NavLink>
