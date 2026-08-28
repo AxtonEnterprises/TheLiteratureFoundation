@@ -2,6 +2,7 @@ import {
   BookOpen,
   Heart,
   Library,
+  MessageSquare,
   ShieldCheck,
   Sparkles,
   ExternalLink
@@ -12,27 +13,27 @@ export default function About() {
   return (
     <main className="page-wrap">
       <SEO
-  title="About Random Reads | The Literature Foundation"
-  description="Learn how Random Reads helps people discover, read, save, and reflect on classic public-domain literature."
-  path="/read/about"
-  image="https://theliteraturefoundation.org/branding/random-reads-icon.svg"
-/>
-      <div className="stack-lg">
+        title="About Lit Chain | The Literature Foundation"
+        description="Learn how Lit Chain helps people discover, read, save, discuss, and engage with classic public-domain literature."
+        path="/read/about"
+        image="https://theliteraturefoundation.org/branding/lit-chain-icon.png"
+      />
 
+      <div className="stack-lg">
         <section className="hero-card about-hero">
           <p className="eyebrow">
             A Project of The Literature Foundation
           </p>
 
           <h1>
-            Great books should be easy to discover,
-            read, and remember.
+            Great literature should be easy to discover,
+            read, preserve, and discuss.
           </h1>
 
           <p className="about-lead">
-            Random Reads is a free reading platform built by
-            The Literature Foundation to make classic literature
-            more accessible and encourage lifelong reading.
+            Lit Chain is a free literary platform built by
+            The Literature Foundation for reading, discovery,
+            reflection, and community around the written word.
           </p>
 
           <div className="button-row">
@@ -65,17 +66,15 @@ export default function About() {
             </p>
 
             <p>
-              Random Reads is the Foundation&apos;s discovery
-              and reading platform: a simple way to encounter
-              books you may never have otherwise found, begin
-              reading immediately, and build a personal reading
-              history over time.
+              Lit Chain brings those goals together in one
+              platform: discover books, read them directly,
+              preserve your reading history and notes, and
+              participate in a community built around literature.
             </p>
           </div>
         </section>
 
         <section className="about-feature-grid">
-
           <article className="about-feature">
             <div className="about-icon">
               <Sparkles size={24} />
@@ -98,7 +97,7 @@ export default function About() {
             <h3>Read</h3>
 
             <p>
-              Open books directly in the Random Reads reader
+              Open books directly in the Lit Chain reader
               without subscriptions, paywalls, or unnecessary
               distractions.
             </p>
@@ -112,12 +111,25 @@ export default function About() {
             <h3>Remember</h3>
 
             <p>
-              Save your reading progress and journal your
-              thoughts so books become part of an ongoing
-              personal library rather than a forgotten list.
+              Save your reading progress, notes, and journal
+              entries so books become part of an ongoing
+              personal library.
             </p>
           </article>
 
+          <article className="about-feature">
+            <div className="about-icon">
+              <MessageSquare size={24} />
+            </div>
+
+            <h3>Connect</h3>
+
+            <p>
+              Share ideas through the Chain, participate in
+              groups, and engage with other readers around
+              books and passages.
+            </p>
+          </article>
         </section>
 
         <section className="about-vision">
@@ -131,16 +143,16 @@ export default function About() {
             </h2>
 
             <p>
-              The Literature Foundation is building toward a
-              broader ecosystem for reading, learning, and
-              demonstrating knowledge.
+              Lit Chain is part of a broader effort to preserve
+              literature, deepen literary engagement, and build
+              an enduring record of reading and learning.
             </p>
 
             <p>
-              Future Random Reads features are intended to
-              connect reading journals, reading history,
-              community participation, and Proof of Reading
-              into a meaningful record of literary engagement.
+              Reading history, notes, groups, community
+              participation, and future Proof of Reading tools
+              are designed to work together as a meaningful
+              record of literary engagement.
             </p>
           </div>
 
@@ -175,7 +187,7 @@ export default function About() {
             </h2>
 
             <p>
-              Random Reads is built as part of The Literature
+              Lit Chain is built as part of The Literature
               Foundation&apos;s mission to make literature and
               learning more accessible.
             </p>
@@ -194,7 +206,7 @@ export default function About() {
 
         <footer className="foundation-footer">
           <p>
-            Random Reads is a project of{" "}
+            Lit Chain is a project of{" "}
             <strong>The Literature Foundation.</strong>
           </p>
 
@@ -208,7 +220,6 @@ export default function About() {
             <ExternalLink size={15} />
           </a>
         </footer>
-
       </div>
     </main>
   );
