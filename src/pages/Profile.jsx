@@ -5,11 +5,13 @@ import {
 } from "react";
 
 import {
-  onAuthStateChanged
+  onAuthStateChanged,
+  signOut
 } from "firebase/auth";
 
 import {
   Link,
+  useNavigate,
   useSearchParams
 } from "react-router-dom";
 
@@ -19,43 +21,45 @@ import {
   BookOpen,
   Globe2,
   Lock,
-  MessageCircle,
+  LogOut,
   NotebookPen,
   Pencil,
+  Plus,
   Search,
   User,
   UserCheck,
   UserMinus,
   UserPlus,
-  Plus,
   Users,
   X
 } from "lucide-react";
 
 import { auth } from "../firebase";
 
-import { getSavedChainEntries } from "../services/chainStorage.js";
+import {
+  getSavedChainEntries
+} from "../services/chainStorage.js";
 
 import {
+  cancelFriendRequest,
+  checkUsernameAvailability,
+  createGroup,
+  getFriends,
+  getIncomingFriendRequests,
+  getIncomingGroupInvites,
   getJournal,
+  getMyGroups,
+  getOutgoingFriendRequests,
   getReadingTimeline,
   getReadingTimelineVisibility,
   getSavedBooks,
   getUserProfile,
-  getFriends,
-  getIncomingFriendRequests,
-  getOutgoingFriendRequests,
-  respondToFriendRequest,
   removeFriend,
+  respondToFriendRequest,
+  respondToGroupInvite,
   saveUserProfile,
   searchReaders,
   sendFriendRequest,
-  cancelFriendRequest,
-  checkUsernameAvailability,
-  createGroup,
-  getIncomingGroupInvites,
-  getMyGroups,
-  respondToGroupInvite,
   setReadingProgressVisibility,
   setReadingTimelineVisibility
 } from "../services/storage.js";
@@ -65,49 +69,29 @@ import {
   getProfileAvatar
 } from "../data/avatars.js";
 
-import { getGroupAvatar } from "../data/groupAvatars.js";
+import {
+  getGroupAvatar
+} from "../data/groupAvatars.js";
 
 import ReadersHere from "../components/ReadersHere.jsx";
 import SEO from "../components/SEO.jsx";
 
 
 const PROFILE_TABS = [
-  {
-    id: "timeline",
-    label: "Timeline"
-  },
-  {
-    id: "journal",
-    label: "Journal"
-  },
-  {
-    id: "chain",
-    label: "Saved"
-  },
-  {
-    id: "friends",
-    label: "Friends"
-  },
-  {
-    id: "groups",
-    label: "Groups"
-  }
+  { id: "timeline", label: "Timeline" },
+  { id: "journal", label: "Journal" },
+  { id: "chain", label: "Saved" },
+  { id: "friends", label: "Friends" },
+  { id: "groups", label: "Groups" }
 ];
 
 
 function formatDate(value) {
-  if (!value) {
-    return "";
-  }
+  if (!value) return "";
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return "";
   }
 
@@ -142,8 +126,7 @@ function ProgressBar({
       <div
         className="reading-progress-fill"
         style={{
-          width:
-            `${safePercent}%`
+          width: `${safePercent}%`
         }}
       />
     </div>
@@ -151,7 +134,25 @@ function ProgressBar({
 }
 
 
+function LoadingLine({
+  children = "Loading..."
+}) {
+  return (
+    <p
+      className="muted"
+      style={{
+        padding: "0.75rem 0"
+      }}
+    >
+      {children}
+    </p>
+  );
+}
+
+
 export default function Profile() {
+  const navigate = useNavigate();
+
   const [
     searchParams,
     setSearchParams
@@ -213,7 +214,6 @@ export default function Profile() {
     setDisplayName
   ] = useState("");
 
-
   const [
     username,
     setUsername
@@ -259,7 +259,6 @@ export default function Profile() {
     setStatus
   ] = useState("");
 
-
   const [
     statHelp,
     setStatHelp
@@ -287,7 +286,6 @@ export default function Profile() {
     bookPrivacySaving,
     setBookPrivacySaving
   ] = useState(null);
-
 
   const [
     friends,
@@ -329,14 +327,63 @@ export default function Profile() {
     setSocialStatus
   ] = useState("");
 
+  const [
+    groups,
+    setGroups
+  ] = useState([]);
 
-  const [groups, setGroups] = useState([]);
-  const [groupInvites, setGroupInvites] = useState([]);
-  const [groupStatus, setGroupStatus] = useState("");
-  const [creatingGroup, setCreatingGroup] = useState(false);
-  const [groupName, setGroupName] = useState("");
-  const [groupDescription, setGroupDescription] = useState("");
-  const [groupType, setGroupType] = useState("group");
+  const [
+    groupInvites,
+    setGroupInvites
+  ] = useState([]);
+
+  const [
+    groupStatus,
+    setGroupStatus
+  ] = useState("");
+
+  const [
+    creatingGroup,
+    setCreatingGroup
+  ] = useState(false);
+
+  const [
+    groupName,
+    setGroupName
+  ] = useState("");
+
+  const [
+    groupDescription,
+    setGroupDescription
+  ] = useState("");
+
+  const [
+    groupType,
+    setGroupType
+  ] = useState("group");
+
+  const [
+    loadedSections,
+    setLoadedSections
+  ] = useState({
+    timeline: false,
+    journal: false,
+    savedBooks: false,
+    chain: false,
+    friends: false,
+    groups: false
+  });
+
+  const [
+    sectionLoading,
+    setSectionLoading
+  ] = useState({
+    timeline: false,
+    journal: false,
+    savedBooks: false,
+    chain: false,
+    groups: false
+  });
 
 
   useEffect(() => {
@@ -346,6 +393,11 @@ export default function Profile() {
   }, [searchParams]);
 
 
+  /*
+   * PERFORMANCE:
+   * Only the lightweight profile document blocks first paint.
+   * Everything else loads after the shell is visible.
+   */
   useEffect(() => {
     const unsubscribe =
       onAuthStateChanged(
@@ -369,10 +421,20 @@ export default function Profile() {
             setIncomingRequests([]);
             setOutgoingRequests([]);
             setReaderResults([]);
+            setGroups([]);
+            setGroupInvites([]);
             setSocialStatus("");
+            setGroupStatus("");
             setShowReadingPresence(false);
+            setLoadedSections({
+              timeline: false,
+              journal: false,
+              savedBooks: false,
+              chain: false,
+              friends: false,
+              groups: false
+            });
             setLoading(false);
-
             return;
           }
 
@@ -380,22 +442,8 @@ export default function Profile() {
             setLoading(true);
             setStatus("");
 
-            const [
-              loadedProfile,
-              timeline,
-              journal,
-              books,
-              margins,
-              timelineVisibility
-            ] =
-              await Promise.all([
-                getUserProfile(),
-                getReadingTimeline(),
-                getJournal(),
-                getSavedBooks(),
-                getSavedChainEntries(),
-                getReadingTimelineVisibility()
-              ]);
+            const loadedProfile =
+              await getUserProfile();
 
             setProfile(
               loadedProfile
@@ -430,27 +478,6 @@ export default function Profile() {
                 ?.showReadingPresence ===
               true
             );
-
-            setReadingTimeline(
-              timeline
-            );
-
-            setJournalEntries(
-              journal
-            );
-
-            setSavedBooks(
-              books
-            );
-
-            setSavedChainEntries(
-              margins
-            );
-
-            setTimelinePublic(
-              timelineVisibility ===
-              "public"
-            );
           } catch (error) {
             console.error(
               "Could not load profile:",
@@ -471,129 +498,279 @@ export default function Profile() {
 
 
   /*
-   * Friends are deliberately loaded separately from the core
-   * reader profile. If a friendship query fails, the timeline,
-   * journal, saved items, avatar, and profile still load.
+   * Lazy-load each profile area only when it is actually needed.
    */
   useEffect(() => {
     if (!user) {
-      return;
+      return undefined;
     }
 
     let active = true;
 
-    async function loadSocial() {
+    async function loadSection() {
       try {
-        setSocialLoading(true);
-        setSocialStatus("");
+        if (
+          activeTab === "timeline" &&
+          !loadedSections.timeline
+        ) {
+          setSectionLoading(
+            (current) => ({
+              ...current,
+              timeline: true
+            })
+          );
 
-        const [
-          loadedFriends,
-          loadedIncoming,
-          loadedOutgoing
-        ] =
-          await Promise.all([
-            getFriends(),
-            getIncomingFriendRequests(),
-            getOutgoingFriendRequests()
-          ]);
+          const [
+            timeline,
+            timelineVisibility
+          ] =
+            await Promise.all([
+              getReadingTimeline(),
+              getReadingTimelineVisibility()
+            ]);
 
-        if (!active) {
-          return;
-        }
+          if (!active) return;
 
-        setFriends(
-          loadedFriends
-        );
+          setReadingTimeline(
+            timeline
+          );
 
-        setIncomingRequests(
-          loadedIncoming
-        );
+          setTimelinePublic(
+            timelineVisibility ===
+            "public"
+          );
 
-        setOutgoingRequests(
-          loadedOutgoing
-        );
-      } catch (error) {
-        console.error(
-          "Could not load Friends:",
-          error
-        );
-
-        if (active) {
-          setFriends([]);
-          setIncomingRequests([]);
-          setOutgoingRequests([]);
-
-          setSocialStatus(
-            `Friends load error: ${
-              error?.code ||
-              error?.message ||
-              "unknown"
-            }`
+          setLoadedSections(
+            (current) => ({
+              ...current,
+              timeline: true
+            })
           );
         }
-      } finally {
-        if (active) {
-          setSocialLoading(false);
-        }
-      }
-    }
 
-    loadSocial();
+        if (
+          activeTab === "timeline" &&
+          timelineFilter === "saved" &&
+          !loadedSections.savedBooks
+        ) {
+          setSectionLoading(
+            (current) => ({
+              ...current,
+              savedBooks: true
+            })
+          );
 
-    return () => {
-      active = false;
-    };
-  }, [
-    user
-  ]);
+          const books =
+            await getSavedBooks();
 
+          if (!active) return;
 
-  useEffect(() => {
-    if (!user) {
-      return;
-    }
+          setSavedBooks(
+            books
+          );
 
-    let active = true;
-
-    async function loadGroups() {
-      try {
-        const [
-          loadedGroups,
-          loadedInvites
-        ] = await Promise.all([
-          getMyGroups(),
-          getIncomingGroupInvites()
-        ]);
-
-        if (!active) {
-          return;
+          setLoadedSections(
+            (current) => ({
+              ...current,
+              savedBooks: true
+            })
+          );
         }
 
-        setGroups(loadedGroups);
-        setGroupInvites(loadedInvites);
+        if (
+          activeTab === "journal" &&
+          !loadedSections.journal
+        ) {
+          setSectionLoading(
+            (current) => ({
+              ...current,
+              journal: true
+            })
+          );
+
+          const journal =
+            await getJournal();
+
+          if (!active) return;
+
+          setJournalEntries(
+            journal
+          );
+
+          setLoadedSections(
+            (current) => ({
+              ...current,
+              journal: true
+            })
+          );
+        }
+
+        if (
+          activeTab === "chain" &&
+          !loadedSections.chain
+        ) {
+          setSectionLoading(
+            (current) => ({
+              ...current,
+              chain: true
+            })
+          );
+
+          const chainEntries =
+            await getSavedChainEntries();
+
+          if (!active) return;
+
+          setSavedChainEntries(
+            chainEntries
+          );
+
+          setLoadedSections(
+            (current) => ({
+              ...current,
+              chain: true
+            })
+          );
+        }
+
+        if (
+          activeTab === "friends" &&
+          !loadedSections.friends
+        ) {
+          setSocialLoading(true);
+          setSocialStatus("");
+
+          const [
+            loadedFriends,
+            loadedIncoming,
+            loadedOutgoing
+          ] =
+            await Promise.all([
+              getFriends(),
+              getIncomingFriendRequests(),
+              getOutgoingFriendRequests()
+            ]);
+
+          if (!active) return;
+
+          setFriends(
+            loadedFriends
+          );
+
+          setIncomingRequests(
+            loadedIncoming
+          );
+
+          setOutgoingRequests(
+            loadedOutgoing
+          );
+
+          setLoadedSections(
+            (current) => ({
+              ...current,
+              friends: true
+            })
+          );
+        }
+
+        if (
+          activeTab === "groups" &&
+          !loadedSections.groups
+        ) {
+          setSectionLoading(
+            (current) => ({
+              ...current,
+              groups: true
+            })
+          );
+
+          const [
+            loadedGroups,
+            loadedInvites
+          ] =
+            await Promise.all([
+              getMyGroups(),
+              getIncomingGroupInvites()
+            ]);
+
+          if (!active) return;
+
+          setGroups(
+            loadedGroups
+          );
+
+          setGroupInvites(
+            loadedInvites
+          );
+
+          setLoadedSections(
+            (current) => ({
+              ...current,
+              groups: true
+            })
+          );
+        }
       } catch (error) {
         console.error(
-          "Could not load groups:",
+          "Could not lazy-load profile section:",
           error
         );
 
-        if (active) {
+        if (
+          activeTab === "friends"
+        ) {
+          setSocialStatus(
+            error?.message ||
+            error?.code ||
+            "We couldn't load Friends."
+          );
+        } else if (
+          activeTab === "groups"
+        ) {
           setGroupStatus(
             error?.message ||
             error?.code ||
             "We couldn't load groups."
           );
+        } else {
+          setStatus(
+            "We couldn't load this profile section."
+          );
+        }
+      } finally {
+        if (active) {
+          setSocialLoading(false);
+
+          setSectionLoading(
+            (current) => ({
+              ...current,
+              timeline: false,
+              journal: false,
+              savedBooks: false,
+              chain: false,
+              groups: false
+            })
+          );
         }
       }
     }
 
-    loadGroups();
+    loadSection();
 
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [
+    user,
+    activeTab,
+    timelineFilter,
+    loadedSections.timeline,
+    loadedSections.journal,
+    loadedSections.savedBooks,
+    loadedSections.chain,
+    loadedSections.friends,
+    loadedSections.groups
+  ]);
 
 
   const journalCountsByBook =
@@ -715,20 +892,16 @@ export default function Profile() {
                 ...book,
                 ...timelineItem,
                 bookId,
-                isSaved:
-                  true
+                isSaved: true
               };
             }
 
             return {
               ...book,
               bookId,
-              percentComplete:
-                0,
-              savedOnly:
-                true,
-              isSaved:
-                true
+              percentComplete: 0,
+              savedOnly: true,
+              isSaved: true
             };
           }
         ),
@@ -798,16 +971,14 @@ export default function Profile() {
 
       setSearchParams({
         tab: "timeline",
-        filter:
-          nextFilter
+        filter: nextFilter
       });
 
       return;
     }
 
     setSearchParams({
-      tab:
-        tabId
+      tab: tabId
     });
   }
 
@@ -821,8 +992,7 @@ export default function Profile() {
 
     setSearchParams({
       tab: "timeline",
-      filter:
-        filterId
+      filter: filterId
     });
   }
 
@@ -916,8 +1086,7 @@ export default function Profile() {
                 record.bookId ||
                 record.id ||
                 ""
-              ) ===
-              bookId
+              ) === bookId
                 ? {
                     ...record,
                     visibility:
@@ -969,6 +1138,13 @@ export default function Profile() {
 
       setOutgoingRequests(
         loadedOutgoing
+      );
+
+      setLoadedSections(
+        (current) => ({
+          ...current,
+          friends: true
+        })
       );
     } catch (error) {
       console.error(
@@ -1027,25 +1203,35 @@ export default function Profile() {
       setSocialBusy(true);
       setSocialStatus("");
 
-      if (action === "send") {
+      if (
+        action === "send"
+      ) {
         await sendFriendRequest(
           otherUserId
         );
-      } else if (action === "cancel") {
+      } else if (
+        action === "cancel"
+      ) {
         await cancelFriendRequest(
           otherUserId
         );
-      } else if (action === "accept") {
+      } else if (
+        action === "accept"
+      ) {
         await respondToFriendRequest(
           otherUserId,
           true
         );
-      } else if (action === "decline") {
+      } else if (
+        action === "decline"
+      ) {
         await respondToFriendRequest(
           otherUserId,
           false
         );
-      } else if (action === "remove") {
+      } else if (
+        action === "remove"
+      ) {
         await removeFriend(
           otherUserId
         );
@@ -1053,7 +1239,9 @@ export default function Profile() {
 
       await refreshSocial();
 
-      if (readerSearch.trim()) {
+      if (
+        readerSearch.trim()
+      ) {
         setReaderResults(
           await searchReaders(
             readerSearch
@@ -1079,22 +1267,36 @@ export default function Profile() {
   }
 
 
-
   async function refreshGroups() {
     const [
       loadedGroups,
       loadedInvites
-    ] = await Promise.all([
-      getMyGroups(),
-      getIncomingGroupInvites()
-    ]);
+    ] =
+      await Promise.all([
+        getMyGroups(),
+        getIncomingGroupInvites()
+      ]);
 
-    setGroups(loadedGroups);
-    setGroupInvites(loadedInvites);
+    setGroups(
+      loadedGroups
+    );
+
+    setGroupInvites(
+      loadedInvites
+    );
+
+    setLoadedSections(
+      (current) => ({
+        ...current,
+        groups: true
+      })
+    );
   }
 
 
-  async function handleCreateGroup(event) {
+  async function handleCreateGroup(
+    event
+  ) {
     event.preventDefault();
 
     try {
@@ -1166,9 +1368,7 @@ export default function Profile() {
 
 
   function openEditProfile() {
-    setEditingProfile(
-      true
-    );
+    setEditingProfile(true);
 
     setSearchParams({
       tab: "timeline",
@@ -1178,9 +1378,7 @@ export default function Profile() {
 
 
   function closeEditProfile() {
-    setEditingProfile(
-      false
-    );
+    setEditingProfile(false);
 
     setSearchParams({
       tab: "timeline"
@@ -1189,26 +1387,27 @@ export default function Profile() {
     setStatus("");
 
     setDisplayName(
-      profile
-        ?.displayName ||
+      profile?.displayName ||
+      ""
+    );
+
+    setUsername(
+      profile?.username ||
       ""
     );
 
     setAbout(
-      profile
-        ?.about ||
+      profile?.about ||
       ""
     );
 
     setSelectedAvatar(
-      profile
-        ?.avatar ||
+      profile?.avatar ||
       ""
     );
 
     setShowReadingPresence(
-      profile
-        ?.showReadingPresence ===
+      profile?.showReadingPresence ===
       true
     );
   }
@@ -1235,9 +1434,7 @@ export default function Profile() {
     }
 
     try {
-      setCheckingUsername(
-        true
-      );
+      setCheckingUsername(true);
 
       const result =
         await checkUsernameAvailability(
@@ -1263,9 +1460,7 @@ export default function Profile() {
         "We couldn't check that username."
       );
     } finally {
-      setCheckingUsername(
-        false
-      );
+      setCheckingUsername(false);
     }
   }
 
@@ -1284,8 +1479,7 @@ export default function Profile() {
           displayName,
           username,
           about,
-          avatar:
-            selectedAvatar,
+          avatar: selectedAvatar,
           showReadingPresence
         });
 
@@ -1297,9 +1491,7 @@ export default function Profile() {
         "Profile saved."
       );
 
-      setEditingProfile(
-        false
-      );
+      setEditingProfile(false);
 
       setSearchParams({
         tab: "timeline"
@@ -1325,12 +1517,34 @@ export default function Profile() {
   }
 
 
+  async function handleLogout() {
+    try {
+      setStatus("");
+
+      await signOut(auth);
+
+      navigate(
+        "/read"
+      );
+    } catch (error) {
+      console.error(
+        "Logout error:",
+        error
+      );
+
+      setStatus(
+        "We couldn't log you out."
+      );
+    }
+  }
+
+
   if (loading) {
     return (
       <main className="page-wrap">
         <SEO
-          title="Profile | Random Reads"
-          description="Your Random Reads profile."
+          title="Profile | Lit Chain"
+          description="Your Lit Chain profile."
           path="/read/profile"
           noindex
         />
@@ -1353,8 +1567,8 @@ export default function Profile() {
     return (
       <main className="page-wrap">
         <SEO
-          title="Profile | Random Reads"
-          description="Your Random Reads profile."
+          title="Profile | Lit Chain"
+          description="Your Lit Chain profile."
           path="/read/profile"
           noindex
         />
@@ -1370,9 +1584,10 @@ export default function Profile() {
 
           <p>
             Your reading timeline,
-            profile, journal, saved books,
-            and saved Chain posts are connected
-            to your Random Reads account.
+            journal, saved books,
+            saved Chain posts, friends,
+            and groups are connected
+            to your Lit Chain account.
           </p>
 
           <Link
@@ -1390,8 +1605,8 @@ export default function Profile() {
   return (
     <main className="page-wrap">
       <SEO
-        title="Profile | Random Reads"
-        description="Your Random Reads reading profile."
+        title="Profile | Lit Chain"
+        description="Your Lit Chain reading profile."
         path="/read/profile"
         noindex
       />
@@ -1472,11 +1687,11 @@ export default function Profile() {
                   cursor: "pointer"
                 }}
               >
-                <BookOpen
-                  size={17}
-                />
+                <BookOpen size={17} />
                 <strong>
-                  {readingTimeline.length}
+                  {loadedSections.timeline
+                    ? readingTimeline.length
+                    : "—"}
                 </strong>
               </button>
 
@@ -1505,11 +1720,11 @@ export default function Profile() {
                   cursor: "pointer"
                 }}
               >
-                <Book
-                  size={17}
-                />
+                <Book size={17} />
                 <strong>
-                  {completedBooks}
+                  {loadedSections.timeline
+                    ? completedBooks
+                    : "—"}
                 </strong>
               </button>
 
@@ -1538,11 +1753,11 @@ export default function Profile() {
                   cursor: "pointer"
                 }}
               >
-                <NotebookPen
-                  size={17}
-                />
+                <NotebookPen size={17} />
                 <strong>
-                  {journalEntries.length}
+                  {loadedSections.journal
+                    ? journalEntries.length
+                    : "—"}
                 </strong>
               </button>
             </div>
@@ -1564,8 +1779,7 @@ export default function Profile() {
                   )
                 }
               >
-                {readingTimeline.length} books
-                in your reading timeline
+                Open reading timeline
               </button>
             )}
 
@@ -1586,8 +1800,7 @@ export default function Profile() {
                   )
                 }
               >
-                {completedBooks} completed
-                books
+                Open completed books
               </button>
             )}
 
@@ -1607,8 +1820,7 @@ export default function Profile() {
                   )
                 }
               >
-                {journalEntries.length}
-                journal entries
+                Open journal
               </button>
             )}
           </div>
@@ -1665,9 +1877,7 @@ export default function Profile() {
                 marginTop: "0.45rem"
               }}
             >
-              <Pencil
-                size={16}
-              />
+              <Pencil size={16} />
               Edit Profile
             </button>
 
@@ -1683,6 +1893,7 @@ export default function Profile() {
             )}
           </div>
         </section>
+
 
         <nav
           aria-label="Profile sections"
@@ -1749,262 +1960,275 @@ export default function Profile() {
 
 
         {editingProfile && (
-              <section className="panel profile-panel">
-                <div className="section-heading-row">
-                  <div>
-                    <p className="eyebrow">
-                      Account
-                    </p>
+          <section className="panel profile-panel">
+            <div className="section-heading-row">
+              <div>
+                <p className="eyebrow">
+                  Account
+                </p>
 
-                    <h2>
-                      Edit Profile
-                    </h2>
-                  </div>
+                <h2>
+                  Edit Profile
+                </h2>
+              </div>
 
-                  <button
-                    type="button"
-                    className="button secondary"
-                    onClick={
-                      closeEditProfile
-                    }
+              <button
+                type="button"
+                className="button secondary"
+                onClick={
+                  closeEditProfile
+                }
+              >
+                <X size={16} />
+                Cancel
+              </button>
+            </div>
+
+            <form
+              className="profile-form"
+              onSubmit={
+                handleSaveProfile
+              }
+            >
+              <label>
+                Username
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.45rem"
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      fontWeight: 700
+                    }}
                   >
-                    <X
-                      size={16}
-                    />
+                    @
+                  </span>
 
-                    Cancel
-                  </button>
+                  <input
+                    type="text"
+                    value={
+                      username
+                    }
+                    onChange={(
+                      event
+                    ) => {
+                      setUsername(
+                        event.target.value
+                          .replace(
+                            /^@+/,
+                            ""
+                          )
+                          .toLowerCase()
+                      );
+
+                      setUsernameStatus("");
+                    }}
+                    onBlur={
+                      handleUsernameCheck
+                    }
+                    placeholder="your_username"
+                    minLength={3}
+                    maxLength={24}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
                 </div>
 
+                <small className="muted">
+                  Unique. 3–24 characters.
+                  Letters, numbers, and underscores only.
+                </small>
 
-                <form
-                  className="profile-form"
-                  onSubmit={
-                    handleSaveProfile
+                {checkingUsername && (
+                  <small className="muted">
+                    Checking availability...
+                  </small>
+                )}
+
+                {usernameStatus && (
+                  <small className="status">
+                    {usernameStatus}
+                  </small>
+                )}
+              </label>
+
+
+              <label>
+                Display name
+
+                <input
+                  type="text"
+                  value={
+                    displayName
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setDisplayName(
+                      event.target.value
+                    )
+                  }
+                  maxLength={80}
+                />
+              </label>
+
+
+              <div className="profile-avatar-picker">
+                <div>
+                  <p className="profile-field-label">
+                    Choose your avatar
+                  </p>
+
+                  <p className="muted">
+                    Select a classic author
+                    or literary character.
+                  </p>
+                </div>
+
+                <div className="profile-avatar-grid">
+                  {PROFILE_AVATARS.map(
+                    (
+                      avatar
+                    ) => {
+                      const selected =
+                        selectedAvatar ===
+                        avatar.id;
+
+                      return (
+                        <button
+                          key={
+                            avatar.id
+                          }
+                          type="button"
+                          className={
+                            selected
+                              ? "profile-avatar-option selected"
+                              : "profile-avatar-option"
+                          }
+                          onClick={() =>
+                            setSelectedAvatar(
+                              avatar.id
+                            )
+                          }
+                          aria-pressed={
+                            selected
+                          }
+                          aria-label={`Choose ${avatar.name}`}
+                        >
+                          <img
+                            src={
+                              avatar.image
+                            }
+                            alt=""
+                          />
+
+                          <span>
+                            {avatar.name}
+                          </span>
+                        </button>
+                      );
+                    }
+                  )}
+                </div>
+              </div>
+
+
+              <label>
+                About me
+
+                <textarea
+                  value={
+                    about
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setAbout(
+                      event.target.value
+                    )
+                  }
+                  maxLength={500}
+                  rows={6}
+                  placeholder="Tell other readers a little about yourself..."
+                />
+              </label>
+
+              <small className="muted">
+                {about.length}/500
+              </small>
+
+
+              <div className="profile-presence-setting">
+                <label className="profile-presence-toggle">
+                  <input
+                    type="checkbox"
+                    checked={
+                      showReadingPresence
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setShowReadingPresence(
+                        event.target.checked
+                      )
+                    }
+                  />
+
+                  <span>
+                    Show when I'm reading
+                  </span>
+                </label>
+
+                <p className="muted">
+                  When enabled, other signed-in
+                  readers may see your avatar on
+                  books you're actively reading.
+                </p>
+              </div>
+
+
+              <div
+                className="button-row"
+                style={{
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                  flexWrap: "wrap"
+                }}
+              >
+                <button
+                  type="submit"
+                  className="button primary"
+                  disabled={
+                    saving
                   }
                 >
-                  <label>
-                    Username
+                  {saving
+                    ? "Saving..."
+                    : "Save Profile"}
+                </button>
 
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.45rem"
-                      }}
-                    >
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          fontWeight: 700
-                        }}
-                      >
-                        @
-                      </span>
-
-                      <input
-                        type="text"
-                        value={
-                          username
-                        }
-                        onChange={(
-                          event
-                        ) => {
-                          setUsername(
-                            event.target.value
-                              .replace(
-                                /^@+/,
-                                ""
-                              )
-                              .toLowerCase()
-                          );
-
-                          setUsernameStatus(
-                            ""
-                          );
-                        }}
-                        onBlur={
-                          handleUsernameCheck
-                        }
-                        placeholder="your_username"
-                        minLength={3}
-                        maxLength={24}
-                        autoCapitalize="none"
-                        autoCorrect="off"
-                        spellCheck={false}
-                      />
-                    </div>
-
-                    <small className="muted">
-                      Unique. 3–24 characters.
-                      Letters, numbers, and underscores only.
-                    </small>
-
-                    {checkingUsername && (
-                      <small className="muted">
-                        Checking availability...
-                      </small>
-                    )}
-
-                    {usernameStatus && (
-                      <small className="status">
-                        {usernameStatus}
-                      </small>
-                    )}
-                  </label>
-
-
-                  <label>
-                    Display name
-
-                    <input
-                      type="text"
-                      value={
-                        displayName
-                      }
-                      onChange={(
-                        event
-                      ) =>
-                        setDisplayName(
-                          event.target.value
-                        )
-                      }
-                      maxLength={80}
-                    />
-                  </label>
-
-
-                  <div className="profile-avatar-picker">
-                    <div>
-                      <p className="profile-field-label">
-                        Choose your avatar
-                      </p>
-
-                      <p className="muted">
-                        Select a classic author
-                        or literary character.
-                      </p>
-                    </div>
-
-                    <div className="profile-avatar-grid">
-                      {PROFILE_AVATARS.map(
-                        (
-                          avatar
-                        ) => {
-                          const selected =
-                            selectedAvatar ===
-                            avatar.id;
-
-                          return (
-                            <button
-                              key={
-                                avatar.id
-                              }
-                              type="button"
-                              className={
-                                selected
-                                  ? "profile-avatar-option selected"
-                                  : "profile-avatar-option"
-                              }
-                              onClick={() =>
-                                setSelectedAvatar(
-                                  avatar.id
-                                )
-                              }
-                              aria-pressed={
-                                selected
-                              }
-                              aria-label={`Choose ${avatar.name}`}
-                            >
-                              <img
-                                src={
-                                  avatar.image
-                                }
-                                alt=""
-                              />
-
-                              <span>
-                                {avatar.name}
-                              </span>
-                            </button>
-                          );
-                        }
-                      )}
-                    </div>
-                  </div>
-
-
-                  <label>
-                    About me
-
-                    <textarea
-                      value={
-                        about
-                      }
-                      onChange={(
-                        event
-                      ) =>
-                        setAbout(
-                          event.target.value
-                        )
-                      }
-                      maxLength={500}
-                      rows={6}
-                      placeholder="Tell other readers a little about yourself..."
-                    />
-                  </label>
-
-
-                  <small className="muted">
-                    {about.length}/500
-                  </small>
-
-
-                  <div className="profile-presence-setting">
-                    <label className="profile-presence-toggle">
-                      <input
-                        type="checkbox"
-                        checked={
-                          showReadingPresence
-                        }
-                        onChange={(
-                          event
-                        ) =>
-                          setShowReadingPresence(
-                            event.target.checked
-                          )
-                        }
-                      />
-
-                      <span>
-                        Show when I'm reading
-                      </span>
-                    </label>
-
-                    <p className="muted">
-                      When enabled, other signed-in
-                      readers may see your avatar on
-                      books you're actively reading.
-                    </p>
-                  </div>
-
-
-                  <div className="button-row">
-                    <button
-                      type="submit"
-                      className="button primary"
-                      disabled={
-                        saving
-                      }
-                    >
-                      {saving
-                        ? "Saving..."
-                        : "Save Profile"}
-                    </button>
-                  </div>
-                </form>
-              </section>
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={
+                    handleLogout
+                  }
+                >
+                  <LogOut size={16} />
+                  Log Out
+                </button>
+              </div>
+            </form>
+          </section>
         )}
+
 
         {activeTab === "timeline" && (
           <section className="panel profile-panel">
@@ -2030,7 +2254,8 @@ export default function Profile() {
                   handleTimelineVisibility
                 }
                 disabled={
-                  privacySaving
+                  privacySaving ||
+                  !loadedSections.timeline
                 }
                 title={
                   timelinePublic
@@ -2039,13 +2264,9 @@ export default function Profile() {
                 }
               >
                 {timelinePublic ? (
-                  <Globe2
-                    size={16}
-                  />
+                  <Globe2 size={16} />
                 ) : (
-                  <Lock
-                    size={16}
-                  />
+                  <Lock size={16} />
                 )}
 
                 {privacySaving
@@ -2063,313 +2284,306 @@ export default function Profile() {
               kept private.
             </p>
 
-            <div
-              style={{
-                display: "flex",
-                gap: "0.45rem",
-                overflowX: "auto",
-                paddingBottom: "0.35rem",
-                margin: "1rem 0"
-              }}
-            >
-              {[
-                [
-                  "all",
-                  "All",
-                  readingTimeline.length
-                ],
-                [
-                  "reading",
-                  "Reading",
-                  readingTimeline.filter(
-                    (item) =>
-                      Number(
-                        item.percentComplete
-                      ) < 100
-                  ).length
-                ],
-                [
-                  "completed",
-                  "Completed",
-                  completedBooks
-                ],
-                [
-                  "saved",
-                  "Saved",
-                  savedBooks.length
-                ]
-              ].map(
-                ([
-                  filterId,
-                  label,
-                  count
-                ]) => (
-                  <button
-                    key={
-                      filterId
-                    }
-                    type="button"
-                    className={
-                      timelineFilter ===
-                      filterId
-                        ? "margins-filter active"
-                        : "margins-filter"
-                    }
-                    style={{
-                      flex:
-                        "0 0 auto",
-                      whiteSpace:
-                        "nowrap"
-                    }}
-                    onClick={() =>
-                      changeTimelineFilter(
-                        filterId
-                      )
-                    }
-                  >
-                    {label} ({count})
-                  </button>
-                )
-              )}
-            </div>
+            {sectionLoading.timeline && (
+              <LoadingLine>
+                Loading timeline...
+              </LoadingLine>
+            )}
 
-            {filteredTimeline.length ===
-            0 ? (
-              <p className="muted">
-                {timelineFilter ===
-                "saved"
-                  ? "Books you save will appear here."
-                  : timelineFilter ===
-                    "completed"
-                    ? "Completed books will appear here."
-                    : "Your reading activity will appear here."}
-              </p>
-            ) : (
-              <div className="reading-timeline">
-                {filteredTimeline.map(
-                  (
-                    item,
-                    index
-                  ) => {
-                    const percent =
-                      Math.min(
-                        Math.max(
+            {loadedSections.timeline && (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "0.45rem",
+                    overflowX: "auto",
+                    paddingBottom: "0.35rem",
+                    margin: "1rem 0"
+                  }}
+                >
+                  {[
+                    [
+                      "all",
+                      "All",
+                      readingTimeline.length
+                    ],
+                    [
+                      "reading",
+                      "Reading",
+                      readingTimeline.filter(
+                        (item) =>
                           Number(
                             item.percentComplete
-                          ) || 0,
-                          0
-                        ),
-                        100
-                      );
-
-                    const bookId =
-                      String(
-                        item.bookId ||
-                        item.id ||
-                        ""
-                      );
-
-                    const noteCount =
-                      journalCountsByBook.get(
-                        bookId
-                      ) || 0;
-
-                    const isSaved =
-                      item.isSaved ===
-                        true ||
-                      savedBookIds.has(
-                        bookId
-                      );
-
-                    const visibility =
-                      item.visibility ===
-                      "public"
-                        ? "public"
-                        : "private";
-
-                    return (
-                      <article
-                        key={`reading-${bookId || index}`}
-                        className="timeline-book"
+                          ) < 100
+                      ).length
+                    ],
+                    [
+                      "completed",
+                      "Completed",
+                      completedBooks
+                    ],
+                    [
+                      "saved",
+                      "Saved",
+                      loadedSections.savedBooks
+                        ? savedBooks.length
+                        : "—"
+                    ]
+                  ].map(
+                    ([
+                      filterId,
+                      label,
+                      count
+                    ]) => (
+                      <button
+                        key={
+                          filterId
+                        }
+                        type="button"
+                        className={
+                          timelineFilter ===
+                          filterId
+                            ? "margins-filter active"
+                            : "margins-filter"
+                        }
+                        style={{
+                          flex: "0 0 auto",
+                          whiteSpace: "nowrap"
+                        }}
+                        onClick={() =>
+                          changeTimelineFilter(
+                            filterId
+                          )
+                        }
                       >
-                        <Link
-                          to={`/read/reader/${bookId}`}
-                          className="timeline-cover"
-                        >
-                          {item.image ||
-                          item.cover ? (
-                            <img
-                              src={
-                                item.image ||
-                                item.cover
-                              }
-                              alt={`Cover of ${
-                                item.title ||
-                                "book"
-                              }`}
-                            />
-                          ) : (
-                            <div className="timeline-cover-placeholder">
-                              <BookOpen
-                                size={24}
-                              />
-                            </div>
-                          )}
-                        </Link>
+                        {label} ({count})
+                      </button>
+                    )
+                  )}
+                </div>
 
-                        <div className="timeline-book-content">
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: "0.75rem",
-                              flexWrap: "wrap"
-                            }}
+                {timelineFilter === "saved" &&
+                sectionLoading.savedBooks ? (
+                  <LoadingLine>
+                    Loading saved books...
+                  </LoadingLine>
+                ) : filteredTimeline.length === 0 ? (
+                  <p className="muted">
+                    {timelineFilter === "saved"
+                      ? "Books you save will appear here."
+                      : timelineFilter === "completed"
+                        ? "Completed books will appear here."
+                        : "Your reading activity will appear here."}
+                  </p>
+                ) : (
+                  <div className="reading-timeline">
+                    {filteredTimeline.map(
+                      (
+                        item,
+                        index
+                      ) => {
+                        const percent =
+                          Math.min(
+                            Math.max(
+                              Number(
+                                item.percentComplete
+                              ) || 0,
+                              0
+                            ),
+                            100
+                          );
+
+                        const bookId =
+                          String(
+                            item.bookId ||
+                            item.id ||
+                            ""
+                          );
+
+                        const noteCount =
+                          journalCountsByBook.get(
+                            bookId
+                          ) || 0;
+
+                        const isSaved =
+                          item.isSaved === true ||
+                          savedBookIds.has(
+                            bookId
+                          );
+
+                        const visibility =
+                          item.visibility ===
+                          "public"
+                            ? "public"
+                            : "private";
+
+                        return (
+                          <article
+                            key={`reading-${bookId || index}`}
+                            className="timeline-book"
                           >
-                            <p className="timeline-event-label">
-                              {item.savedOnly
-                                ? "Saved Book"
-                                : percent >=
-                                  100
-                                  ? "Finished Reading"
-                                  : "Reading"}
-                            </p>
-
-                            {!item.savedOnly && (
-                              <button
-                                type="button"
-                                className={
-                                  visibility ===
-                                  "public"
-                                    ? "button primary"
-                                    : "button secondary"
-                                }
-                                style={{
-                                  padding:
-                                    "0.35rem 0.55rem"
-                                }}
-                                onClick={() =>
-                                  handleBookVisibility(
-                                    item
-                                  )
-                                }
-                                disabled={
-                                  bookPrivacySaving ===
-                                  bookId
-                                }
-                                title={
-                                  visibility ===
-                                  "public"
-                                    ? "This book may appear on your public timeline when the timeline is public."
-                                    : "This book is private."
-                                }
-                              >
-                                {visibility ===
-                                "public" ? (
-                                  <Globe2
-                                    size={14}
-                                  />
-                                ) : (
-                                  <Lock
-                                    size={14}
-                                  />
-                                )}
-
-                                {bookPrivacySaving ===
-                                bookId
-                                  ? "Saving..."
-                                  : visibility ===
-                                    "public"
-                                    ? "Public"
-                                    : "Private"}
-                              </button>
-                            )}
-                          </div>
-
-                          <Link
-                            to={`/read/reader/${bookId}`}
-                            className="timeline-book-title"
-                          >
-                            {item.title ||
-                              "Untitled"}
-                          </Link>
-
-                          <p className="timeline-author">
-                            {item.author ||
-                              "Unknown author"}
-                          </p>
-
-                          {isSaved && (
-                            <small className="muted">
-                              Saved to your library
-                            </small>
-                          )}
-
-                          {!item.savedOnly && (
-                            <>
-                              <ReadersHere
-                                bookId={
-                                  bookId
-                                }
-                              />
-
-                              <div className="timeline-progress-row">
-                                <ProgressBar
-                                  percent={
-                                    percent
+                            <Link
+                              to={`/read/reader/${bookId}`}
+                              className="timeline-cover"
+                            >
+                              {item.image ||
+                              item.cover ? (
+                                <img
+                                  src={
+                                    item.image ||
+                                    item.cover
                                   }
+                                  alt={`Cover of ${
+                                    item.title ||
+                                    "book"
+                                  }`}
                                 />
+                              ) : (
+                                <div className="timeline-cover-placeholder">
+                                  <BookOpen size={24} />
+                                </div>
+                              )}
+                            </Link>
 
-                                <strong>
-                                  {percent}%
-                                </strong>
+                            <div className="timeline-book-content">
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: "0.75rem",
+                                  flexWrap: "wrap"
+                                }}
+                              >
+                                <p className="timeline-event-label">
+                                  {item.savedOnly
+                                    ? "Saved Book"
+                                    : percent >= 100
+                                      ? "Finished Reading"
+                                      : "Reading"}
+                                </p>
+
+                                {!item.savedOnly && (
+                                  <button
+                                    type="button"
+                                    className={
+                                      visibility ===
+                                      "public"
+                                        ? "button primary"
+                                        : "button secondary"
+                                    }
+                                    style={{
+                                      padding: "0.35rem 0.55rem"
+                                    }}
+                                    onClick={() =>
+                                      handleBookVisibility(
+                                        item
+                                      )
+                                    }
+                                    disabled={
+                                      bookPrivacySaving ===
+                                      bookId
+                                    }
+                                  >
+                                    {visibility ===
+                                    "public" ? (
+                                      <Globe2 size={14} />
+                                    ) : (
+                                      <Lock size={14} />
+                                    )}
+
+                                    {bookPrivacySaving ===
+                                    bookId
+                                      ? "Saving..."
+                                      : visibility ===
+                                        "public"
+                                        ? "Public"
+                                        : "Private"}
+                                  </button>
+                                )}
                               </div>
 
-                              <small className="muted">
-                                {percent >=
-                                100
-                                  ? "Completed"
-                                  : "Last read"}
-
-                                {item.updatedAtISO
-                                  ? ` · ${formatDate(
-                                      item.updatedAtISO
-                                    )}`
-                                  : ""}
-                              </small>
-                            </>
-                          )}
-
-                          {noteCount > 0 && (
-                            <div className="timeline-journal-link-row">
-                              <button
-                                type="button"
-                                className="timeline-journal-link"
-                                onClick={() =>
-                                  changeTab(
-                                    "journal"
-                                  )
-                                }
+                              <Link
+                                to={`/read/reader/${bookId}`}
+                                className="timeline-book-title"
                               >
-                                <NotebookPen
-                                  size={16}
-                                />
+                                {item.title ||
+                                  "Untitled"}
+                              </Link>
 
-                                Journal entries{" "}
-                                ({noteCount})
-                              </button>
+                              <p className="timeline-author">
+                                {item.author ||
+                                  "Unknown author"}
+                              </p>
+
+                              {isSaved && (
+                                <small className="muted">
+                                  Saved to your library
+                                </small>
+                              )}
+
+                              {!item.savedOnly && (
+                                <>
+                                  <ReadersHere
+                                    bookId={
+                                      bookId
+                                    }
+                                  />
+
+                                  <div className="timeline-progress-row">
+                                    <ProgressBar
+                                      percent={
+                                        percent
+                                      }
+                                    />
+
+                                    <strong>
+                                      {percent}%
+                                    </strong>
+                                  </div>
+
+                                  <small className="muted">
+                                    {percent >= 100
+                                      ? "Completed"
+                                      : "Last read"}
+
+                                    {item.updatedAtISO
+                                      ? ` · ${formatDate(
+                                          item.updatedAtISO
+                                        )}`
+                                      : ""}
+                                  </small>
+                                </>
+                              )}
+
+                              {noteCount > 0 && (
+                                <div className="timeline-journal-link-row">
+                                  <button
+                                    type="button"
+                                    className="timeline-journal-link"
+                                    onClick={() =>
+                                      changeTab(
+                                        "journal"
+                                      )
+                                    }
+                                  >
+                                    <NotebookPen size={16} />
+                                    Journal entries ({noteCount})
+                                  </button>
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      </article>
-                    );
-                  }
+                          </article>
+                        );
+                      }
+                    )}
+                  </div>
                 )}
-              </div>
+              </>
             )}
           </section>
         )}
+
 
         {activeTab === "journal" && (
           <section className="panel profile-panel">
@@ -2388,17 +2602,16 @@ export default function Profile() {
                 to="/read/journal"
                 className="button secondary"
               >
-                <NotebookPen
-                  size={16}
-                />
-
+                <NotebookPen size={16} />
                 Open Full Journal
               </Link>
             </div>
 
-
-            {journalEntries.length ===
-            0 ? (
+            {sectionLoading.journal ? (
+              <LoadingLine>
+                Loading journal...
+              </LoadingLine>
+            ) : journalEntries.length === 0 ? (
               <p className="muted">
                 Your journal entries
                 will appear here.
@@ -2453,7 +2666,6 @@ export default function Profile() {
                           </div>
                         </div>
 
-
                         <div className="public-entry-meta">
                           {entry.paragraphNumber && (
                             <span>
@@ -2478,7 +2690,6 @@ export default function Profile() {
                           </span>
                         </div>
 
-
                         {entry.paragraphPreview && (
                           <div className="public-entry-quote">
                             <p>
@@ -2486,7 +2697,6 @@ export default function Profile() {
                             </p>
                           </div>
                         )}
-
 
                         <p className="public-journal-note">
                           {entry.note}
@@ -2501,7 +2711,102 @@ export default function Profile() {
         )}
 
 
+        {activeTab === "chain" && (
+          <section className="panel profile-panel">
+            <div className="section-heading-row">
+              <div>
+                <p className="eyebrow">
+                  Saved Content
+                </p>
 
+                <h2>
+                  Saved Chain Posts
+                </h2>
+              </div>
+
+              <Bookmark size={20} />
+            </div>
+
+            {sectionLoading.chain ? (
+              <LoadingLine>
+                Loading saved posts...
+              </LoadingLine>
+            ) : savedChainEntries.length === 0 ? (
+              <p className="muted">
+                Chain posts you save
+                will appear here.
+              </p>
+            ) : (
+              <div className="public-profile-entry-list">
+                {savedChainEntries.map(
+                  (
+                    entry,
+                    index
+                  ) => {
+                    const bookId =
+                      String(
+                        entry.bookId ||
+                        entry.book?.id ||
+                        ""
+                      );
+
+                    return (
+                      <article
+                        key={
+                          entry.id ||
+                          `chain-${index}`
+                        }
+                        className="public-profile-entry"
+                      >
+                        <p className="eyebrow">
+                          Saved Chain Post
+                        </p>
+
+                        {bookId ? (
+                          <Link
+                            to={`/read/reader/${bookId}`}
+                            className="public-entry-book-title"
+                          >
+                            {entry.title ||
+                              entry.bookTitle ||
+                              entry.book?.title ||
+                              "Open Book"}
+                          </Link>
+                        ) : (
+                          <strong className="public-entry-book-title">
+                            {entry.title ||
+                              entry.bookTitle ||
+                              "Saved Post"}
+                          </strong>
+                        )}
+
+                        {(entry.text ||
+                          entry.note ||
+                          entry.content) && (
+                          <p>
+                            {entry.text ||
+                              entry.note ||
+                              entry.content}
+                          </p>
+                        )}
+
+                        {(entry.updatedAtISO ||
+                          entry.createdAt) && (
+                          <small className="muted">
+                            {formatDate(
+                              entry.updatedAtISO ||
+                                entry.createdAt
+                            )}
+                          </small>
+                        )}
+                      </article>
+                    );
+                  }
+                )}
+              </div>
+            )}
+          </section>
+        )}
 
 
         {activeTab === "friends" && (
@@ -2564,9 +2869,7 @@ export default function Profile() {
                   readerSearch.trim().length < 2
                 }
               >
-                <Search
-                  size={16}
-                />
+                <Search size={16} />
                 Search
               </button>
             </form>
@@ -2659,18 +2962,14 @@ export default function Profile() {
                                   )
                                 }
                               >
-                                <UserPlus
-                                  size={16}
-                                />
+                                <UserPlus size={16} />
                                 Add Friend
                               </button>
                             )}
 
                             {friend && (
                               <span className="button secondary">
-                                <UserCheck
-                                  size={16}
-                                />
+                                <UserCheck size={16} />
                                 Friends
                               </span>
                             )}
@@ -2707,9 +3006,7 @@ export default function Profile() {
                                   )
                                 }
                               >
-                                <UserCheck
-                                  size={16}
-                                />
+                                <UserCheck size={16} />
                                 Accept
                               </button>
                             )}
@@ -2765,9 +3062,7 @@ export default function Profile() {
                               )
                             }
                           >
-                            <UserCheck
-                              size={16}
-                            />
+                            <UserCheck size={16} />
                             Accept
                           </button>
 
@@ -2794,34 +3089,46 @@ export default function Profile() {
               </>
             )}
 
-            {outgoingRequests.length > 0 && (
-              <>
-                <h3>
-                  Sent Requests
-                </h3>
+            <h3>
+              Your Friends
+            </h3>
 
-                <div className="public-profile-entry-list">
-                  {outgoingRequests.map(
-                    (request) => (
-                      <article
-                        key={
-                          request.id
-                        }
-                        className="public-profile-entry"
-                      >
-                        <Link
-                          to={`/read/public/${request.otherUserId}`}
-                          className="public-entry-book-title"
-                        >
-                          {request.profile?.displayName ||
-                            "Reader"}
-                        </Link>
+            {friends.length === 0 ? (
+              <p className="muted">
+                Friends you add
+                will appear here.
+              </p>
+            ) : (
+              <div className="public-profile-entry-list">
+                {friends.map(
+                  (friend) => (
+                    <article
+                      key={
+                        friend.id ||
+                        friend.otherUserId
+                      }
+                      className="public-profile-entry"
+                    >
+                      <div className="section-heading-row">
+                        <div>
+                          <Link
+                            to={`/read/public/${friend.otherUserId}`}
+                            className="public-entry-book-title"
+                          >
+                            {friend.profile?.displayName ||
+                              friend.displayName ||
+                              "Reader"}
+                          </Link>
 
-                        {request.profile?.username && (
-                          <p className="muted">
-                            @{request.profile.username}
-                          </p>
-                        )}
+                          {(friend.profile?.username ||
+                            friend.username) && (
+                            <p className="muted">
+                              @
+                              {friend.profile?.username ||
+                                friend.username}
+                            </p>
+                          )}
+                        </div>
 
                         <button
                           type="button"
@@ -2831,76 +3138,15 @@ export default function Profile() {
                           }
                           onClick={() =>
                             handleSocialAction(
-                              request.otherUserId,
-                              "cancel"
+                              friend.otherUserId,
+                              "remove"
                             )
                           }
                         >
-                          Cancel Request
+                          <UserMinus size={16} />
+                          Remove
                         </button>
-                      </article>
-                    )
-                  )}
-                </div>
-              </>
-            )}
-
-            <h3>
-              Your Friends
-            </h3>
-
-            {friends.length === 0 ? (
-              <p className="muted">
-                You haven't added any friends yet.
-              </p>
-            ) : (
-              <div className="public-profile-entry-list">
-                {friends.map(
-                  (friend) => (
-                    <article
-                      key={
-                        friend.id
-                      }
-                      className="public-profile-entry"
-                    >
-                      <Link
-                        to={`/read/public/${friend.otherUserId}`}
-                        className="public-entry-book-title"
-                      >
-                        {friend.profile?.displayName ||
-                          "Reader"}
-                      </Link>
-
-                      {friend.profile?.username && (
-                        <p className="muted">
-                          @{friend.profile.username}
-                        </p>
-                      )}
-
-                      {friend.profile?.about && (
-                        <p className="muted">
-                          {friend.profile.about}
-                        </p>
-                      )}
-
-                      <button
-                        type="button"
-                        className="button secondary"
-                        disabled={
-                          socialBusy
-                        }
-                        onClick={() =>
-                          handleSocialAction(
-                            friend.otherUserId,
-                            "remove"
-                          )
-                        }
-                      >
-                        <UserMinus
-                          size={16}
-                        />
-                        Remove Friend
-                      </button>
+                      </div>
                     </article>
                   )
                 )}
@@ -2908,7 +3154,6 @@ export default function Profile() {
             )}
           </section>
         )}
-
 
 
         {activeTab === "groups" && (
@@ -2920,7 +3165,7 @@ export default function Profile() {
                 </p>
 
                 <h2>
-                  Groups & Classes
+                  Groups
                 </h2>
               </div>
 
@@ -2939,426 +3184,274 @@ export default function Profile() {
               </p>
             )}
 
-            {groupInvites.length > 0 && (
+            {sectionLoading.groups ? (
+              <LoadingLine>
+                Loading groups...
+              </LoadingLine>
+            ) : (
               <>
+                {groupInvites.length > 0 && (
+                  <>
+                    <h3>
+                      Invitations
+                    </h3>
+
+                    <div className="public-profile-entry-list">
+                      {groupInvites.map(
+                        (invite) => {
+                          const avatar =
+                            getGroupAvatar(
+                              invite.group?.avatar ||
+                              invite.avatar
+                            );
+
+                          return (
+                            <article
+                              key={
+                                invite.id ||
+                                invite.groupId
+                              }
+                              className="public-profile-entry"
+                            >
+                              <div className="section-heading-row">
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "0.75rem"
+                                  }}
+                                >
+                                  {avatar?.image && (
+                                    <img
+                                      src={avatar.image}
+                                      alt=""
+                                      style={{
+                                        width: 48,
+                                        height: 48,
+                                        borderRadius: "50%",
+                                        objectFit: "cover"
+                                      }}
+                                    />
+                                  )}
+
+                                  <div>
+                                    <strong className="public-entry-book-title">
+                                      {invite.group?.name ||
+                                        invite.name ||
+                                        "Reading Group"}
+                                    </strong>
+
+                                    <p className="muted">
+                                      Group invitation
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="button-row">
+                                  <button
+                                    type="button"
+                                    className="button primary"
+                                    onClick={() =>
+                                      handleGroupInvite(
+                                        invite.groupId ||
+                                        invite.group?.id,
+                                        true
+                                      )
+                                    }
+                                  >
+                                    Accept
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className="button secondary"
+                                    onClick={() =>
+                                      handleGroupInvite(
+                                        invite.groupId ||
+                                        invite.group?.id,
+                                        false
+                                      )
+                                    }
+                                  >
+                                    Decline
+                                  </button>
+                                </div>
+                              </div>
+                            </article>
+                          );
+                        }
+                      )}
+                    </div>
+                  </>
+                )}
+
                 <h3>
-                  Invitations
+                  Your Groups
                 </h3>
 
-                <div className="public-profile-entry-list">
-                  {groupInvites.map(
-                    (invite) => (
-                      <article
-                        key={`${invite.groupId}-${invite.userId}`}
-                        className="public-profile-entry"
+                {groups.length === 0 ? (
+                  <p className="muted">
+                    Groups you join
+                    will appear here.
+                  </p>
+                ) : (
+                  <div className="public-profile-entry-list">
+                    {groups.map(
+                      (group) => {
+                        const avatar =
+                          getGroupAvatar(
+                            group.avatar
+                          );
+
+                        return (
+                          <article
+                            key={
+                              group.id ||
+                              group.groupId
+                            }
+                            className="public-profile-entry"
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.85rem"
+                              }}
+                            >
+                              {avatar?.image && (
+                                <img
+                                  src={avatar.image}
+                                  alt=""
+                                  style={{
+                                    width: 54,
+                                    height: 54,
+                                    borderRadius: "50%",
+                                    objectFit: "cover"
+                                  }}
+                                />
+                              )}
+
+                              <div>
+                                <Link
+                                  to={`/read/groups/${group.id || group.groupId}`}
+                                  className="public-entry-book-title"
+                                >
+                                  {group.name ||
+                                    "Reading Group"}
+                                </Link>
+
+                                {group.description && (
+                                  <p className="muted">
+                                    {group.description}
+                                  </p>
+                                )}
+
+                                {group.role && (
+                                  <small className="muted">
+                                    {group.role}
+                                  </small>
+                                )}
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      }
+                    )}
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    marginTop: "2rem"
+                  }}
+                >
+                  <h3>
+                    Create a Group
+                  </h3>
+
+                  <form
+                    className="profile-form"
+                    onSubmit={
+                      handleCreateGroup
+                    }
+                  >
+                    <label>
+                      Group name
+
+                      <input
+                        type="text"
+                        value={
+                          groupName
+                        }
+                        onChange={(event) =>
+                          setGroupName(
+                            event.target.value
+                          )
+                        }
+                        maxLength={80}
+                        required
+                      />
+                    </label>
+
+                    <label>
+                      Description
+
+                      <textarea
+                        value={
+                          groupDescription
+                        }
+                        onChange={(event) =>
+                          setGroupDescription(
+                            event.target.value
+                          )
+                        }
+                        rows={4}
+                        maxLength={500}
+                      />
+                    </label>
+
+                    <label>
+                      Type
+
+                      <select
+                        value={
+                          groupType
+                        }
+                        onChange={(event) =>
+                          setGroupType(
+                            event.target.value
+                          )
+                        }
                       >
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "0.8rem",
-                            alignItems: "center"
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: 52,
-                              height: 52,
-                              borderRadius: "50%",
-                              overflow: "hidden",
-                              background: "#eef4f3",
-                              display: "grid",
-                              placeItems: "center",
-                              flex: "0 0 auto"
-                            }}
-                          >
-                            {getGroupAvatar(invite.group?.avatar) ? (
-                              <img
-                                src={getGroupAvatar(invite.group?.avatar).image}
-                                alt=""
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover"
-                                }}
-                              />
-                            ) : (
-                              <Users size={24} />
-                            )}
-                          </div>
+                        <option value="group">
+                          Group
+                        </option>
 
-                          <div>
-                            <strong className="public-entry-book-title">
-                              {invite.group?.name || "Group"}
-                            </strong>
+                        <option value="class">
+                          Class
+                        </option>
+                      </select>
+                    </label>
 
-                            <p className="muted">
-                              {invite.group?.type === "class"
-                                ? "Class"
-                                : "Group"}
+                    <div className="button-row">
+                      <button
+                        type="submit"
+                        className="button primary"
+                        disabled={
+                          creatingGroup ||
+                          !groupName.trim()
+                        }
+                      >
+                        <Plus size={16} />
 
-                              {invite.inviterProfile?.displayName
-                                ? ` · Invited by ${invite.inviterProfile.displayName}`
-                                : ""}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="button-row">
-                          <button
-                            type="button"
-                            className="button primary"
-                            onClick={() =>
-                              handleGroupInvite(
-                                invite.groupId,
-                                true
-                              )
-                            }
-                          >
-                            Accept
-                          </button>
-
-                          <button
-                            type="button"
-                            className="button secondary"
-                            onClick={() =>
-                              handleGroupInvite(
-                                invite.groupId,
-                                false
-                              )
-                            }
-                          >
-                            Decline
-                          </button>
-                        </div>
-                      </article>
-                    )
-                  )}
+                        {creatingGroup
+                          ? "Creating..."
+                          : "Create Group"}
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </>
-            )}
-
-            <h3>
-              Your Groups
-            </h3>
-
-            {groups.length === 0 ? (
-              <p className="muted">
-                You haven't joined any groups yet.
-              </p>
-            ) : (
-              <div className="public-profile-entry-list">
-                {groups.map((group) => (
-                  <article
-                    key={group.id}
-                    className="public-profile-entry"
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "0.9rem",
-                        alignItems: "center"
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 62,
-                          height: 62,
-                          borderRadius: "50%",
-                          overflow: "hidden",
-                          background: "#eef4f3",
-                          display: "grid",
-                          placeItems: "center",
-                          flex: "0 0 auto"
-                        }}
-                      >
-                        {getGroupAvatar(group.avatar) ? (
-                          <img
-                            src={getGroupAvatar(group.avatar).image}
-                            alt=""
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "cover"
-                            }}
-                          />
-                        ) : (
-                          <Users size={27} />
-                        )}
-                      </div>
-
-                      <div>
-                        <Link
-                          to={`/read/groups/${group.id}`}
-                          className="public-entry-book-title"
-                        >
-                          {group.name}
-                        </Link>
-
-                        <p className="muted">
-                          {group.type === "class"
-                            ? "Class"
-                            : "Group"}
-
-                          {group.membership?.role
-                            ? ` · ${group.membership.role}`
-                            : ""}
-                        </p>
-                      </div>
-                    </div>
-
-                    {group.description && (
-                      <p>
-                        {group.description}
-                      </p>
-                    )}
-                  </article>
-                ))}
-              </div>
-            )}
-
-            <div
-              style={{
-                marginTop: "1.5rem",
-                paddingTop: "1.25rem",
-                borderTop:
-                  "1px solid var(--line)"
-              }}
-            >
-              <h3>
-                Create a Group
-              </h3>
-
-              <form
-                onSubmit={handleCreateGroup}
-                className="profile-edit-form"
-              >
-                <label>
-                  Type
-
-                  <select
-                    value={groupType}
-                    onChange={(event) =>
-                      setGroupType(
-                        event.target.value
-                      )
-                    }
-                  >
-                    <option value="group">
-                      Group
-                    </option>
-
-                    <option value="class">
-                      Class
-                    </option>
-                  </select>
-                </label>
-
-                <label>
-                  Name
-
-                  <input
-                    type="text"
-                    value={groupName}
-                    onChange={(event) =>
-                      setGroupName(
-                        event.target.value
-                      )
-                    }
-                    maxLength={80}
-                    placeholder="Classic Literature Club"
-                  />
-                </label>
-
-                <label>
-                  Description
-
-                  <textarea
-                    value={groupDescription}
-                    onChange={(event) =>
-                      setGroupDescription(
-                        event.target.value
-                      )
-                    }
-                    rows={3}
-                    maxLength={500}
-                    placeholder="What is this group reading or studying?"
-                  />
-                </label>
-
-                <button
-                  type="submit"
-                  className="button primary"
-                  disabled={
-                    creatingGroup ||
-                    groupName.trim().length < 2
-                  }
-                >
-                  <Plus size={16} />
-
-                  {creatingGroup
-                    ? "Creating..."
-                    : groupType === "class"
-                      ? "Create Class"
-                      : "Create Group"}
-                </button>
-              </form>
-            </div>
-          </section>
-        )}
-
-
-        {activeTab === "chain" && (
-          <section className="panel profile-panel">
-            <div className="section-heading-row">
-              <div>
-                <p className="eyebrow">
-                  Bookmarked Discussions
-                </p>
-
-                <h2>
-                  Saved Chain Posts
-                </h2>
-              </div>
-
-              <Link
-                to="/read/chain"
-                className="button secondary"
-              >
-                <MessageCircle
-                  size={16}
-                />
-
-                The Chain
-              </Link>
-            </div>
-
-
-            {savedChainEntries.length ===
-            0 ? (
-              <p className="muted">
-                Chain posts you save will
-                appear here.
-              </p>
-            ) : (
-              <div className="public-profile-entry-list">
-                {savedChainEntries.map(
-                  (
-                    entry,
-                    index
-                  ) => {
-                    const bookId =
-                      String(
-                        entry.bookId ||
-                        ""
-                      );
-
-                    return (
-                      <article
-                        key={
-                          entry.id ||
-                          `saved-chain-${index}`
-                        }
-                        className="public-profile-entry"
-                      >
-                        <div className="public-entry-heading">
-                          <div>
-                            <p className="eyebrow">
-                              Saved Chain Post
-                            </p>
-
-                            {bookId ? (
-                              <Link
-                                to={`/read/reader/${bookId}`}
-                                className="public-entry-book-title"
-                              >
-                                {entry.title ||
-                                  "Untitled"}
-                              </Link>
-                            ) : (
-                              <strong className="public-entry-book-title">
-                                {entry.title ||
-                                  "Untitled"}
-                              </strong>
-                            )}
-
-                            {entry.author && (
-                              <p className="public-entry-author">
-                                {entry.author}
-                              </p>
-                            )}
-                          </div>
-
-                          <Bookmark
-                            size={20}
-                          />
-                        </div>
-
-
-                        <div className="public-entry-meta">
-                          {entry.paragraphNumber && (
-                            <span>
-                              Paragraph{" "}
-                              {entry.paragraphNumber}
-                            </span>
-                          )}
-
-                          {entry.savedAtISO && (
-                            <span>
-                              Saved{" "}
-                              {formatDate(
-                                entry.savedAtISO
-                              )}
-                            </span>
-                          )}
-                        </div>
-
-
-                        {entry.paragraphPreview && (
-                          <div className="public-entry-quote">
-                            <p>
-                              “{entry.paragraphPreview}”
-                            </p>
-                          </div>
-                        )}
-
-
-                        <p className="public-journal-note">
-                          {entry.note}
-                        </p>
-
-
-                        <div className="button-row">
-                          {bookId && (
-                            <Link
-                              to={`/read/reader/${bookId}`}
-                              className="button secondary"
-                            >
-                              <BookOpen
-                                size={16}
-                              />
-
-                              Open Book
-                            </Link>
-                          )}
-
-                          {entry.sourceEntryId && (
-                            <Link
-                              to={`/read/chain#chain-${entry.sourceEntryId}`}
-                              className="button secondary"
-                            >
-                              <MessageCircle
-                                size={16}
-                              />
-
-                              Open Chain Post
-                            </Link>
-                          )}
-                        </div>
-                      </article>
-                    );
-                  }
-                )}
-              </div>
             )}
           </section>
         )}
