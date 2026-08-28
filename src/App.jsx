@@ -17,13 +17,15 @@ import Profile from "./pages/Profile";
 import Chain from "./pages/Chain";
 import NotFound from "./pages/NotFound.jsx";
 import PublicProfile from "./pages/PublicProfile";
-import Group from "./pages/Group";
+import GroupRouter from "./pages/GroupRouter";
 import Notifications from "./pages/Notifications";
 import DiscoverGroups from "./pages/DiscoverGroups";
 
 export default function App() {
   const location = useLocation();
-  const isRandomReads = location.pathname === "/read" || location.pathname.startsWith("/read/");
+  const isLitChain =
+    location.pathname === "/read" ||
+    location.pathname.startsWith("/read/");
 
   useEffect(() => {
     async function testFirebase() {
@@ -34,17 +36,24 @@ export default function App() {
         console.error("Firebase error:", err);
       }
     }
+
     testFirebase();
   }, []);
 
   return (
     <>
-      {isRandomReads && <Header />}
-      <main className={isRandomReads ? "app-main random-reads-app" : "foundation-app"}>
+      {isLitChain && <Header />}
+
+      <main className={isLitChain ? "app-main random-reads-app" : "foundation-app"}>
         <Routes>
           <Route path="/" element={<FoundationHome />} />
 
-          <Route path="/read" element={<Home />} />
+          {/* Lit Chain is now the app home. */}
+          <Route path="/read" element={<Chain />} />
+
+          {/* The former Home page is now Discover. */}
+          <Route path="/read/discover" element={<Home />} />
+
           <Route path="/read/search" element={<Search />} />
           <Route path="/read/reader/:id" element={<Reader />} />
           <Route path="/read/journal" element={<Journal />} />
@@ -54,9 +63,13 @@ export default function App() {
           <Route path="/read/about" element={<About />} />
           <Route path="/read/login" element={<Login />} />
 
-          <Route path="/read/chain" element={<Chain />} />
+          {/* Compatibility route for old Chain links. */}
+          <Route path="/read/chain" element={<Navigate to="/read" replace />} />
 
-          {/* Compatibility redirects for the former standalone Random Reads routes. */}
+          <Route path="/read/groups" element={<DiscoverGroups />} />
+          <Route path="/read/groups/:groupId" element={<GroupRouter />} />
+
+          {/* Compatibility redirects for former standalone routes. */}
           <Route path="/search" element={<Navigate to="/read/search" replace />} />
           <Route path="/reader/:id" element={<LegacyReaderRedirect />} />
           <Route path="/journal" element={<Navigate to="/read/journal" replace />} />
@@ -64,8 +77,7 @@ export default function App() {
           <Route path="/about" element={<Navigate to="/read/about" replace />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
-          <Route path="/read/groups" element={<DiscoverGroups />} />
-          <Route path="/read/groups/:groupId" element={<Group />} />
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
