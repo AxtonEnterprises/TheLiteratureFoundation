@@ -3,25 +3,76 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDoc,
   getDocs,
   orderBy,
   query,
   serverTimestamp,
-  updateDoc
+  setDoc,
+  updateDoc,
+  where
 } from "firebase/firestore";
 
 import { auth, db } from "../firebase";
 
 function requireUser() {
   const user = auth.currentUser;
-  if (!user) throw new Error("You must be logged in.");
+
+  if (!user) {
+    throw new Error("You must be logged in.");
+  }
+
   return user;
 }
 
+function cleanString(value) {
+  return String(value || "").trim();
+}
+
+function assignmentRangePercent(progress, assignment) {
+  if (!progress) return 0;
+
+  const currentParagraph = Math.max(Number(progress.paragraphIndex) || 0, 0);
+  const start = Math.max(Number(assignment.startParagraphIndex) || 0, 0);
+
+  const explicitEnd =
+    assignment.endParagraphIndex !== null &&
+    assignment.endParagraphIndex !== undefined &&
+    assignment.endParagraphIndex !== "";
+
+  const end = explicitEnd
+    ? Math.max(Number(assignment.endParagraphIndex) || 0, start)
+    : Math.max(Number(progress.totalParagraphs || 1) - 1, start);
+
+  if (currentParagraph < start) return 0;
+
+  if (end <= start) {
+    return currentParagraph >= end ? 100 : 0;
+  }
+
+  return Math.min(
+    Math.max(
+      Math.round(((currentParagraph - start) / (end - start)) * 100),
+      0
+    ),
+    100
+  );
+}
+
+/* ============================================================
+   ASSIGNMENTS
+============================================================ */
+
 export async function getClassAssignments(classId) {
-  const ref = collection(db, "groups", String(classId), "assignments");
-  const snapshot = await getDocs(query(ref, orderBy("createdAtISO", "desc")));
+  const assignmentsRef = collection(
+    db,
+    "groups",
+    String(classId),
+    "assignments"
+  );
+
+  const snapshot = await getDocs(
+    query(assignmentsRef, orderBy("createdAtISO", "desc"))
+  );
 
   return snapshot.docs.map((assignmentDoc) => ({
     id: assignmentDoc.id,
@@ -32,36 +83,37 @@ export async function getClassAssignments(classId) {
 export async function createClassAssignment(classId, assignment) {
   const user = requireUser();
 
-  const cleanBookId = String(assignment.bookId || "").trim();
-  const cleanTitle = String(assignment.title || "").trim();
+  const bookId = cleanString(assignment.bookId);
+  const title = cleanString(assignment.title);
 
-  if (!cleanBookId || !cleanTitle) {
-    throw new Error("Book ID and title are required.");
+  if (!bookId || !title) {
+    throw new Error("Choose a book before creating the assignment.");
   }
 
-  const startParagraphIndex =
-    assignment.startParagraphIndex === "" ||
-    assignment.startParagraphIndex === null ||
-    assignment.startParagraphIndex === undefined
-      ? 0
-      : Math.max(Number(assignment.startParagraphIndex) || 0, 0);
+  const startParagraphIndex = Math.max(
+    Number(assignment.startParagraphIndex) || 0,
+    0
+  );
 
   const endParagraphIndex =
     assignment.endParagraphIndex === "" ||
     assignment.endParagraphIndex === null ||
     assignment.endParagraphIndex === undefined
       ? null
-      : Math.max(Number(assignment.endParagraphIndex) || 0, startParagraphIndex);
+      : Math.max(
+          Number(assignment.endParagraphIndex) || 0,
+          startParagraphIndex
+        );
 
   const createdAtISO = new Date().toISOString();
 
-  const result = await addDoc(
+  const assignmentRef = await addDoc(
     collection(db, "groups", String(classId), "assignments"),
     {
-      bookId: cleanBookId,
-      title: cleanTitle,
-      author: String(assignment.author || "").trim(),
-      instructions: String(assignment.instructions || "").trim(),
+      bookId,
+      title,
+      author: cleanString(assignment.author),
+      instructions: cleanString(assignment.instructions),
       dueAt: assignment.dueAt || null,
       startParagraphIndex,
       endParagraphIndex,
@@ -71,102 +123,170 @@ export async function createClassAssignment(classId, assignment) {
     }
   );
 
-  return result.id;
+  return assignmentRef.id;
 }
 
-export async function updateClassAssignment(classId, assignmentId, updates) {
+export async function updateClassAssignment(
+  classId,
+  assignmentId,
+  updates
+) {
   requireUser();
 
-  const clean = {
-    title: String(updates.title || "").trim(),
-    author: String(updates.author || "").trim(),
-    instructions: String(updates.instructions || "").trim(),
-    dueAt: updates.dueAt || null,
-    startParagraphIndex: Math.max(Number(updates.startParagraphIndex) || 0, 0),
-    endParagraphIndex:
-      updates.endParagraphIndex === "" ||
-      updates.endParagraphIndex === null ||
-      updates.endParagraphIndex === undefined
-        ? null
-        : Math.max(Number(updates.endParagraphIndex) || 0, 0),
-    updatedAtISO: new Date().toISOString(),
-    updatedAt: serverTimestamp()
-  };
+  const startParagraphIndex = Math.max(
+    Number(updates.startParagraphIndex) || 0,
+    0
+  );
 
   await updateDoc(
-    doc(db, "groups", String(classId), "assignments", String(assignmentId)),
-    clean
+    doc(
+      db,
+      "groups",
+      String(classId),
+      "assignments",
+      String(assignmentId)
+    ),
+    {
+      title: cleanString(updates.title),
+      author: cleanString(updates.author),
+      instructions: cleanString(updates.instructions),
+      dueAt: updates.dueAt || null,
+      startParagraphIndex,
+      endParagraphIndex:
+        updates.endParagraphIndex === "" ||
+        updates.endParagraphIndex === null ||
+        updates.endParagraphIndex === undefined
+          ? null
+          : Math.max(
+              Number(updates.endParagraphIndex) || 0,
+              startParagraphIndex
+            ),
+      updatedAtISO: new Date().toISOString(),
+      updatedAt: serverTimestamp()
+    }
   );
 }
 
 export async function deleteClassAssignment(classId, assignmentId) {
   requireUser();
+
   await deleteDoc(
-    doc(db, "groups", String(classId), "assignments", String(assignmentId))
+    doc(
+      db,
+      "groups",
+      String(classId),
+      "assignments",
+      String(assignmentId)
+    )
   );
 }
 
-export async function getStudentReadingProgress(userId, bookId) {
-  const progressRef = doc(
-    db,
-    "users",
-    String(userId),
-    "readingProgress",
-    String(bookId)
-  );
+/* ============================================================
+   CLASS PROGRESS MIRROR
+============================================================ */
 
-  const snapshot = await getDoc(progressRef);
-  return snapshot.exists() ? snapshot.data() : null;
-}
+/*
+ * This mirrors only reading progress needed by a class.
+ * It does NOT expose the student's private saved books, journal,
+ * timeline settings, friends, or unrelated reading activity.
+ */
+export async function syncClassReadingProgress({
+  groups,
+  book,
+  paragraphIndex,
+  totalParagraphs,
+  percentComplete
+}) {
+  const user = auth.currentUser;
 
-export async function getClassAssignmentProgress(members, assignment) {
-  const students = members.filter(
-    (member) => !["owner", "admin", "teacher"].includes(member.role)
-  );
+  if (!user || !book?.id || !Array.isArray(groups) || !groups.length) {
+    return;
+  }
 
-  const results = await Promise.all(
-    students.map(async (member) => {
-      let progress = null;
+  const classes = groups.filter((group) => group?.type === "class");
 
-      try {
-        progress = await getStudentReadingProgress(
-          member.userId,
-          assignment.bookId
-        );
-      } catch (error) {
-        console.error(
-          `Could not read progress for ${member.userId}:`,
-          error
-        );
-      }
+  if (!classes.length) return;
 
-      const currentParagraph = Number(progress?.paragraphIndex || 0);
-      const start = Number(assignment.startParagraphIndex || 0);
-      const end =
-        assignment.endParagraphIndex === null ||
-        assignment.endParagraphIndex === undefined
-          ? Number(progress?.totalParagraphs || 0) - 1
-          : Number(assignment.endParagraphIndex);
+  const now = new Date().toISOString();
+  const bookId = String(book.id);
 
-      let assignmentPercent = Number(progress?.percentComplete || 0);
+  await Promise.allSettled(
+    classes.map((classGroup) => {
+      const progressId = `${user.uid}_${bookId}`;
 
-      if (end >= start && end > 0) {
-        assignmentPercent = Math.round(
-          Math.min(
-            Math.max((currentParagraph - start) / Math.max(end - start, 1), 0),
-            1
-          ) * 100
-        );
-      }
-
-      return {
-        ...member,
-        progress,
-        assignmentPercent,
-        complete: assignmentPercent >= 100
-      };
+      return setDoc(
+        doc(
+          db,
+          "groups",
+          String(classGroup.id),
+          "studentProgress",
+          progressId
+        ),
+        {
+          userId: user.uid,
+          bookId,
+          title: book.title || "Untitled",
+          author: book.author || "",
+          paragraphIndex: Math.max(Number(paragraphIndex) || 0, 0),
+          totalParagraphs: Math.max(Number(totalParagraphs) || 0, 0),
+          percentComplete: Math.min(
+            Math.max(Math.round(Number(percentComplete) || 0), 0),
+            100
+          ),
+          updatedAtISO: now,
+          updatedAt: serverTimestamp()
+        },
+        { merge: true }
+      );
     })
   );
+}
 
-  return results;
+export async function getClassBookProgress(classId, bookId) {
+  const progressRef = collection(
+    db,
+    "groups",
+    String(classId),
+    "studentProgress"
+  );
+
+  const snapshot = await getDocs(
+    query(progressRef, where("bookId", "==", String(bookId)))
+  );
+
+  return snapshot.docs.map((progressDoc) => ({
+    id: progressDoc.id,
+    ...progressDoc.data()
+  }));
+}
+
+export async function getClassAssignmentProgress(
+  classId,
+  members,
+  assignment
+) {
+  const progressRows = await getClassBookProgress(
+    classId,
+    assignment.bookId
+  );
+
+  const progressByUser = new Map(
+    progressRows.map((row) => [String(row.userId), row])
+  );
+
+  const students = members.filter(
+    (member) => !["owner", "admin"].includes(member.role)
+  );
+
+  return students.map((member) => {
+    const progress = progressByUser.get(String(member.userId)) || null;
+    const assignmentPercent = assignmentRangePercent(progress, assignment);
+
+    return {
+      ...member,
+      progress,
+      assignmentPercent,
+      complete: assignmentPercent >= 100
+    };
+  });
 }
