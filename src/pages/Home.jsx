@@ -612,10 +612,10 @@ export default function Home() {
   return (
     <main className="page-wrap">
       <SEO
-        title="Random Reads | Free Classic Literature"
-        description="Discover public-domain books at random, search classic literature, save your progress, and read free with Random Reads."
+        title="Lit Chain | Read, Discover & Discuss Classic Literature"
+        description="Discover public-domain literature, read free, save your progress, take notes, join groups, and connect with readers on Lit Chain."
         path="/read"
-        image="https://theliteraturefoundation.org/branding/random-reads-icon.svg"
+        image="https://theliteraturefoundation.org/branding/lit-chain-icon.png"
       />
 
       <div className="stack-lg">
@@ -1020,15 +1020,15 @@ export default function Home() {
           <section className="install-card">
             <div>
               <p className="eyebrow">
-                Random Reads App
+                Lit Chain App
               </p>
 
               <h2>
-                Add Random Reads to your home screen
+                Add Lit Chain to your home screen
               </h2>
 
               <p className="muted">
-                Install Random Reads for quick access from
+                Install Lit Chain for quick access from
                 your phone, tablet, or computer.
               </p>
             </div>
@@ -1071,7 +1071,7 @@ export default function Home() {
             target="_blank"
             rel="noreferrer"
           >
-            Help support Random Reads!
+            Help support Lit Chain!
             <ExternalLink
               size={18}
             />
@@ -1089,7 +1089,7 @@ export default function Home() {
               to="/read/about"
               className="foundation-link"
             >
-              About Random Reads
+              About Lit Chain
             </Link>
 
             <a
