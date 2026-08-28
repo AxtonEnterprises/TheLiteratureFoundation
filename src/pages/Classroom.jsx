@@ -11,6 +11,7 @@ import {
   Plus,
   Save,
   Send,
+  Search,
   Settings,
   Trash2,
   UserMinus,
@@ -21,9 +22,15 @@ import {
 import SEO from "../components/SEO.jsx";
 
 import {
-  getBookById,
-  getAuthorName
+  getAuthorName,
+  searchBooks,
+  splitSearchResults
 } from "../services/booksApi.js";
+
+import {
+  GROUP_AVATARS,
+  getGroupAvatar
+} from "../data/groupAvatars.js";
 
 import {
   getFriends,
@@ -50,6 +57,21 @@ import {
   getClassAssignments,
   updateClassAssignment
 } from "../services/classStorage.js";
+
+function mergeUniqueBooks(...groups) {
+  const seen = new Set();
+
+  return groups.flat().filter((book) => {
+    const id = String(book?.id || "");
+
+    if (!id || seen.has(id)) {
+      return false;
+    }
+
+    seen.add(id);
+    return true;
+  });
+}
 
 function formatDate(value) {
   if (!value) return "No due date";
@@ -152,7 +174,12 @@ export default function Classroom({ initialGroup }) {
   const [showCreate, setShowCreate] = useState(false);
   const [editingAssignmentId, setEditingAssignmentId] = useState(null);
 
-  const [bookLookupLoading, setBookLookupLoading] = useState(false);
+  const [bookSearchQuery, setBookSearchQuery] = useState("");
+  const [bookSearchResults, setBookSearchResults] = useState([]);
+  const [bookSearchStatus, setBookSearchStatus] = useState(
+    "Search by title, author, or subject."
+  );
+  const [bookSearchLoading, setBookSearchLoading] = useState(false);
 
   const [assignmentForm, setAssignmentForm] = useState({
     bookId: "",
@@ -312,34 +339,59 @@ export default function Classroom({ initialGroup }) {
     );
   }, [friends, members]);
 
-  async function lookupBook() {
-    const bookId = assignmentForm.bookId.trim();
+  async function searchAssignmentBooks() {
+    const query = bookSearchQuery.trim();
 
-    if (!bookId) {
-      setStatus("Enter a book ID first.");
+    if (!query) {
+      setBookSearchResults([]);
+      setBookSearchStatus("Enter a title, author, or subject.");
       return;
     }
 
     try {
-      setBookLookupLoading(true);
-      setStatus("");
+      setBookSearchLoading(true);
+      setBookSearchStatus("Searching titles...");
 
-      const book = await getBookById(bookId);
+      const books = await searchBooks(query);
+      const {
+        titleMatches,
+        authorMatches,
+        otherMatches
+      } = splitSearchResults(books, query);
 
-      setAssignmentForm((current) => ({
-        ...current,
-        bookId: String(book.id),
-        title: book.title || "",
-        author: getAuthorName(book) || book.author || ""
-      }));
+      const merged = mergeUniqueBooks(
+        titleMatches,
+        authorMatches,
+        otherMatches
+      );
 
-      setStatus("Book found.");
+      setBookSearchResults(merged);
+      setBookSearchStatus(
+        merged.length
+          ? `${merged.length} result${merged.length === 1 ? "" : "s"} found.`
+          : "No books found."
+      );
     } catch (error) {
-      console.error("Could not find assignment book:", error);
-      setStatus("We couldn't find that book ID.");
+      console.error("Could not search assignment books:", error);
+      setBookSearchStatus(
+        "Search failed. Check your connection and try again."
+      );
     } finally {
-      setBookLookupLoading(false);
+      setBookSearchLoading(false);
     }
+  }
+
+  function chooseAssignmentBook(book) {
+    setAssignmentForm((current) => ({
+      ...current,
+      bookId: String(book.id),
+      title: book.title || "",
+      author: getAuthorName(book) || book.author || ""
+    }));
+
+    setBookSearchQuery(book.title || "");
+    setBookSearchResults([]);
+    setBookSearchStatus(`Selected “${book.title || "book"}.”`);
   }
 
   function clearAssignmentForm() {
@@ -355,6 +407,9 @@ export default function Classroom({ initialGroup }) {
 
     setEditingAssignmentId(null);
     setShowCreate(false);
+    setBookSearchQuery("");
+    setBookSearchResults([]);
+    setBookSearchStatus("Search by title, author, or subject.");
   }
 
   function beginEditAssignment(assignment) {
@@ -667,6 +722,20 @@ export default function Classroom({ initialGroup }) {
         </Link>
 
         <section className="hero-card small">
+          {getGroupAvatar(group?.avatar) && (
+            <img
+              src={getGroupAvatar(group.avatar).image}
+              alt=""
+              style={{
+                width: 88,
+                height: 88,
+                borderRadius: "50%",
+                objectFit: "cover",
+                border: "1px solid var(--line)",
+                marginBottom: "1rem"
+              }}
+            />
+          )}
           <p className="eyebrow">Class</p>
           <h1>{group?.name || "Classroom"}</h1>
           <p className="muted">
@@ -778,49 +847,92 @@ export default function Classroom({ initialGroup }) {
                   </button>
                 </div>
 
-                <label>
-                  Book ID
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "0.5rem",
-                      marginTop: "0.35rem"
-                    }}
-                  >
-                    <input
-                      required
-                      value={assignmentForm.bookId}
-                      onChange={(event) =>
-                        setAssignmentForm((current) => ({
-                          ...current,
-                          bookId: event.target.value
-                        }))
-                      }
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        padding: "0.75rem",
-                        border: "1px solid var(--line)",
-                        borderRadius: 12
-                      }}
-                      placeholder="Project Gutenberg ID"
-                      disabled={Boolean(editingAssignmentId)}
-                    />
-
-                    {!editingAssignmentId && (
-                      <button
-                        type="button"
-                        className="button secondary"
-                        onClick={lookupBook}
-                        disabled={bookLookupLoading}
+                {!editingAssignmentId && (
+                  <div className="stack-md">
+                    <label>
+                      Find a book
+                      <div
+                        className="search-bar"
+                        style={{ marginTop: "0.35rem" }}
                       >
-                        {bookLookupLoading
-                          ? "Finding..."
-                          : "Find Book"}
-                      </button>
+                        <Search size={20} />
+                        <input
+                          type="search"
+                          placeholder="Search title, author, or subject"
+                          value={bookSearchQuery}
+                          onChange={(event) =>
+                            setBookSearchQuery(event.target.value)
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              searchAssignmentBooks();
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={searchAssignmentBooks}
+                          disabled={bookSearchLoading}
+                        >
+                          {bookSearchLoading ? "Searching..." : "Search"}
+                        </button>
+                      </div>
+                    </label>
+
+                    <p className="status">{bookSearchStatus}</p>
+
+                    {bookSearchResults.length > 0 && (
+                      <div
+                        className="results-list"
+                        style={{
+                          maxHeight: 420,
+                          overflowY: "auto"
+                        }}
+                      >
+                        {bookSearchResults.map((book) => (
+                          <article
+                            key={book.id}
+                            className="book-card compact"
+                          >
+                            <div className="book-card-body">
+                              <h3>{book.title || "Untitled"}</h3>
+                              <p className="muted">
+                                {getAuthorName(book)}
+                              </p>
+                              <button
+                                type="button"
+                                className="button primary"
+                                onClick={() => chooseAssignmentBook(book)}
+                              >
+                                <Plus size={16} />
+                                Assign This Book
+                              </button>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
                     )}
                   </div>
-                </label>
+                )}
+
+                {assignmentForm.bookId && (
+                  <div
+                    style={{
+                      padding: "0.85rem 1rem",
+                      background: "#eef4f3",
+                      borderRadius: 14
+                    }}
+                  >
+                    <strong>Selected book</strong>
+                    <p style={{ margin: "0.25rem 0 0" }}>
+                      {assignmentForm.title || "Untitled"}
+                      {assignmentForm.author
+                        ? ` — ${assignmentForm.author}`
+                        : ""}
+                    </p>
+                  </div>
+                )}
 
                 <label>
                   Title
@@ -1104,58 +1216,40 @@ export default function Classroom({ initialGroup }) {
                                 key={student.userId}
                                 style={{
                                   display: "grid",
-                                  gridTemplateColumns:
-                                    "minmax(120px, 1fr) minmax(140px, 1fr) auto",
-                                  gap: "0.75rem",
-                                  alignItems: "center",
-                                  padding: "0.75rem 0",
+                                  gap: "0.55rem",
+                                  padding: "0.85rem 0",
                                   borderBottom:
                                     "1px solid var(--line)"
                                 }}
                               >
-                                <div>
-                                  <strong>
-                                    {memberName(student)}
-                                  </strong>
-                                  <small
-                                    className="muted"
-                                    style={{ display: "block" }}
-                                  >
-                                    {student.progress
-                                      ?.updatedAtISO
-                                      ? `Last read ${formatDateTime(
-                                          student.progress
-                                            .updatedAtISO
-                                        )}`
-                                      : "Not started"}
-                                  </small>
-                                </div>
+                                <Link
+                                  to={`/read/public/${student.userId}`}
+                                  style={{ width: "fit-content" }}
+                                >
+                                  <strong>{memberName(student)}</strong>
+                                </Link>
 
                                 <div>
                                   <ProgressBar
-                                    value={
-                                      student.assignmentPercent
-                                    }
+                                    value={student.assignmentPercent}
                                   />
                                   <small className="muted">
-                                    {
-                                      student.assignmentPercent
-                                    }
-                                    %
+                                    {student.assignmentPercent}% ·{" "}
+                                    {student.complete
+                                      ? "Complete"
+                                      : student.progress
+                                        ? "In progress"
+                                        : "Not started"}
                                   </small>
                                 </div>
 
-                                <span>
-                                  {student.complete ? (
-                                    <>
-                                      <Check size={16} /> Complete
-                                    </>
-                                  ) : student.progress ? (
-                                    "In progress"
-                                  ) : (
-                                    "Not started"
-                                  )}
-                                </span>
+                                <small className="muted">
+                                  {student.progress?.updatedAtISO
+                                    ? `Last read ${formatDateTime(
+                                        student.progress.updatedAtISO
+                                      )}`
+                                    : "Not started"}
+                                </small>
                               </div>
                             ))}
                           </div>
@@ -1293,8 +1387,8 @@ export default function Classroom({ initialGroup }) {
                             }}
                           >
                             <strong>
-                              {reply.profile?.displayName ||
-                                reply.reader?.displayName ||
+                              {reply.authorProfile?.displayName ||
+                                reply.authorProfile?.username ||
                                 "Reader"}
                             </strong>
                             <p>{reply.body || reply.note}</p>
@@ -1377,7 +1471,10 @@ export default function Classroom({ initialGroup }) {
                       "1px solid var(--line)"
                   }}
                 >
-                  <div>
+                  <Link
+                    to={`/read/public/${member.userId}`}
+                    style={{ display: "block" }}
+                  >
                     <strong>{memberName(member)}</strong>
                     <small
                       className="muted"
@@ -1385,7 +1482,7 @@ export default function Classroom({ initialGroup }) {
                     >
                       {classRoleLabel(member.role)}
                     </small>
-                  </div>
+                  </Link>
 
                   {isOwner &&
                     member.role !== "owner" && (
@@ -1527,6 +1624,75 @@ export default function Classroom({ initialGroup }) {
                 />
               </label>
 
+              <div>
+                <span
+                  style={{
+                    display: "block",
+                    marginBottom: "0.55rem",
+                    fontWeight: 700
+                  }}
+                >
+                  Class avatar
+                </span>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit, minmax(84px, 1fr))",
+                    gap: "0.65rem"
+                  }}
+                >
+                  {GROUP_AVATARS.map((avatar) => {
+                    const selected =
+                      settingsForm.avatar === avatar.id ||
+                      settingsForm.avatar === avatar.image;
+
+                    return (
+                      <button
+                        key={avatar.id}
+                        type="button"
+                        onClick={() =>
+                          setSettingsForm((current) => ({
+                            ...current,
+                            avatar: avatar.id
+                          }))
+                        }
+                        aria-pressed={selected}
+                        title={avatar.name}
+                        style={{
+                          padding: "0.45rem",
+                          border: selected
+                            ? "3px solid var(--primary)"
+                            : "1px solid var(--line)",
+                          borderRadius: 16,
+                          background: "#fff"
+                        }}
+                      >
+                        <img
+                          src={avatar.image}
+                          alt={avatar.name}
+                          style={{
+                            width: "100%",
+                            aspectRatio: "1 / 1",
+                            objectFit: "cover",
+                            borderRadius: 12
+                          }}
+                        />
+                        <small
+                          style={{
+                            display: "block",
+                            marginTop: "0.35rem"
+                          }}
+                        >
+                          {avatar.name}
+                        </small>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <label>
                 Visibility
                 <select
@@ -1575,7 +1741,7 @@ export default function Classroom({ initialGroup }) {
                   <option value="invite_only">
                     Invite only
                   </option>
-                  <option value="request">
+                  <option value="request_to_join">
                     Request to join
                   </option>
                   <option value="open">
