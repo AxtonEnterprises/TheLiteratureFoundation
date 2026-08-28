@@ -5,10 +5,15 @@ import {
 } from "react";
 
 import { onAuthStateChanged } from "firebase/auth";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import {
+  Link,
+  useNavigate,
+  useParams
+} from "react-router-dom";
 
 import {
   ArrowLeft,
+  Check,
   Crown,
   Lock,
   LogOut,
@@ -20,7 +25,8 @@ import {
   Trash2,
   UserMinus,
   UserPlus,
-  Users
+  Users,
+  X
 } from "lucide-react";
 
 import { auth } from "../firebase";
@@ -32,11 +38,11 @@ import {
 } from "../services/chainStorage.js";
 
 import {
+  deleteGroupPermanently,
   getFriends,
   getGroup,
-  deleteGroupPermanently,
-  getGroupMembers,
   getGroupJoinRequests,
+  getGroupMembers,
   inviteFriendToGroup,
   leaveGroup,
   removeGroupMember,
@@ -61,29 +67,56 @@ import {
   getGroupAvatar
 } from "../data/groupAvatars.js";
 
-import SEO from "../components/SEO.jsx";
+import {
+  GROUP_PERMISSION_LABELS,
+  GROUP_PERMISSIONS,
+  GROUP_ROLES,
+  canManageTargetMember,
+  groupRoleDescription,
+  groupRoleLabel,
+  hasGroupPermission
+} from "../services/groupPermissions.js";
 
-function roleLabel(role) {
-  if (role === "owner") return "Owner";
-  if (role === "admin") return "Admin";
-  if (role === "moderator") return "Moderator";
-  return "Member";
-}
+import SEO from "../components/SEO.jsx";
 
 function formatDate(value) {
   if (!value) return "";
+
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric"
-  });
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleDateString(
+    undefined,
+    {
+      month: "short",
+      day: "numeric",
+      year: "numeric"
+    }
+  );
 }
 
-function GroupAvatar({ group, size = 92 }) {
-  const preset = getGroupAvatar(group?.avatar);
-  const src = preset?.image || group?.avatar || "";
+function memberName(member) {
+  return (
+    member?.profile?.displayName ||
+    member?.profile?.username ||
+    "Reader"
+  );
+}
+
+function GroupAvatar({
+  group,
+  size = 92
+}) {
+  const preset =
+    getGroupAvatar(group?.avatar);
+
+  const src =
+    preset?.image ||
+    group?.avatar ||
+    "";
 
   return (
     <div
@@ -110,37 +143,245 @@ function GroupAvatar({ group, size = 92 }) {
           }}
         />
       ) : (
-        <Users size={Math.round(size * 0.42)} />
+        <Users
+          size={Math.round(size * 0.42)}
+        />
       )}
     </div>
   );
 }
 
+function RoleBadge({ role }) {
+  const isOwner = role === "owner";
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.3rem"
+      }}
+    >
+      {isOwner ? (
+        <Crown size={14} />
+      ) : ["admin", "moderator"].includes(role) ? (
+        <Shield size={14} />
+      ) : null}
+
+      {groupRoleLabel(role)}
+    </span>
+  );
+}
+
+function PermissionMatrix() {
+  const permissionKeys =
+    Object.keys(
+      GROUP_PERMISSION_LABELS
+    );
+
+  return (
+    <div
+      style={{
+        overflowX: "auto"
+      }}
+    >
+      <table
+        style={{
+          width: "100%",
+          minWidth: 650,
+          borderCollapse: "collapse"
+        }}
+      >
+        <thead>
+          <tr>
+            <th
+              style={{
+                textAlign: "left",
+                padding: "0.6rem"
+              }}
+            >
+              Permission
+            </th>
+
+            {GROUP_ROLES.map((role) => (
+              <th
+                key={role}
+                style={{
+                  textAlign: "center",
+                  padding: "0.6rem"
+                }}
+              >
+                {groupRoleLabel(role)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+
+        <tbody>
+          {permissionKeys.map(
+            (permission) => (
+              <tr key={permission}>
+                <td
+                  style={{
+                    padding: "0.6rem",
+                    borderTop:
+                      "1px solid var(--line)"
+                  }}
+                >
+                  {
+                    GROUP_PERMISSION_LABELS[
+                      permission
+                    ]
+                  }
+                </td>
+
+                {GROUP_ROLES.map(
+                  (role) => {
+                    const allowed =
+                      GROUP_PERMISSIONS[
+                        role
+                      ][permission];
+
+                    return (
+                      <td
+                        key={role}
+                        style={{
+                          textAlign:
+                            "center",
+                          padding:
+                            "0.6rem",
+                          borderTop:
+                            "1px solid var(--line)"
+                        }}
+                        aria-label={
+                          allowed
+                            ? "Allowed"
+                            : "Not allowed"
+                        }
+                      >
+                        {allowed ? (
+                          <Check
+                            size={17}
+                          />
+                        ) : (
+                          <X
+                            size={17}
+                            style={{
+                              opacity: 0.35
+                            }}
+                          />
+                        )}
+                      </td>
+                    );
+                  }
+                )}
+              </tr>
+            )
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function Group() {
-  const { groupId } = useParams();
-  const navigate = useNavigate();
+  const { groupId } =
+    useParams();
 
-  const [user, setUser] = useState(null);
-  const [group, setGroup] = useState(null);
-  const [members, setMembers] = useState([]);
-  const [friends, setFriends] = useState([]);
-  const [joinRequests, setJoinRequests] = useState([]);
-  const [moderationQueue, setModerationQueue] = useState([]);
-  const [transferOwnerId, setTransferOwnerId] = useState("");
-  const [dangerBusy, setDangerBusy] = useState(false);
-  const [forumPosts, setForumPosts] = useState([]);
-  const [forumReplies, setForumReplies] = useState({});
-  const [openTopicId, setOpenTopicId] = useState(null);
-  const [topicTitle, setTopicTitle] = useState("");
-  const [topicBody, setTopicBody] = useState("");
-  const [replyText, setReplyText] = useState("");
-  const [activeTab, setActiveTab] = useState("forum");
-  const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState("");
-  const [busyUserId, setBusyUserId] = useState(null);
-  const [busyTopicId, setBusyTopicId] = useState(null);
+  const navigate =
+    useNavigate();
 
-  const [settings, setSettings] = useState({
+  const [user, setUser] =
+    useState(null);
+
+  const [group, setGroup] =
+    useState(null);
+
+  const [members, setMembers] =
+    useState([]);
+
+  const [friends, setFriends] =
+    useState([]);
+
+  const [
+    joinRequests,
+    setJoinRequests
+  ] = useState([]);
+
+  const [
+    moderationQueue,
+    setModerationQueue
+  ] = useState([]);
+
+  const [
+    transferOwnerId,
+    setTransferOwnerId
+  ] = useState("");
+
+  const [
+    dangerBusy,
+    setDangerBusy
+  ] = useState(false);
+
+  const [
+    forumPosts,
+    setForumPosts
+  ] = useState([]);
+
+  const [
+    forumReplies,
+    setForumReplies
+  ] = useState({});
+
+  const [
+    openTopicId,
+    setOpenTopicId
+  ] = useState(null);
+
+  const [
+    topicTitle,
+    setTopicTitle
+  ] = useState("");
+
+  const [
+    topicBody,
+    setTopicBody
+  ] = useState("");
+
+  const [
+    replyText,
+    setReplyText
+  ] = useState("");
+
+  const [
+    activeTab,
+    setActiveTab
+  ] = useState("forum");
+
+  const [
+    loading,
+    setLoading
+  ] = useState(true);
+
+  const [
+    status,
+    setStatus
+  ] = useState("");
+
+  const [
+    busyUserId,
+    setBusyUserId
+  ] = useState(null);
+
+  const [
+    busyTopicId,
+    setBusyTopicId
+  ] = useState(null);
+
+  const [
+    settings,
+    setSettings
+  ] = useState({
     name: "",
     description: "",
     avatar: "",
@@ -169,108 +410,218 @@ export default function Group() {
 
     if (loadedGroup) {
       setSettings({
-        name: loadedGroup.name || "",
-        description: loadedGroup.description || "",
-        avatar: loadedGroup.avatar || "",
-        type: loadedGroup.type === "class" ? "class" : "group",
-        visibility: loadedGroup.visibility || "private",
-        joinPolicy: loadedGroup.joinPolicy || "invite_only"
+        name:
+          loadedGroup.name || "",
+        description:
+          loadedGroup.description ||
+          "",
+        avatar:
+          loadedGroup.avatar || "",
+        type:
+          loadedGroup.type ===
+          "class"
+            ? "class"
+            : "group",
+        visibility:
+          loadedGroup.visibility ||
+          "private",
+        joinPolicy:
+          loadedGroup.joinPolicy ||
+          "invite_only"
       });
     }
   }
 
   useEffect(() => {
-    return onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
+    return onAuthStateChanged(
+      auth,
+      async (firebaseUser) => {
+        setUser(firebaseUser);
 
-      if (!firebaseUser) {
-        setLoading(false);
-        return;
-      }
+        if (!firebaseUser) {
+          setLoading(false);
+          return;
+        }
 
-      try {
-        setLoading(true);
-        setStatus("");
-        await refresh();
-      } catch (error) {
-        console.error("Could not load group:", error);
-        setStatus(
-          error?.message || "We couldn't load this group."
-        );
-      } finally {
-        setLoading(false);
+        try {
+          setLoading(true);
+          setStatus("");
+          await refresh();
+        } catch (error) {
+          console.error(
+            "Could not load group:",
+            error
+          );
+
+          setStatus(
+            error?.message ||
+              "We couldn't load this group."
+          );
+        } finally {
+          setLoading(false);
+        }
       }
-    });
+    );
   }, [groupId]);
 
-  const memberIds = useMemo(
-    () => new Set(members.map((member) => String(member.userId))),
-    [members]
-  );
+  const memberIds =
+    useMemo(
+      () =>
+        new Set(
+          members.map((member) =>
+            String(member.userId)
+          )
+        ),
+      [members]
+    );
 
-  const inviteableFriends = friends.filter(
-    (friend) => !memberIds.has(String(friend.otherUserId))
-  );
+  const inviteableFriends =
+    friends.filter(
+      (friend) =>
+        !memberIds.has(
+          String(
+            friend.otherUserId
+          )
+        )
+    );
 
-  const myRole = group?.membership?.role || "member";
-  const canManage = ["owner", "admin"].includes(myRole);
-  const canModerate = ["owner", "admin", "moderator"].includes(myRole);
+  const myRole =
+    group?.membership?.role ||
+    "member";
+
+  const canManageMembers =
+    hasGroupPermission(
+      myRole,
+      "manageMembers"
+    );
+
+  const canManageJoinRequests =
+    hasGroupPermission(
+      myRole,
+      "manageJoinRequests"
+    );
+
+  const canInvite =
+    hasGroupPermission(
+      myRole,
+      "inviteMembers"
+    );
+
+  const canEditSettings =
+    hasGroupPermission(
+      myRole,
+      "editSettings"
+    );
+
+  const canChangeRoles =
+    hasGroupPermission(
+      myRole,
+      "changeRoles"
+    );
+
+  const canModerate =
+    hasGroupPermission(
+      myRole,
+      "moderateContent"
+    );
+
+  const canTransferOwnership =
+    hasGroupPermission(
+      myRole,
+      "transferOwnership"
+    );
+
+  const canDeleteGroup =
+    hasGroupPermission(
+      myRole,
+      "deleteGroup"
+    );
 
   useEffect(() => {
     let active = true;
 
-    async function loadJoinRequests() {
-      if (!canManage) {
+    async function load() {
+      if (!canManageJoinRequests) {
         setJoinRequests([]);
         return;
       }
 
       try {
-        const requests = await getGroupJoinRequests(groupId);
+        const requests =
+          await getGroupJoinRequests(
+            groupId
+          );
+
         if (active) {
-          setJoinRequests(requests);
+          setJoinRequests(
+            requests
+          );
         }
       } catch (error) {
-        console.error("Could not load join requests:", error);
+        console.error(
+          "Could not load join requests:",
+          error
+        );
       }
     }
 
-    loadJoinRequests();
+    load();
 
     return () => {
       active = false;
     };
-  }, [groupId, canManage]);
+  }, [
+    groupId,
+    canManageJoinRequests
+  ]);
 
   useEffect(() => {
     let active = true;
 
-    async function loadModerationQueue() {
+    async function load() {
       if (!canModerate) {
         setModerationQueue([]);
         return;
       }
 
       try {
-        const reports = await getGroupModerationQueue(groupId);
+        const reports =
+          await getGroupModerationQueue(
+            groupId
+          );
+
         if (active) {
-          setModerationQueue(reports);
+          setModerationQueue(
+            reports
+          );
         }
       } catch (error) {
-        console.error("Could not load moderation queue:", error);
+        console.error(
+          "Could not load moderation queue:",
+          error
+        );
       }
     }
 
-    loadModerationQueue();
+    load();
 
     return () => {
       active = false;
     };
-  }, [groupId, canModerate]);
+  }, [
+    groupId,
+    canModerate
+  ]);
 
-  async function handleJoinRequest(request, accept) {
+  async function handleJoinRequest(
+    request,
+    accept
+  ) {
     try {
-      setBusyUserId(request.userId);
+      setBusyUserId(
+        request.userId
+      );
+
       setStatus("");
 
       await respondToGroupJoinRequest(
@@ -280,7 +631,9 @@ export default function Group() {
       );
 
       setJoinRequests(
-        await getGroupJoinRequests(groupId)
+        await getGroupJoinRequests(
+          groupId
+        )
       );
 
       await refresh();
@@ -292,30 +645,210 @@ export default function Group() {
       );
     } catch (error) {
       setStatus(
-        error?.message || "We couldn't update that join request."
+        error?.message ||
+          "We couldn't update that join request."
       );
     } finally {
       setBusyUserId(null);
     }
   }
 
-  async function handleTransferOwnership() {
-    if (!transferOwnerId) {
-      setStatus("Choose a member to receive ownership.");
+  async function invite(friend) {
+    try {
+      setBusyUserId(
+        friend.otherUserId
+      );
+
+      setStatus("");
+
+      await inviteFriendToGroup(
+        groupId,
+        friend.otherUserId
+      );
+
+      setStatus(
+        `Invitation sent to ${
+          friend.profile
+            ?.displayName ||
+          "reader"
+        }.`
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't send that invitation."
+      );
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  async function changeRole(
+    member,
+    role
+  ) {
+    const oldRole =
+      member.role || "member";
+
+    if (oldRole === role) {
       return;
     }
 
-    const nextOwner = members.find(
-      (member) => member.userId === transferOwnerId
-    );
-
-    const confirmed = window.confirm(
-      `Transfer ownership to ${
-        nextOwner?.profile?.displayName || "this member"
-      }? You will become an admin.`
-    );
+    const confirmed =
+      window.confirm(
+        `Change ${memberName(
+          member
+        )} from ${groupRoleLabel(
+          oldRole
+        )} to ${groupRoleLabel(
+          role
+        )}?`
+      );
 
     if (!confirmed) {
+      return;
+    }
+
+    try {
+      setBusyUserId(
+        member.userId
+      );
+
+      setStatus("");
+
+      await setGroupMemberRole(
+        groupId,
+        member.userId,
+        role
+      );
+
+      await refresh();
+
+      setStatus(
+        `${memberName(
+          member
+        )} is now a ${groupRoleLabel(
+          role
+        )}.`
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't update that role."
+      );
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  async function remove(member) {
+    if (
+      !canManageTargetMember(
+        myRole,
+        member.role
+      )
+    ) {
+      setStatus(
+        "Your role cannot remove this member."
+      );
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Remove ${memberName(
+          member
+        )} from the group?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setBusyUserId(
+        member.userId
+      );
+
+      setStatus("");
+
+      await removeGroupMember(
+        groupId,
+        member.userId
+      );
+
+      await refresh();
+
+      setStatus(
+        "Member removed."
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't remove that member."
+      );
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  async function leave() {
+    if (
+      !window.confirm(
+        "Leave this group?"
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await leaveGroup(
+        groupId
+      );
+
+      navigate(
+        "/read/profile?tab=groups"
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't leave this group."
+      );
+    }
+  }
+
+  async function handleTransferOwnership() {
+    if (!transferOwnerId) {
+      setStatus(
+        "Choose a member to receive ownership."
+      );
+      return;
+    }
+
+    const nextOwner =
+      members.find(
+        (member) =>
+          member.userId ===
+          transferOwnerId
+      );
+
+    if (!nextOwner) {
+      setStatus(
+        "That member is no longer available."
+      );
+      return;
+    }
+
+    const confirmation =
+      window.prompt(
+        `Transfer "${group.name}" to ${memberName(
+          nextOwner
+        )}?\n\nYou will become an Admin. Type TRANSFER to confirm.`
+      );
+
+    if (confirmation !== "TRANSFER") {
+      setStatus(
+        "Ownership transfer canceled."
+      );
       return;
     }
 
@@ -331,10 +864,14 @@ export default function Group() {
       await refresh();
 
       setTransferOwnerId("");
-      setStatus("Ownership transferred.");
+
+      setStatus(
+        "Ownership transferred. You are now an Admin."
+      );
     } catch (error) {
       setStatus(
-        error?.message || "We couldn't transfer ownership."
+        error?.message ||
+          "We couldn't transfer ownership."
       );
     } finally {
       setDangerBusy(false);
@@ -342,20 +879,30 @@ export default function Group() {
   }
 
   async function handleDeleteGroup() {
-    const confirmed = window.confirm(
-      `Permanently delete "${group?.name || "this group"}"? This removes members, invitations, join requests, forum posts, and forum replies. This cannot be undone.`
-    );
+    const confirmed =
+      window.confirm(
+        `Permanently delete "${
+          group?.name ||
+          "this group"
+        }"? This cannot be undone.`
+      );
 
     if (!confirmed) {
       return;
     }
 
-    const secondConfirmation = window.prompt(
-      'Type DELETE to permanently remove this group.'
-    );
+    const secondConfirmation =
+      window.prompt(
+        "Type DELETE to permanently remove this group."
+      );
 
-    if (secondConfirmation !== "DELETE") {
-      setStatus("Group deletion canceled.");
+    if (
+      secondConfirmation !==
+      "DELETE"
+    ) {
+      setStatus(
+        "Group deletion canceled."
+      );
       return;
     }
 
@@ -363,19 +910,327 @@ export default function Group() {
       setDangerBusy(true);
       setStatus("");
 
-      await deleteGroupPermanently(groupId);
+      await deleteGroupPermanently(
+        groupId
+      );
 
-      navigate("/read/profile?tab=groups");
+      navigate(
+        "/read/profile?tab=groups"
+      );
     } catch (error) {
       setStatus(
-        error?.message || "We couldn't delete this group."
+        error?.message ||
+          "We couldn't delete this group."
       );
     } finally {
       setDangerBusy(false);
     }
   }
 
-  async function handleResolveReport(report, resolution) {
+  async function saveSettings(
+    event
+  ) {
+    event.preventDefault();
+
+    try {
+      setStatus("");
+
+      await updateGroupProfile(
+        groupId,
+        settings
+      );
+
+      await refresh();
+
+      setStatus(
+        "Group settings saved."
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't save group settings."
+      );
+    }
+  }
+
+  async function createTopic(
+    event
+  ) {
+    event.preventDefault();
+
+    if (
+      !topicTitle.trim() ||
+      !topicBody.trim()
+    ) {
+      setStatus(
+        "Add a discussion title and message."
+      );
+      return;
+    }
+
+    try {
+      setStatus("");
+
+      await createGroupForumPost(
+        groupId,
+        {
+          title: topicTitle,
+          body: topicBody
+        }
+      );
+
+      setTopicTitle("");
+      setTopicBody("");
+
+      setForumPosts(
+        await getGroupForumPosts(
+          groupId
+        )
+      );
+
+      setStatus(
+        "Discussion posted."
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't post that discussion."
+      );
+    }
+  }
+
+  async function openTopic(post) {
+    if (
+      openTopicId === post.id
+    ) {
+      setOpenTopicId(null);
+      setReplyText("");
+      return;
+    }
+
+    try {
+      setBusyTopicId(
+        post.id
+      );
+
+      setStatus("");
+
+      const replies =
+        await getGroupForumReplies(
+          groupId,
+          post.id
+        );
+
+      setForumReplies(
+        (current) => ({
+          ...current,
+          [post.id]: replies
+        })
+      );
+
+      setOpenTopicId(
+        post.id
+      );
+
+      setReplyText("");
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't load that discussion."
+      );
+    } finally {
+      setBusyTopicId(null);
+    }
+  }
+
+  async function sendForumReply(
+    post
+  ) {
+    if (!replyText.trim()) {
+      return;
+    }
+
+    try {
+      setBusyTopicId(
+        post.id
+      );
+
+      setStatus("");
+
+      await replyToGroupForumPost(
+        groupId,
+        post.id,
+        replyText
+      );
+
+      const replies =
+        await getGroupForumReplies(
+          groupId,
+          post.id
+        );
+
+      setForumReplies(
+        (current) => ({
+          ...current,
+          [post.id]: replies
+        })
+      );
+
+      setReplyText("");
+
+      setForumPosts(
+        await getGroupForumPosts(
+          groupId
+        )
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't post that reply."
+      );
+    } finally {
+      setBusyTopicId(null);
+    }
+  }
+
+  async function toggleTopic(
+    post,
+    field
+  ) {
+    try {
+      setBusyTopicId(
+        post.id
+      );
+
+      setStatus("");
+
+      await updateGroupForumPost(
+        groupId,
+        post.id,
+        {
+          [field]:
+            !post[field]
+        }
+      );
+
+      setForumPosts(
+        await getGroupForumPosts(
+          groupId
+        )
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't update that discussion."
+      );
+    } finally {
+      setBusyTopicId(null);
+    }
+  }
+
+  async function deleteTopic(
+    post
+  ) {
+    if (
+      !window.confirm(
+        "Delete this discussion?"
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setBusyTopicId(
+        post.id
+      );
+
+      setStatus("");
+
+      await deleteGroupForumPost(
+        groupId,
+        post.id
+      );
+
+      setForumPosts(
+        await getGroupForumPosts(
+          groupId
+        )
+      );
+
+      if (
+        openTopicId === post.id
+      ) {
+        setOpenTopicId(null);
+      }
+
+      setStatus(
+        "Discussion removed."
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't remove that discussion."
+      );
+    } finally {
+      setBusyTopicId(null);
+    }
+  }
+
+  async function deleteForumReply(
+    post,
+    reply
+  ) {
+    if (
+      !window.confirm(
+        "Delete this reply? This cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setBusyTopicId(
+        post.id
+      );
+
+      setStatus("");
+
+      await deleteGroupForumReply(
+        groupId,
+        post.id,
+        reply.id
+      );
+
+      const replies =
+        await getGroupForumReplies(
+          groupId,
+          post.id
+        );
+
+      setForumReplies(
+        (current) => ({
+          ...current,
+          [post.id]: replies
+        })
+      );
+
+      setStatus(
+        "Reply removed."
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't remove that reply."
+      );
+    } finally {
+      setBusyTopicId(null);
+    }
+  }
+
+  async function handleResolveReport(
+    report,
+    resolution
+  ) {
     try {
       setStatus("");
 
@@ -386,22 +1241,28 @@ export default function Group() {
       );
 
       setModerationQueue(
-        await getGroupModerationQueue(groupId)
+        await getGroupModerationQueue(
+          groupId
+        )
       );
 
       setStatus(
-        resolution === "dismissed"
+        resolution ===
+        "dismissed"
           ? "Report dismissed."
           : "Report resolved."
       );
     } catch (error) {
       setStatus(
-        error?.message || "We couldn't update that report."
+        error?.message ||
+          "We couldn't update that report."
       );
     }
   }
 
-  async function handleDeleteReportedChainEntry(report) {
+  async function handleDeleteReportedChainEntry(
+    report
+  ) {
     if (
       !window.confirm(
         "Delete this reported group Chain post? This cannot be undone."
@@ -419,238 +1280,19 @@ export default function Group() {
       );
 
       setModerationQueue(
-        await getGroupModerationQueue(groupId)
+        await getGroupModerationQueue(
+          groupId
+        )
       );
 
-      setStatus("Reported Chain post removed.");
-    } catch (error) {
       setStatus(
-        error?.message || "We couldn't remove that Chain post."
-      );
-    }
-  }
-
-  async function invite(friend) {
-    try {
-      setBusyUserId(friend.otherUserId);
-      setStatus("");
-      await inviteFriendToGroup(groupId, friend.otherUserId);
-      setStatus(
-        `Invitation sent to ${
-          friend.profile?.displayName || "reader"
-        }.`
+        "Reported Chain post removed."
       );
     } catch (error) {
       setStatus(
-        error?.message || "We couldn't send that invitation."
+        error?.message ||
+          "We couldn't remove that Chain post."
       );
-    } finally {
-      setBusyUserId(null);
-    }
-  }
-
-  async function changeRole(member, role) {
-    try {
-      setBusyUserId(member.userId);
-      setStatus("");
-      await setGroupMemberRole(groupId, member.userId, role);
-      await refresh();
-      setStatus("Member role updated.");
-    } catch (error) {
-      setStatus(
-        error?.message || "We couldn't update that role."
-      );
-    } finally {
-      setBusyUserId(null);
-    }
-  }
-
-  async function remove(member) {
-    if (
-      !window.confirm(
-        `Remove ${
-          member.profile?.displayName || "this reader"
-        } from the group?`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      setBusyUserId(member.userId);
-      setStatus("");
-      await removeGroupMember(groupId, member.userId);
-      await refresh();
-      setStatus("Member removed.");
-    } catch (error) {
-      setStatus(
-        error?.message || "We couldn't remove that member."
-      );
-    } finally {
-      setBusyUserId(null);
-    }
-  }
-
-  async function leave() {
-    if (!window.confirm("Leave this group?")) return;
-
-    try {
-      await leaveGroup(groupId);
-      navigate("/read/profile?tab=groups");
-    } catch (error) {
-      setStatus(
-        error?.message || "We couldn't leave this group."
-      );
-    }
-  }
-
-  async function saveSettings(event) {
-    event.preventDefault();
-
-    try {
-      setStatus("");
-      await updateGroupProfile(groupId, settings);
-      await refresh();
-      setStatus("Group settings saved.");
-    } catch (error) {
-      setStatus(
-        error?.message || "We couldn't save group settings."
-      );
-    }
-  }
-
-  async function createTopic(event) {
-    event.preventDefault();
-
-    try {
-      setStatus("");
-      await createGroupForumPost(groupId, {
-        title: topicTitle,
-        body: topicBody
-      });
-      setTopicTitle("");
-      setTopicBody("");
-      setForumPosts(await getGroupForumPosts(groupId));
-      setStatus("Discussion posted.");
-    } catch (error) {
-      setStatus(
-        error?.message || "We couldn't post that discussion."
-      );
-    }
-  }
-
-  async function openTopic(post) {
-    if (openTopicId === post.id) {
-      setOpenTopicId(null);
-      setReplyText("");
-      return;
-    }
-
-    try {
-      setBusyTopicId(post.id);
-      setStatus("");
-      const replies = await getGroupForumReplies(groupId, post.id);
-      setForumReplies((current) => ({
-        ...current,
-        [post.id]: replies
-      }));
-      setOpenTopicId(post.id);
-      setReplyText("");
-    } catch (error) {
-      setStatus(
-        error?.message || "We couldn't load that discussion."
-      );
-    } finally {
-      setBusyTopicId(null);
-    }
-  }
-
-  async function sendForumReply(post) {
-    try {
-      setBusyTopicId(post.id);
-      setStatus("");
-      await replyToGroupForumPost(groupId, post.id, replyText);
-      const replies = await getGroupForumReplies(groupId, post.id);
-      setForumReplies((current) => ({
-        ...current,
-        [post.id]: replies
-      }));
-      setReplyText("");
-      setForumPosts(await getGroupForumPosts(groupId));
-    } catch (error) {
-      setStatus(
-        error?.message || "We couldn't post that reply."
-      );
-    } finally {
-      setBusyTopicId(null);
-    }
-  }
-
-  async function toggleTopic(post, field) {
-    try {
-      setBusyTopicId(post.id);
-      setStatus("");
-      await updateGroupForumPost(groupId, post.id, {
-        [field]: !post[field]
-      });
-      setForumPosts(await getGroupForumPosts(groupId));
-    } catch (error) {
-      setStatus(
-        error?.message || "We couldn't update that discussion."
-      );
-    } finally {
-      setBusyTopicId(null);
-    }
-  }
-
-  async function deleteTopic(post) {
-    if (!window.confirm("Delete this discussion?")) return;
-
-    try {
-      setBusyTopicId(post.id);
-      setStatus("");
-      await deleteGroupForumPost(groupId, post.id);
-      setForumPosts(await getGroupForumPosts(groupId));
-      if (openTopicId === post.id) setOpenTopicId(null);
-      setStatus("Discussion removed.");
-    } catch (error) {
-      setStatus(
-        error?.message || "We couldn't remove that discussion."
-      );
-    } finally {
-      setBusyTopicId(null);
-    }
-  }
-
-  async function deleteForumReply(post, reply) {
-    if (!window.confirm("Delete this reply? This cannot be undone.")) {
-      return;
-    }
-
-    try {
-      setBusyTopicId(post.id);
-      setStatus("");
-
-      await deleteGroupForumReply(
-        groupId,
-        post.id,
-        reply.id
-      );
-
-      const replies = await getGroupForumReplies(groupId, post.id);
-
-      setForumReplies((current) => ({
-        ...current,
-        [post.id]: replies
-      }));
-
-      setStatus("Reply removed.");
-    } catch (error) {
-      setStatus(
-        error?.message || "We couldn't remove that reply."
-      );
-    } finally {
-      setBusyTopicId(null);
     }
   }
 
@@ -668,8 +1310,14 @@ export default function Group() {
     return (
       <main className="page-wrap">
         <section className="hero-card small">
-          <h1>Log in to view groups.</h1>
-          <Link to="/read/login" className="button primary">
+          <h1>
+            Log in to view groups.
+          </h1>
+
+          <Link
+            to="/read/login"
+            className="button primary"
+          >
             Log In
           </Link>
         </section>
@@ -681,8 +1329,16 @@ export default function Group() {
     return (
       <main className="page-wrap">
         <section className="hero-card small">
-          <h1>Group not found.</h1>
-          {status && <p className="status">{status}</p>}
+          <h1>
+            Group not found.
+          </h1>
+
+          {status && (
+            <p className="status">
+              {status}
+            </p>
+          )}
+
           <Link
             to="/read/profile?tab=groups"
             className="button secondary"
@@ -694,11 +1350,25 @@ export default function Group() {
     );
   }
 
+  const tabs = [
+    ["forum", "Forum"],
+    ["members", "Members"],
+    ...(canModerate
+      ? [["moderation", "Moderation"]]
+      : []),
+    ...(canEditSettings
+      ? [["settings", "Settings"]]
+      : [])
+  ];
+
   return (
     <main className="page-wrap">
       <SEO
-        title={`${group.name} | Random Reads`}
-        description={group.description || "Random Reads group"}
+        title={`${group.name} | Lit Chain`}
+        description={
+          group.description ||
+          "Lit Chain reading group"
+        }
         path={`/read/groups/${group.id}`}
         noindex
       />
@@ -713,23 +1383,54 @@ export default function Group() {
               flexWrap: "wrap"
             }}
           >
-            <GroupAvatar group={group} />
+            <GroupAvatar
+              group={group}
+            />
 
-            <div style={{ flex: "1 1 260px" }}>
+            <div
+              style={{
+                flex: "1 1 260px"
+              }}
+            >
               <p className="eyebrow">
-                {group.type === "class" ? "Class" : "Reading Group"}
+                Reading Group
               </p>
+
               <h1>{group.name}</h1>
-              {group.description && <p>{group.description}</p>}
+
+              {group.description && (
+                <p>
+                  {group.description}
+                </p>
+              )}
+
               <p className="muted">
-                Your role: <strong>{roleLabel(myRole)}</strong>
+                Your role:{" "}
+                <strong>
+                  <RoleBadge
+                    role={myRole}
+                  />
+                </strong>
                 {" · "}
-                {members.length} member{members.length === 1 ? "" : "s"}
+                {members.length} member
+                {members.length === 1
+                  ? ""
+                  : "s"}
+              </p>
+
+              <p className="muted">
+                {groupRoleDescription(
+                  myRole
+                )}
               </p>
             </div>
           </div>
 
-          {status && <p className="status">{status}</p>}
+          {status && (
+            <p className="status">
+              {status}
+            </p>
+          )}
 
           <div className="button-row">
             <Link
@@ -754,21 +1455,8 @@ export default function Group() {
         </section>
 
         <section className="margins-filter-bar">
-          {[
-            ["forum", "Forum"],
-            ["members", "Members"],
-            ["moderation", "Moderation"],
-            ["settings", "Settings"]
-          ].map(([value, label]) => {
-            if (value === "moderation" && !canModerate) {
-              return null;
-            }
-
-            if (value === "settings" && !canManage) {
-              return null;
-            }
-
-            return (
+          {tabs.map(
+            ([value, label]) => (
               <button
                 key={value}
                 type="button"
@@ -777,25 +1465,42 @@ export default function Group() {
                     ? "margins-filter active"
                     : "margins-filter"
                 }
-                onClick={() => setActiveTab(value)}
+                onClick={() =>
+                  setActiveTab(value)
+                }
               >
                 {label}
               </button>
-            );
-          })}
+            )
+          )}
         </section>
 
         {activeTab === "forum" && (
           <>
             <section className="panel profile-panel">
-              <h2>Start a Discussion</h2>
-              <form onSubmit={createTopic} className="stack-md profile-edit-form">
+              <h2>
+                Start a Discussion
+              </h2>
+
+              <form
+                onSubmit={
+                  createTopic
+                }
+                className="stack-md profile-edit-form"
+              >
                 <label>
                   Topic
                   <input
-                    value={topicTitle}
-                    onChange={(event) =>
-                      setTopicTitle(event.target.value)
+                    value={
+                      topicTitle
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setTopicTitle(
+                        event.target
+                          .value
+                      )
                     }
                     placeholder="What should the group discuss?"
                   />
@@ -804,17 +1509,29 @@ export default function Group() {
                 <label>
                   Message
                   <textarea
-                    value={topicBody}
-                    onChange={(event) =>
-                      setTopicBody(event.target.value)
+                    value={
+                      topicBody
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setTopicBody(
+                        event.target
+                          .value
+                      )
                     }
                     rows={4}
                     placeholder="Write to the group..."
                   />
                 </label>
 
-                <button type="submit" className="button primary">
-                  <MessageCircle size={16} />
+                <button
+                  type="submit"
+                  className="button primary"
+                >
+                  <MessageCircle
+                    size={16}
+                  />
                   Post Discussion
                 </button>
               </form>
@@ -823,372 +1540,623 @@ export default function Group() {
             <section className="panel profile-panel">
               <h2>Group Forum</h2>
 
-              {forumPosts.length === 0 ? (
+              {forumPosts.length ===
+              0 ? (
                 <p className="muted">
-                  No discussions yet. Start the first one.
+                  No discussions yet.
+                  Start the first
+                  one.
                 </p>
               ) : (
                 <div className="public-profile-entry-list">
-                  {forumPosts.map((post) => {
-                    const isAuthor = post.userId === user.uid;
-                    const replies = forumReplies[post.id] || [];
-                    const isOpen = openTopicId === post.id;
+                  {forumPosts.map(
+                    (post) => {
+                      const isAuthor =
+                        post.userId ===
+                        user.uid;
 
-                    return (
-                      <article
-                        key={post.id}
-                        className="public-profile-entry"
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: "1rem",
-                            alignItems: "flex-start"
-                          }}
+                      const replies =
+                        forumReplies[
+                          post.id
+                        ] || [];
+
+                      const isOpen =
+                        openTopicId ===
+                        post.id;
+
+                      return (
+                        <article
+                          key={
+                            post.id
+                          }
+                          className="public-profile-entry"
                         >
-                          <div>
-                            <h3 style={{ marginBottom: "0.35rem" }}>
-                              {post.pinned && (
-                                <Pin size={15} style={{ marginRight: 6 }} />
-                              )}
-                              {post.title}
-                            </h3>
-                            <p className="muted">
-                              {post.authorProfile?.displayName || "Reader"}
-                              {post.createdAtISO
-                                ? ` · ${formatDate(post.createdAtISO)}`
-                                : ""}
-                              {post.locked ? " · Locked" : ""}
-                            </p>
-                          </div>
-
-                          <div className="button-row">
-                            {canModerate && (
-                              <>
-                                <button
-                                  type="button"
-                                  className="button secondary"
-                                  disabled={busyTopicId === post.id}
-                                  onClick={() =>
-                                    toggleTopic(post, "pinned")
-                                  }
-                                  title={post.pinned ? "Unpin" : "Pin"}
-                                >
-                                  <Pin size={14} />
-                                </button>
-                                <button
-                                  type="button"
-                                  className="button secondary"
-                                  disabled={busyTopicId === post.id}
-                                  onClick={() =>
-                                    toggleTopic(post, "locked")
-                                  }
-                                  title={post.locked ? "Unlock" : "Lock"}
-                                >
-                                  <Lock size={14} />
-                                </button>
-                              </>
-                            )}
-
-                            {(canModerate || isAuthor) && (
-                              <button
-                                type="button"
-                                className="button secondary"
-                                disabled={busyTopicId === post.id}
-                                onClick={() => deleteTopic(post)}
-                                title="Delete"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        <p>{post.body}</p>
-
-                        <button
-                          type="button"
-                          className="button secondary"
-                          disabled={busyTopicId === post.id}
-                          onClick={() => openTopic(post)}
-                        >
-                          <MessageCircle size={15} />
-                          {isOpen
-                            ? "Hide Replies"
-                            : `Replies${
-                                post.replyCount
-                                  ? ` (${post.replyCount})`
-                                  : ""
-                              }`}
-                        </button>
-
-                        {isOpen && (
                           <div
                             style={{
-                              marginTop: "1rem",
-                              paddingTop: "1rem",
-                              borderTop: "1px solid var(--line)"
+                              display:
+                                "flex",
+                              justifyContent:
+                                "space-between",
+                              gap: "1rem",
+                              alignItems:
+                                "flex-start"
                             }}
                           >
-                            {replies.length === 0 ? (
-                              <p className="muted">No replies yet.</p>
-                            ) : (
-                              <div className="stack-md profile-edit-form">
-                                {replies.map((reply) => {
+                            <div>
+                              <h3>
+                                {post.pinned && (
+                                  <Pin
+                                    size={
+                                      15
+                                    }
+                                  />
+                                )}{" "}
+                                {
+                                  post.title
+                                }
+                              </h3>
+
+                              <p className="muted">
+                                {post
+                                  .authorProfile
+                                  ?.displayName ||
+                                  "Reader"}
+                                {post.createdAtISO
+                                  ? ` · ${formatDate(
+                                      post.createdAtISO
+                                    )}`
+                                  : ""}
+                                {post.locked
+                                  ? " · Locked"
+                                  : ""}
+                              </p>
+                            </div>
+
+                            <div className="button-row">
+                              {canModerate && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="button secondary"
+                                    disabled={
+                                      busyTopicId ===
+                                      post.id
+                                    }
+                                    onClick={() =>
+                                      toggleTopic(
+                                        post,
+                                        "pinned"
+                                      )
+                                    }
+                                    title={
+                                      post.pinned
+                                        ? "Unpin"
+                                        : "Pin"
+                                    }
+                                  >
+                                    <Pin
+                                      size={
+                                        14
+                                      }
+                                    />
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className="button secondary"
+                                    disabled={
+                                      busyTopicId ===
+                                      post.id
+                                    }
+                                    onClick={() =>
+                                      toggleTopic(
+                                        post,
+                                        "locked"
+                                      )
+                                    }
+                                    title={
+                                      post.locked
+                                        ? "Unlock"
+                                        : "Lock"
+                                    }
+                                  >
+                                    <Lock
+                                      size={
+                                        14
+                                      }
+                                    />
+                                  </button>
+                                </>
+                              )}
+
+                              {(canModerate ||
+                                isAuthor) && (
+                                <button
+                                  type="button"
+                                  className="button secondary"
+                                  disabled={
+                                    busyTopicId ===
+                                    post.id
+                                  }
+                                  onClick={() =>
+                                    deleteTopic(
+                                      post
+                                    )
+                                  }
+                                >
+                                  <Trash2
+                                    size={
+                                      14
+                                    }
+                                  />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <p>
+                            {post.body}
+                          </p>
+
+                          <button
+                            type="button"
+                            className="button secondary"
+                            disabled={
+                              busyTopicId ===
+                              post.id
+                            }
+                            onClick={() =>
+                              openTopic(
+                                post
+                              )
+                            }
+                          >
+                            <MessageCircle
+                              size={15}
+                            />
+                            {isOpen
+                              ? "Hide Replies"
+                              : "Replies"}
+                          </button>
+
+                          {isOpen && (
+                            <div
+                              style={{
+                                marginTop:
+                                  "1rem",
+                                paddingTop:
+                                  "1rem",
+                                borderTop:
+                                  "1px solid var(--line)"
+                              }}
+                            >
+                              {replies.map(
+                                (
+                                  reply
+                                ) => {
                                   const isReplyAuthor =
-                                    reply.userId === user.uid;
+                                    reply.userId ===
+                                    user.uid;
 
                                   return (
                                     <div
-                                      key={reply.id}
+                                      key={
+                                        reply.id
+                                      }
                                       style={{
-                                        display: "grid",
-                                        gridTemplateColumns: "1fr auto",
-                                        gap: "0.75rem",
-                                        alignItems: "start"
+                                        display:
+                                          "grid",
+                                        gridTemplateColumns:
+                                          "1fr auto",
+                                        gap: "0.75rem"
                                       }}
                                     >
                                       <div>
                                         <strong>
-                                          {reply.authorProfile?.displayName ||
+                                          {reply
+                                            .authorProfile
+                                            ?.displayName ||
                                             "Reader"}
                                         </strong>
+
                                         <small className="muted">
-                                          {" "}
-                                          · {formatDate(reply.createdAtISO)}
+                                          {" · "}
+                                          {formatDate(
+                                            reply.createdAtISO
+                                          )}
                                         </small>
-                                        <p>{reply.body}</p>
+
+                                        <p>
+                                          {
+                                            reply.body
+                                          }
+                                        </p>
                                       </div>
 
-                                      {(canModerate || isReplyAuthor) && (
+                                      {(canModerate ||
+                                        isReplyAuthor) && (
                                         <button
                                           type="button"
                                           className="button secondary"
-                                          disabled={busyTopicId === post.id}
                                           onClick={() =>
-                                            deleteForumReply(post, reply)
+                                            deleteForumReply(
+                                              post,
+                                              reply
+                                            )
                                           }
-                                          title="Delete reply"
-                                          aria-label="Delete reply"
-                                          style={{
-                                            padding: "0.4rem 0.55rem"
-                                          }}
                                         >
-                                          <Trash2 size={14} />
+                                          <Trash2
+                                            size={
+                                              14
+                                            }
+                                          />
                                         </button>
                                       )}
                                     </div>
                                   );
-                                })}
-                              </div>
-                            )}
+                                }
+                              )}
 
-                            {!post.locked && (
-                              <div
-                                style={{
-                                  display: "flex",
-                                  gap: "0.65rem",
-                                  marginTop: "1rem",
-                                  alignItems: "flex-end"
-                                }}
-                              >
-                                <textarea
-                                  value={replyText}
-                                  onChange={(event) =>
-                                    setReplyText(event.target.value)
-                                  }
-                                  rows={2}
-                                  placeholder="Reply to the group..."
-                                  style={{ flex: 1 }}
-                                />
-                                <button
-                                  type="button"
-                                  className="button primary"
-                                  disabled={busyTopicId === post.id}
-                                  onClick={() => sendForumReply(post)}
+                              {!post.locked && (
+                                <div
+                                  style={{
+                                    display:
+                                      "flex",
+                                    gap: "0.65rem",
+                                    marginTop:
+                                      "1rem",
+                                    alignItems:
+                                      "flex-end"
+                                  }}
                                 >
-                                  <Send size={15} />
-                                  Reply
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </article>
-                    );
-                  })}
+                                  <textarea
+                                    value={
+                                      replyText
+                                    }
+                                    onChange={(
+                                      event
+                                    ) =>
+                                      setReplyText(
+                                        event
+                                          .target
+                                          .value
+                                      )
+                                    }
+                                    rows={
+                                      2
+                                    }
+                                    placeholder="Reply to the group..."
+                                    style={{
+                                      flex: 1
+                                    }}
+                                  />
+
+                                  <button
+                                    type="button"
+                                    className="button primary"
+                                    onClick={() =>
+                                      sendForumReply(
+                                        post
+                                      )
+                                    }
+                                  >
+                                    <Send
+                                      size={
+                                        15
+                                      }
+                                    />
+                                    Reply
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </article>
+                      );
+                    }
+                  )}
                 </div>
               )}
             </section>
           </>
         )}
 
-        {activeTab === "members" && (
+        {activeTab ===
+          "members" && (
           <>
-            {canManage && joinRequests.length > 0 && (
-              <section className="panel profile-panel">
-                <h2>Join Requests ({joinRequests.length})</h2>
-
-                <div className="public-profile-entry-list">
-                  {joinRequests.map((request) => (
-                    <article
-                      key={request.userId}
-                      className="public-profile-entry"
-                    >
-                      <Link
-                        to={`/read/public/${request.userId}`}
-                        className="public-entry-book-title"
-                      >
-                        {request.profile?.displayName || "Reader"}
-                      </Link>
-
-                      {request.profile?.username && (
-                        <p className="muted">
-                          @{request.profile.username}
-                        </p>
-                      )}
-
-                      <div className="button-row">
-                        <button
-                          type="button"
-                          className="button primary"
-                          disabled={busyUserId === request.userId}
-                          onClick={() =>
-                            handleJoinRequest(request, true)
-                          }
-                        >
-                          Accept
-                        </button>
-
-                        <button
-                          type="button"
-                          className="button secondary"
-                          disabled={busyUserId === request.userId}
-                          onClick={() =>
-                            handleJoinRequest(request, false)
-                          }
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            )}
-
             <section className="panel profile-panel">
-              <h2>Members ({members.length})</h2>
+              <p className="eyebrow">
+                Governance
+              </p>
 
-              <div className="public-profile-entry-list">
-                {members.map((member) => (
-                  <article
-                    key={member.userId}
-                    className="public-profile-entry"
-                  >
-                    <Link
-                      to={`/read/public/${member.userId}`}
-                      className="public-entry-book-title"
-                    >
-                      {member.profile?.displayName || "Reader"}
-                    </Link>
+              <h2>
+                Roles & Permissions
+              </h2>
 
-                    {member.profile?.username && (
-                      <p className="muted">
-                        @{member.profile.username}
-                      </p>
-                    )}
+              <p className="muted">
+                Group permissions
+                are fixed by role.
+                Only the Owner can
+                change leadership
+                roles or transfer
+                ownership.
+              </p>
 
-                    <p className="muted">
-                      {member.role === "owner" && <Crown size={14} />}
-                      {["admin", "moderator"].includes(member.role) && (
-                        <Shield size={14} />
-                      )}
-                      {" "}
-                      {roleLabel(member.role)}
-                      {member.joinedAtISO
-                        ? ` · Joined ${formatDate(member.joinedAtISO)}`
-                        : ""}
-                    </p>
-
-                    {myRole === "owner" &&
-                      member.role !== "owner" && (
-                        <label style={{ maxWidth: 220 }}>
-                          Role
-                          <select
-                            value={member.role || "member"}
-                            disabled={busyUserId === member.userId}
-                            onChange={(event) =>
-                              changeRole(member, event.target.value)
-                            }
-                          >
-                            <option value="admin">Admin</option>
-                            <option value="moderator">Moderator</option>
-                            <option value="member">Member</option>
-                          </select>
-                        </label>
-                      )}
-
-                    {canManage &&
-                      member.role !== "owner" &&
-                      member.userId !== user.uid && (
-                        <button
-                          type="button"
-                          className="button secondary"
-                          disabled={busyUserId === member.userId}
-                          onClick={() => remove(member)}
-                        >
-                          <UserMinus size={15} />
-                          Remove
-                        </button>
-                      )}
-                  </article>
-                ))}
-              </div>
+              <PermissionMatrix />
             </section>
 
-            {canManage && (
-              <section className="panel profile-panel">
-                <h2>Invite Friends</h2>
+            {canManageJoinRequests &&
+              joinRequests.length >
+                0 && (
+                <section className="panel profile-panel">
+                  <h2>
+                    Join Requests (
+                    {
+                      joinRequests.length
+                    }
+                    )
+                  </h2>
 
-                {inviteableFriends.length === 0 ? (
-                  <p className="muted">
-                    No friends are currently available to invite.
-                  </p>
-                ) : (
                   <div className="public-profile-entry-list">
-                    {inviteableFriends.map((friend) => (
+                    {joinRequests.map(
+                      (
+                        request
+                      ) => (
+                        <article
+                          key={
+                            request.userId
+                          }
+                          className="public-profile-entry"
+                        >
+                          <Link
+                            to={`/read/public/${request.userId}`}
+                            className="public-entry-book-title"
+                          >
+                            {request
+                              .profile
+                              ?.displayName ||
+                              "Reader"}
+                          </Link>
+
+                          <div className="button-row">
+                            <button
+                              type="button"
+                              className="button primary"
+                              disabled={
+                                busyUserId ===
+                                request.userId
+                              }
+                              onClick={() =>
+                                handleJoinRequest(
+                                  request,
+                                  true
+                                )
+                              }
+                            >
+                              Accept
+                            </button>
+
+                            <button
+                              type="button"
+                              className="button secondary"
+                              disabled={
+                                busyUserId ===
+                                request.userId
+                              }
+                              onClick={() =>
+                                handleJoinRequest(
+                                  request,
+                                  false
+                                )
+                              }
+                            >
+                              Decline
+                            </button>
+                          </div>
+                        </article>
+                      )
+                    )}
+                  </div>
+                </section>
+              )}
+
+            <section className="panel profile-panel">
+              <h2>
+                Members (
+                {members.length})
+              </h2>
+
+              <div className="public-profile-entry-list">
+                {members.map(
+                  (member) => {
+                    const canRemove =
+                      member.userId !==
+                        user.uid &&
+                      canManageMembers &&
+                      canManageTargetMember(
+                        myRole,
+                        member.role
+                      );
+
+                    return (
                       <article
-                        key={friend.otherUserId}
+                        key={
+                          member.userId
+                        }
                         className="public-profile-entry"
                       >
                         <Link
-                          to={`/read/public/${friend.otherUserId}`}
+                          to={`/read/public/${member.userId}`}
                           className="public-entry-book-title"
                         >
-                          {friend.profile?.displayName || "Reader"}
+                          {memberName(
+                            member
+                          )}
                         </Link>
 
-                        {friend.profile?.username && (
+                        {member
+                          .profile
+                          ?.username && (
                           <p className="muted">
-                            @{friend.profile.username}
+                            @
+                            {
+                              member
+                                .profile
+                                .username
+                            }
                           </p>
                         )}
 
-                        <button
-                          type="button"
-                          className="button primary"
-                          disabled={
-                            busyUserId === friend.otherUserId
-                          }
-                          onClick={() => invite(friend)}
-                        >
-                          <UserPlus size={16} />
-                          Invite
-                        </button>
+                        <p className="muted">
+                          <RoleBadge
+                            role={
+                              member.role
+                            }
+                          />
+                          {member.joinedAtISO
+                            ? ` · Joined ${formatDate(
+                                member.joinedAtISO
+                              )}`
+                            : ""}
+                        </p>
+
+                        <p className="muted">
+                          {groupRoleDescription(
+                            member.role
+                          )}
+                        </p>
+
+                        {canChangeRoles &&
+                          member.role !==
+                            "owner" && (
+                            <label
+                              style={{
+                                maxWidth:
+                                  240
+                              }}
+                            >
+                              Role
+                              <select
+                                value={
+                                  member.role ||
+                                  "member"
+                                }
+                                disabled={
+                                  busyUserId ===
+                                  member.userId
+                                }
+                                onChange={(
+                                  event
+                                ) =>
+                                  changeRole(
+                                    member,
+                                    event
+                                      .target
+                                      .value
+                                  )
+                                }
+                              >
+                                <option value="admin">
+                                  Admin
+                                </option>
+                                <option value="moderator">
+                                  Moderator
+                                </option>
+                                <option value="member">
+                                  Member
+                                </option>
+                              </select>
+                            </label>
+                          )}
+
+                        {canRemove && (
+                          <button
+                            type="button"
+                            className="button secondary"
+                            disabled={
+                              busyUserId ===
+                              member.userId
+                            }
+                            onClick={() =>
+                              remove(
+                                member
+                              )
+                            }
+                          >
+                            <UserMinus
+                              size={
+                                15
+                              }
+                            />
+                            Remove
+                          </button>
+                        )}
                       </article>
-                    ))}
+                    );
+                  }
+                )}
+              </div>
+            </section>
+
+            {canInvite && (
+              <section className="panel profile-panel">
+                <h2>
+                  Invite Friends
+                </h2>
+
+                {inviteableFriends.length ===
+                0 ? (
+                  <p className="muted">
+                    No friends are
+                    currently
+                    available to
+                    invite.
+                  </p>
+                ) : (
+                  <div className="public-profile-entry-list">
+                    {inviteableFriends.map(
+                      (
+                        friend
+                      ) => (
+                        <article
+                          key={
+                            friend.otherUserId
+                          }
+                          className="public-profile-entry"
+                        >
+                          <Link
+                            to={`/read/public/${friend.otherUserId}`}
+                            className="public-entry-book-title"
+                          >
+                            {friend
+                              .profile
+                              ?.displayName ||
+                              "Reader"}
+                          </Link>
+
+                          <button
+                            type="button"
+                            className="button primary"
+                            disabled={
+                              busyUserId ===
+                              friend.otherUserId
+                            }
+                            onClick={() =>
+                              invite(
+                                friend
+                              )
+                            }
+                          >
+                            <UserPlus
+                              size={
+                                16
+                              }
+                            />
+                            Invite
+                          </button>
+                        </article>
+                      )
+                    )}
                   </div>
                 )}
               </section>
@@ -1196,138 +2164,172 @@ export default function Group() {
           </>
         )}
 
-        {activeTab === "moderation" && canModerate && (
-          <section className="panel profile-panel">
-            <div>
-              <p className="eyebrow">Group Moderation</p>
-              <h2>Reported Chain Posts</h2>
-            </div>
-
-            {moderationQueue.length === 0 ? (
-              <p className="muted">
-                No open group Chain post reports.
+        {activeTab ===
+          "moderation" &&
+          canModerate && (
+            <section className="panel profile-panel">
+              <p className="eyebrow">
+                Group Moderation
               </p>
-            ) : (
-              <div className="public-profile-entry-list">
-                {moderationQueue.map((report) => (
-                  <article
-                    key={report.id}
-                    className="public-profile-entry"
-                  >
-                    <strong>
-                      {report.reportedProfile?.displayName ||
-                        "Reported reader"}
-                    </strong>
 
-                    <p className="muted">
-                      Reported by{" "}
-                      {report.reporterProfile?.displayName ||
-                        "a group member"}
-                    </p>
+              <h2>
+                Reported Chain
+                Posts
+              </h2>
 
-                    <p>
-                      <strong>Reason:</strong>{" "}
-                      {report.reason || "Other"}
-                    </p>
+              {moderationQueue.length ===
+              0 ? (
+                <p className="muted">
+                  No open group
+                  Chain post
+                  reports.
+                </p>
+              ) : (
+                <div className="public-profile-entry-list">
+                  {moderationQueue.map(
+                    (
+                      report
+                    ) => (
+                      <article
+                        key={
+                          report.id
+                        }
+                        className="public-profile-entry"
+                      >
+                        <strong>
+                          {report
+                            .reportedProfile
+                            ?.displayName ||
+                            "Reported reader"}
+                        </strong>
 
-                    {report.details && (
-                      <p>
-                        <strong>Details:</strong>{" "}
-                        {report.details}
-                      </p>
-                    )}
-
-                    {report.chainEntry ? (
-                      <>
-                        <p className="muted">
-                          {report.chainEntry.title || "Untitled"}
-                          {report.chainEntry.author
-                            ? ` · ${report.chainEntry.author}`
-                            : ""}
+                        <p>
+                          <strong>
+                            Reason:
+                          </strong>{" "}
+                          {report.reason ||
+                            "Other"}
                         </p>
 
-                        {report.chainEntry.paragraphPreview && (
-                          <blockquote>
-                            {report.chainEntry.paragraphPreview}
-                          </blockquote>
+                        {report.details && (
+                          <p>
+                            {
+                              report.details
+                            }
+                          </p>
                         )}
 
-                        <p>{report.chainEntry.note}</p>
-                      </>
-                    ) : (
-                      <p className="muted">
-                        The reported Chain post is no longer available.
-                      </p>
-                    )}
+                        {report.chainEntry && (
+                          <>
+                            <p className="muted">
+                              {report
+                                .chainEntry
+                                .title ||
+                                "Untitled"}
+                            </p>
 
-                    <div className="button-row">
-                      {report.chainEntry && (
-                        <button
-                          type="button"
-                          className="button danger"
-                          onClick={() =>
-                            handleDeleteReportedChainEntry(report)
-                          }
-                        >
-                          <Trash2 size={16} />
-                          Delete Chain Post
-                        </button>
-                      )}
+                            <p>
+                              {
+                                report
+                                  .chainEntry
+                                  .note
+                              }
+                            </p>
+                          </>
+                        )}
 
-                      <button
-                        type="button"
-                        className="button secondary"
-                        onClick={() =>
-                          handleResolveReport(
-                            report,
-                            "dismissed"
-                          )
-                        }
-                      >
-                        Dismiss Report
-                      </button>
+                        <div className="button-row">
+                          {report.chainEntry && (
+                            <button
+                              type="button"
+                              className="button danger"
+                              onClick={() =>
+                                handleDeleteReportedChainEntry(
+                                  report
+                                )
+                              }
+                            >
+                              <Trash2
+                                size={
+                                  16
+                                }
+                              />
+                              Delete
+                              Chain Post
+                            </button>
+                          )}
 
-                      <button
-                        type="button"
-                        className="button secondary"
-                        onClick={() =>
-                          handleResolveReport(
-                            report,
-                            "resolved"
-                          )
-                        }
-                      >
-                        Mark Resolved
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
+                          <button
+                            type="button"
+                            className="button secondary"
+                            onClick={() =>
+                              handleResolveReport(
+                                report,
+                                "dismissed"
+                              )
+                            }
+                          >
+                            Dismiss
+                          </button>
 
-        {activeTab === "settings" && (
-          <section className="panel profile-panel">
-            <h2>
-              <Settings size={19} /> Group Settings
-            </h2>
+                          <button
+                            type="button"
+                            className="button secondary"
+                            onClick={() =>
+                              handleResolveReport(
+                                report,
+                                "resolved"
+                              )
+                            }
+                          >
+                            Resolve
+                          </button>
+                        </div>
+                      </article>
+                    )
+                  )}
+                </div>
+              )}
+            </section>
+          )}
 
-            {!canManage ? (
-              <p className="muted">
-                Only the owner or an admin can edit group settings.
-              </p>
-            ) : (
-              <form onSubmit={saveSettings} className="stack-md profile-edit-form">
+        {activeTab ===
+          "settings" &&
+          canEditSettings && (
+            <section className="panel profile-panel">
+              <h2>
+                <Settings
+                  size={19}
+                />{" "}
+                Group Settings
+              </h2>
+
+              <form
+                onSubmit={
+                  saveSettings
+                }
+                className="stack-md profile-edit-form"
+              >
                 <label>
                   Group name
                   <input
-                    value={settings.name}
-                    onChange={(event) =>
-                      setSettings((current) => ({
-                        ...current,
-                        name: event.target.value
-                      }))
+                    value={
+                      settings.name
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setSettings(
+                        (
+                          current
+                        ) => ({
+                          ...current,
+                          name:
+                            event
+                              .target
+                              .value
+                        })
+                      )
                     }
                   />
                 </label>
@@ -1336,182 +2338,303 @@ export default function Group() {
                   Description
                   <textarea
                     rows={4}
-                    value={settings.description}
-                    onChange={(event) =>
-                      setSettings((current) => ({
-                        ...current,
-                        description: event.target.value
-                      }))
+                    value={
+                      settings.description
                     }
-                    placeholder="What is this group for?"
+                    onChange={(
+                      event
+                    ) =>
+                      setSettings(
+                        (
+                          current
+                        ) => ({
+                          ...current,
+                          description:
+                            event
+                              .target
+                              .value
+                        })
+                      )
+                    }
                   />
                 </label>
 
                 <div>
-                  <strong>Group avatar</strong>
-                  <div className="profile-avatar-grid">
-                    {GROUP_AVATARS.map((avatar) => {
-                      const selected =
-                        settings.avatar === avatar.image ||
-                        settings.avatar === avatar.id;
+                  <strong>
+                    Group avatar
+                  </strong>
 
-                      return (
-                        <button
-                          key={avatar.id}
-                          type="button"
-                          className={
-                            selected
-                              ? "profile-avatar-option selected"
-                              : "profile-avatar-option"
-                          }
-                          onClick={() =>
-                            setSettings((current) => ({
-                              ...current,
-                              avatar: avatar.id
-                            }))
-                          }
-                          aria-label={`Use ${avatar.name} avatar`}
-                        >
-                          <img src={avatar.image} alt="" />
-                          <span>{avatar.name}</span>
-                        </button>
-                      );
-                    })}
+                  <div className="profile-avatar-grid">
+                    {GROUP_AVATARS.map(
+                      (
+                        avatar
+                      ) => {
+                        const selected =
+                          settings.avatar ===
+                            avatar.image ||
+                          settings.avatar ===
+                            avatar.id;
+
+                        return (
+                          <button
+                            key={
+                              avatar.id
+                            }
+                            type="button"
+                            className={
+                              selected
+                                ? "profile-avatar-option selected"
+                                : "profile-avatar-option"
+                            }
+                            onClick={() =>
+                              setSettings(
+                                (
+                                  current
+                                ) => ({
+                                  ...current,
+                                  avatar:
+                                    avatar.id
+                                })
+                              )
+                            }
+                          >
+                            <img
+                              src={
+                                avatar.image
+                              }
+                              alt=""
+                            />
+                            <span>
+                              {
+                                avatar.name
+                              }
+                            </span>
+                          </button>
+                        );
+                      }
+                    )}
                   </div>
                 </div>
 
                 <label>
-                  Group type
-                  <select
-                    value={settings.type}
-                    onChange={(event) =>
-                      setSettings((current) => ({
-                        ...current,
-                        type: event.target.value
-                      }))
-                    }
-                  >
-                    <option value="group">Reading Group</option>
-                    <option value="class">Class</option>
-                  </select>
-                </label>
-
-                <label>
                   Visibility
                   <select
-                    value={settings.visibility}
-                    onChange={(event) =>
-                      setSettings((current) => ({
-                        ...current,
-                        visibility: event.target.value
-                      }))
+                    value={
+                      settings.visibility
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setSettings(
+                        (
+                          current
+                        ) => ({
+                          ...current,
+                          visibility:
+                            event
+                              .target
+                              .value
+                        })
+                      )
                     }
                   >
-                    <option value="private">Private</option>
-                    <option value="discoverable">Discoverable</option>
-                    <option value="public">Public</option>
+                    <option value="private">
+                      Private
+                    </option>
+                    <option value="discoverable">
+                      Discoverable
+                    </option>
+                    <option value="public">
+                      Public
+                    </option>
                   </select>
                 </label>
 
                 <label>
                   Joining
                   <select
-                    value={settings.joinPolicy}
-                    onChange={(event) =>
-                      setSettings((current) => ({
-                        ...current,
-                        joinPolicy: event.target.value
-                      }))
+                    value={
+                      settings.joinPolicy
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setSettings(
+                        (
+                          current
+                        ) => ({
+                          ...current,
+                          joinPolicy:
+                            event
+                              .target
+                              .value
+                        })
+                      )
                     }
                   >
-                    <option value="invite_only">Invite only</option>
+                    <option value="invite_only">
+                      Invite only
+                    </option>
                     <option value="request_to_join">
                       Request to join
                     </option>
-                    <option value="open">Open</option>
+                    <option value="open">
+                      Open
+                    </option>
                   </select>
                 </label>
 
-                <button type="submit" className="button primary">
-                  Save Group Settings
+                <button
+                  type="submit"
+                  className="button primary"
+                >
+                  Save Group
+                  Settings
                 </button>
               </form>
-            )}
 
-            {myRole === "owner" && (
-              <div className="group-danger-zone">
-                <p className="eyebrow">Owner Controls</p>
+              {(canTransferOwnership ||
+                canDeleteGroup) && (
+                <div className="group-danger-zone">
+                  <p className="eyebrow">
+                    Owner Controls
+                  </p>
 
-                <h3>Transfer Ownership</h3>
+                  {canTransferOwnership && (
+                    <>
+                      <h3>
+                        Transfer
+                        Ownership
+                      </h3>
 
-                <p className="muted">
-                  Transfer this group to another active member.
-                  You will become an admin.
-                </p>
+                      <p className="muted">
+                        The selected
+                        member becomes
+                        Owner
+                        immediately.
+                        You become an
+                        Admin. The
+                        transfer is
+                        atomic: the
+                        group can never
+                        be left without
+                        an Owner.
+                      </p>
 
-                <select
-                  value={transferOwnerId}
-                  onChange={(event) =>
-                    setTransferOwnerId(event.target.value)
-                  }
-                  disabled={dangerBusy}
-                >
-                  <option value="">
-                    Choose a member...
-                  </option>
-
-                  {members
-                    .filter(
-                      (member) =>
-                        member.userId !== user.uid &&
-                        member.status !== "removed" &&
-                        member.status !== "suspended"
-                    )
-                    .map((member) => (
-                      <option
-                        key={member.userId}
-                        value={member.userId}
+                      <select
+                        value={
+                          transferOwnerId
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setTransferOwnerId(
+                            event
+                              .target
+                              .value
+                          )
+                        }
+                        disabled={
+                          dangerBusy
+                        }
                       >
-                        {member.profile?.displayName || "Reader"}
-                      </option>
-                    ))}
-                </select>
+                        <option value="">
+                          Choose a
+                          member...
+                        </option>
 
-                <button
-                  type="button"
-                  className="button secondary"
-                  disabled={
-                    dangerBusy ||
-                    !transferOwnerId
-                  }
-                  onClick={handleTransferOwnership}
-                >
-                  <Crown size={16} />
-                  Transfer Ownership
-                </button>
+                        {members
+                          .filter(
+                            (
+                              member
+                            ) =>
+                              member.userId !==
+                                user.uid &&
+                              ![
+                                "removed",
+                                "suspended"
+                              ].includes(
+                                member.status
+                              )
+                          )
+                          .map(
+                            (
+                              member
+                            ) => (
+                              <option
+                                key={
+                                  member.userId
+                                }
+                                value={
+                                  member.userId
+                                }
+                              >
+                                {memberName(
+                                  member
+                                )}{" "}
+                                —{" "}
+                                {groupRoleLabel(
+                                  member.role
+                                )}
+                              </option>
+                            )
+                          )}
+                      </select>
 
-                <hr />
+                      <button
+                        type="button"
+                        className="button secondary"
+                        disabled={
+                          dangerBusy ||
+                          !transferOwnerId
+                        }
+                        onClick={
+                          handleTransferOwnership
+                        }
+                      >
+                        <Crown
+                          size={16}
+                        />
+                        Transfer
+                        Ownership
+                      </button>
+                    </>
+                  )}
 
-                <h3>Delete Group</h3>
+                  {canDeleteGroup && (
+                    <>
+                      <hr />
 
-                <p className="muted">
-                  Permanently remove this group and its
-                  membership/forum data.
-                </p>
+                      <h3>
+                        Delete Group
+                      </h3>
 
-                <button
-                  type="button"
-                  className="button danger"
-                  disabled={dangerBusy}
-                  onClick={handleDeleteGroup}
-                >
-                  <Trash2 size={16} />
-                  Delete Group
-                </button>
-              </div>
-            )}
-          </section>
-        )}
+                      <p className="muted">
+                        Permanent and
+                        irreversible.
+                      </p>
+
+                      <button
+                        type="button"
+                        className="button danger"
+                        disabled={
+                          dangerBusy
+                        }
+                        onClick={
+                          handleDeleteGroup
+                        }
+                      >
+                        <Trash2
+                          size={16}
+                        />
+                        Delete Group
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
       </div>
     </main>
   );
