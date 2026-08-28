@@ -3,19 +3,17 @@ import { useEffect, useState } from "react";
 import {
   Home,
   LogIn,
-  LogOut,
   Bell,
   User
 } from "lucide-react";
 
-import { NavLink, useNavigate } from "react-router-dom";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { NavLink } from "react-router-dom";
+import { onAuthStateChanged } from "firebase/auth";
 
 import { auth } from "../firebase";
 import { subscribeToUnreadNotifications } from "../services/notifications.js";
 
 export default function Header() {
-  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [authLoading, setAuthLoading] = useState(true);
@@ -35,15 +33,6 @@ export default function Header() {
 
     return subscribeToUnreadNotifications(setUnreadCount);
   }, [user]);
-
-  async function handleLogout() {
-    try {
-      await signOut(auth);
-      navigate("/read");
-    } catch (error) {
-      console.error("Logout error:", error);
-    }
-  }
 
   const navClass = ({ isActive }) =>
     isActive ? "nav-link active" : "nav-link";
@@ -102,15 +91,6 @@ export default function Header() {
               <User size={18} />
               <span>Profile</span>
             </NavLink>
-
-            <button
-              type="button"
-              className="nav-link"
-              onClick={handleLogout}
-            >
-              <LogOut size={18} />
-              <span>Log Out</span>
-            </button>
           </>
         )}
       </nav>
