@@ -54,12 +54,12 @@ export default function Header() {
       <NavLink to="/read" className="brand rr-brand">
         <img
           className="rr-brand-logo"
-          src="/branding/random-reads-logo.svg"
-          alt="Random Reads"
+          src="/branding/lit-chain-logo-horizontal.png"
+          alt="Lit Chain"
         />
       </NavLink>
 
-      <nav className="top-nav" aria-label="Random Reads navigation">
+      <nav className="top-nav" aria-label="Lit Chain navigation">
         <NavLink to="/read" end className={navClass}>
           <Home size={18} />
           <span>Home</span>
