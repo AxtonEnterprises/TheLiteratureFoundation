@@ -4,7 +4,6 @@ import {
   Home,
   LogIn,
   LogOut,
-  MessageSquare,
   Bell,
   User
 } from "lucide-react";
@@ -51,23 +50,23 @@ export default function Header() {
 
   return (
     <header className="site-header rr-header">
-      <NavLink to="/read" className="brand rr-brand">
-        <img
-          className="rr-brand-logo"
-          src="/branding/lit-chain-logo-horizontal.png"
-          alt="Lit Chain"
-        />
-      </NavLink>
-
       <nav className="top-nav" aria-label="Lit Chain navigation">
         <NavLink to="/read" end className={navClass}>
           <Home size={18} />
           <span>Home</span>
         </NavLink>
 
-        <NavLink to="/read/chain" className={navClass}>
-          <MessageSquare size={18} />
-          <span>The Chain</span>
+        <NavLink
+          to="/read/chain"
+          className="chain-logo-link"
+          aria-label="The Chain"
+          title="The Chain"
+        >
+          <img
+            className="chain-logo-image"
+            src="/branding/lit-chain-logo-horizontal.png"
+            alt="Lit Chain"
+          />
         </NavLink>
 
         {!authLoading && !user && (
@@ -104,17 +103,17 @@ export default function Header() {
               <span>Profile</span>
             </NavLink>
 
-            <button type="button" className="nav-link" onClick={handleLogout}>
+            <button
+              type="button"
+              className="nav-link"
+              onClick={handleLogout}
+            >
               <LogOut size={18} />
               <span>Log Out</span>
             </button>
           </>
         )}
       </nav>
-
-      <a className="rr-foundation-link" href="/">
-        The Literature Foundation
-      </a>
     </header>
   );
 }
