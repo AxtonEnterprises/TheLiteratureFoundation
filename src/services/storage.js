@@ -5381,26 +5381,11 @@ export async function deleteGroupPermanently(groupId) {
    * still exists, then removes the group and that final membership
    * together.
    */
-  const finalBatch = writeBatch(db);
-
-  finalBatch.delete(groupRef);
-
-  finalBatch.delete(
-    doc(
-      db,
-      "groups",
-      String(groupId),
-      "members",
-      user.uid
-    )
-  );
-
-  await finalBatch.commit();
-
-  return {
-    deleted: true,
-    groupId: String(groupId)
-  };
+  /*
+ * Delete the parent group while the Owner membership
+ * still exists so Firestore can verify ownership.
+ */
+await deleteDoc(groupRef);
 }
 
 
