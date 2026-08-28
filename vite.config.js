@@ -12,7 +12,9 @@ export default defineConfig({
       registerType: "autoUpdate",
 
       includeAssets: [
-        "branding/random-reads-icon.svg",
+        "branding/lit-chain-icon.png",
+        "branding/lit-chain-icon-192.png",
+        "branding/lit-chain-icon-512.png",
         "branding/favicon.ico",
         "branding/apple-touch-icon.png"
       ],
@@ -20,16 +22,8 @@ export default defineConfig({
       manifest: false,
 
       workbox: {
-        /*
-         * autoUpdate already enables these, but keeping
-         * them explicit makes the intended behavior clear.
-         */
         skipWaiting: true,
         clientsClaim: true,
-
-        /*
-         * Remove precaches left behind by older builds.
-         */
         cleanupOutdatedCaches: true,
 
         globPatterns: [
