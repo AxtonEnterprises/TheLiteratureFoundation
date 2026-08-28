@@ -59,6 +59,30 @@ async function publicProfile(userId) {
     : null;
 }
 
+async function canModerateForum(groupId, membership) {
+  if (["owner", "admin"].includes(membership.role)) {
+    return true;
+  }
+
+  if (membership.role !== "moderator") {
+    return false;
+  }
+
+  /*
+   * Moderators remain valid for ordinary reading groups.
+   * Classes intentionally expose only Primary Teacher,
+   * Teacher, and Student permissions.
+   */
+  const groupSnapshot = await getDoc(
+    doc(db, "groups", String(groupId))
+  );
+
+  return (
+    groupSnapshot.exists() &&
+    groupSnapshot.data()?.type !== "class"
+  );
+}
+
 export async function updateGroupProfile(
   groupId,
   {
@@ -241,8 +265,9 @@ export async function updateGroupForumPost(
   }
 
   const post = snapshot.data();
-  const canModerate = ["owner", "admin", "moderator"].includes(
-    membership.role
+  const canModerate = await canModerateForum(
+    groupId,
+    membership
   );
   const isAuthor = post.userId === user.uid;
 
@@ -293,8 +318,9 @@ export async function deleteGroupForumPost(groupId, postId) {
   if (!snapshot.exists()) return;
 
   const post = snapshot.data();
-  const canModerate = ["owner", "admin", "moderator"].includes(
-    membership.role
+  const canModerate = await canModerateForum(
+    groupId,
+    membership
   );
 
   if (!canModerate && post.userId !== user.uid) {
@@ -345,11 +371,10 @@ export async function deleteGroupForumReply(
   }
 
   const reply = snapshot.data();
-  const canModerate = [
-    "owner",
-    "admin",
-    "moderator"
-  ].includes(membership.role);
+  const canModerate = await canModerateForum(
+    groupId,
+    membership
+  );
 
   if (!canModerate && reply.userId !== user.uid) {
     throw new Error("You cannot remove this reply.");
