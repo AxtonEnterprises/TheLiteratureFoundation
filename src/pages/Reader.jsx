@@ -655,6 +655,7 @@ export default function Reader() {
 
       {showAddNote && (
         <aside className="reader-notes-panel">
+          <div className="add-paragraph-note">
           <div className="margin-reply-heading">
             <strong>
               Add note
@@ -671,10 +672,11 @@ export default function Reader() {
             </button>
           </div>
 
-          <label>
+          <label className="paragraph-select-label">
             Paragraph
             <select
               value={selectedParagraphIndex ?? ""}
+              style={{ width: "100%" }}
               onChange={(event) =>
                 setSelectedParagraphIndex(Number(event.target.value))
               }
@@ -690,15 +692,17 @@ export default function Reader() {
           <textarea
             rows={5}
             maxLength={3000}
+            style={{ width: "100%", boxSizing: "border-box" }}
             value={note}
             onChange={(event) => setNote(event.target.value)}
             placeholder="Write your note..."
           />
 
-          <label>
+          <label className="paragraph-select-label">
             Visibility
             <select
               value={noteVisibility}
+              style={{ width: "100%" }}
               onChange={(event) => setNoteVisibility(event.target.value)}
             >
               <option value="private">Private</option>
@@ -708,10 +712,11 @@ export default function Reader() {
           </label>
 
           {noteVisibility === "group" && (
-            <label>
+            <label className="paragraph-select-label">
               Group or class
               <select
                 value={noteGroupId}
+                style={{ width: "100%" }}
                 onChange={(event) => setNoteGroupId(event.target.value)}
               >
                 <option value="">Choose...</option>
@@ -727,6 +732,7 @@ export default function Reader() {
           <button className="button primary" onClick={handleJournal}>
             Save Note
           </button>
+          </div>
         </aside>
       )}
 
