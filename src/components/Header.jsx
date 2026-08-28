@@ -1,12 +1,5 @@
 import { useEffect, useState } from "react";
-
-import {
-  Home,
-  LogIn,
-  Bell,
-  User
-} from "lucide-react";
-
+import { Bell, Compass, Library, LogIn } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -40,16 +33,17 @@ export default function Header() {
   return (
     <header className="site-header rr-header">
       <nav className="top-nav" aria-label="Lit Chain navigation">
-        <NavLink to="/read" end className={navClass}>
-          <Home size={18} />
-          <span>Home</span>
+        <NavLink to="/read/discover" className={navClass}>
+          <Compass size={18} />
+          <span>Discover</span>
         </NavLink>
 
         <NavLink
-          to="/read/chain"
+          to="/read"
+          end
           className="chain-logo-link"
-          aria-label="The Chain"
-          title="The Chain"
+          aria-label="Lit Chain home"
+          title="Lit Chain"
         >
           <img
             className="chain-logo-image"
@@ -67,6 +61,11 @@ export default function Header() {
 
         {!authLoading && user && (
           <>
+            <NavLink to="/read/profile" className={navClass}>
+              <Library size={18} />
+              <span>My Library</span>
+            </NavLink>
+
             <NavLink
               to="/read/notifications"
               className={navClass}
@@ -85,11 +84,6 @@ export default function Header() {
                   </span>
                 )}
               </span>
-            </NavLink>
-
-            <NavLink to="/read/profile" className={navClass}>
-              <User size={18} />
-              <span>Profile</span>
             </NavLink>
           </>
         )}
