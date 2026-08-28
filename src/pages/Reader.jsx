@@ -30,6 +30,7 @@ import {
 import { paginateParagraphs } from "../utils/paginateText.js";
 import { auth } from "../firebase";
 import SEO from "../components/SEO.jsx";
+import { syncClassReadingProgress } from "../services/classStorage.js";
 
 function formatNoteDate(value) {
   if (!value) return "";
@@ -349,17 +350,40 @@ export default function Reader() {
   useEffect(() => {
     if (!book?.id || !progressLoaded || !pages[pageIndex]) return;
 
+    const paragraphIndex = pages[pageIndex].startParagraphIndex;
+
     saveReadingProgress(
       book,
-      pages[pageIndex].startParagraphIndex,
+      paragraphIndex,
       paragraphs.length,
       progress
     ).catch((error) => {
       if (auth.currentUser) console.error("Could not save reading progress:", error);
     });
 
-    readingAnchorRef.current = pages[pageIndex].startParagraphIndex;
-  }, [book, pageIndex, pages, paragraphs.length, progress, progressLoaded]);
+    // Class progress mirrors run in the background and never block the reader.
+    if (auth.currentUser && myGroups.length) {
+      syncClassReadingProgress({
+        groups: myGroups,
+        book,
+        paragraphIndex,
+        totalParagraphs: paragraphs.length,
+        percentComplete: progress
+      }).catch((error) => {
+        console.error("Could not sync class reading progress:", error);
+      });
+    }
+
+    readingAnchorRef.current = paragraphIndex;
+  }, [
+    book,
+    pageIndex,
+    pages,
+    paragraphs.length,
+    progress,
+    progressLoaded,
+    myGroups
+  ]);
 
   useEffect(() => {
     if (!book?.id || !progressLoaded || !auth.currentUser) return;
