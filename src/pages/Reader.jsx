@@ -498,7 +498,7 @@ export default function Reader() {
         path={`/read/reader/${id}`}
       />
 
-      <div className="reader-header">
+      <div className="reader-topbar">
         <div>
           <p className="eyebrow">Reading</p>
           <h1>{book?.title || "Loading..."}</h1>
@@ -516,19 +516,20 @@ export default function Reader() {
 
       {status && <p className="status">{status}</p>}
 
-      <div className="reader-toolbar">
-        <button type="button" onClick={() => setShowToc((current) => !current)}>
+      <div className="button-row">
+        <button type="button" className="button secondary" onClick={() => setShowToc((current) => !current)}>
           {showToc ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           Contents
         </button>
 
-        <button type="button" onClick={() => setShowPageNotes((current) => !current)}>
+        <button type="button" className="button secondary" onClick={() => setShowPageNotes((current) => !current)}>
           <NotebookPen size={16} />
           Notes on this page ({notesForCurrentPage.length})
         </button>
 
         <button
           type="button"
+          className="button secondary"
           onClick={() => {
             setSelectedParagraphIndex(
               currentParagraphIndexes[0] ?? readingAnchorRef.current
@@ -542,13 +543,14 @@ export default function Reader() {
       </div>
 
       {showToc && (
-        <section className="panel reader-toc">
+        <section className="reader-notes-panel">
           <h2>Contents</h2>
           {chapters.length ? (
             chapters.map((chapter, index) => (
               <button
                 key={`${chapter.title}-${index}`}
                 type="button"
+                className="toc-link"
                 onClick={() => goToParagraph(chapter.paragraphIndex)}
               >
                 {chapter.title || `Section ${index + 1}`}
@@ -560,6 +562,15 @@ export default function Reader() {
         </section>
       )}
 
+      <div className="reader-progress">
+        <span>
+          {loading
+            ? "Preparing your place..."
+            : `Page ${pageIndex + 1} of ${totalPages}`}
+        </span>
+        <span>{loading ? "" : `${progress}%`}</span>
+      </div>
+
       <section
         ref={readerRef}
         className="reader-window"
@@ -568,38 +579,73 @@ export default function Reader() {
         {loading ? (
           <p className="muted">Loading book...</p>
         ) : (
-          currentPage.map((block) => (
-            <p
-              key={`${block.paragraphIndex}-${block.blockIndex ?? 0}`}
-              className={
-                requestedParagraph === block.paragraphIndex
-                  ? "reader-paragraph reader-paragraph-target"
-                  : "reader-paragraph"
-              }
-              onDoubleClick={() => {
-                setSelectedParagraphIndex(block.paragraphIndex);
-                setShowAddNote(true);
-              }}
-            >
-              {block.text}
-            </p>
-          ))
+          currentPage.map((block, index) => {
+            const showNumber = !block.isContinuation;
+            const paragraphHasNote = journalEntries.some(
+              (entry) => Number(entry.paragraphIndex) === block.paragraphIndex
+            );
+            const isTarget = requestedParagraph === block.paragraphIndex;
+
+            return (
+              <div
+                key={`${block.paragraphIndex}-${index}`}
+                className={
+                  isTarget
+                    ? "reader-paragraph-row reader-paragraph-target"
+                    : "reader-paragraph-row"
+                }
+              >
+                <button
+                  type="button"
+                  className={
+                    paragraphHasNote
+                      ? "paragraph-number has-note"
+                      : "paragraph-number"
+                  }
+                  onClick={() => {
+                    setSelectedParagraphIndex(block.paragraphIndex);
+                    setShowAddNote(true);
+                  }}
+                  aria-label={`Add a note to paragraph ${block.paragraphIndex + 1}`}
+                  title={`Add a note to paragraph ${block.paragraphIndex + 1}`}
+                >
+                  {showNumber ? block.paragraphIndex + 1 : ""}
+                </button>
+
+                <p>{block.text}</p>
+              </div>
+            );
+          })
         )}
       </section>
 
-      <div className="reader-pagination">
+      <div className="reader-nav">
         <button
           type="button"
+          className="button secondary"
           disabled={pageIndex <= 0}
           onClick={() => goToPage(pageIndex - 1)}
         >
           Previous
         </button>
-        <span>
-          Page {pageIndex + 1} of {totalPages} · {progress}%
-        </span>
+        <input
+          className="page-input"
+          type="number"
+          min="1"
+          max={totalPages}
+          value={pageIndex + 1}
+          disabled={loading}
+          aria-label="Page number"
+          onChange={(event) => {
+            const value = Number(event.target.value);
+            if (Number.isFinite(value) && value >= 1) {
+              goToPage(value - 1);
+            }
+          }}
+        />
         <button
           type="button"
+          className="button secondary"
           disabled={pageIndex >= totalPages - 1}
           onClick={() => goToPage(pageIndex + 1)}
         >
@@ -608,7 +654,7 @@ export default function Reader() {
       </div>
 
       {showAddNote && (
-        <section className="panel">
+        <aside className="reader-notes-panel">
           <div className="margin-reply-heading">
             <strong>
               Add note
@@ -681,11 +727,11 @@ export default function Reader() {
           <button className="button primary" onClick={handleJournal}>
             Save Note
           </button>
-        </section>
+        </aside>
       )}
 
       {showPageNotes && (
-        <section className="panel">
+        <aside className="reader-notes-panel">
           <div className="margin-reply-heading">
             <h2>Notes on this page</h2>
             <Link to="/read/journal" className="button secondary">
@@ -785,7 +831,7 @@ export default function Reader() {
               )}
             </article>
           ))}
-        </section>
+        </aside>
       )}
     </main>
   );
