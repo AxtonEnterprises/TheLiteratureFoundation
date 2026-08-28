@@ -55,6 +55,7 @@ import {
   deleteClassAssignment,
   getClassAssignmentProgress,
   getClassAssignments,
+  getMyClassAssignmentProgress,
   updateClassAssignment
 } from "../services/classStorage.js";
 
@@ -165,6 +166,7 @@ export default function Classroom({ initialGroup }) {
 
   const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
   const [studentProgress, setStudentProgress] = useState([]);
+  const [myAssignmentProgress, setMyAssignmentProgress] = useState({});
 
   const [loading, setLoading] = useState(true);
   const [progressLoading, setProgressLoading] = useState(false);
@@ -219,7 +221,33 @@ export default function Classroom({ initialGroup }) {
       getGroupForumPosts(groupId)
     ]);
 
-    setMembers(loadedMembers);
+    let normalizedMembers = loadedMembers;
+
+    /*
+     * Classes have only Primary Teacher / Teacher / Student.
+     * If an older class still contains the group-only Moderator role,
+     * the Primary Teacher normalizes it to Student.
+     */
+    if (
+      isOwner &&
+      loadedMembers.some((member) => member.role === "moderator")
+    ) {
+      await Promise.allSettled(
+        loadedMembers
+          .filter((member) => member.role === "moderator")
+          .map((member) =>
+            setGroupMemberRole(
+              groupId,
+              member.userId,
+              "member"
+            )
+          )
+      );
+
+      normalizedMembers = await getGroupMembers(groupId);
+    }
+
+    setMembers(normalizedMembers);
     setAssignments(loadedAssignments);
     setForumPosts(loadedForumPosts);
 
@@ -324,6 +352,35 @@ export default function Classroom({ initialGroup }) {
     members,
     selectedAssignment
   ]);
+
+  useEffect(() => {
+    if (isTeacher || !assignments.length) {
+      setMyAssignmentProgress({});
+      return;
+    }
+
+    let active = true;
+
+    getMyClassAssignmentProgress(
+      groupId,
+      assignments
+    )
+      .then((progressByAssignment) => {
+        if (active) {
+          setMyAssignmentProgress(progressByAssignment);
+        }
+      })
+      .catch((error) => {
+        console.error(
+          "Could not load student assignment progress:",
+          error
+        );
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [groupId, isTeacher, assignments]);
 
   const studentCount = members.filter(
     (member) => !["owner", "admin"].includes(member.role)
@@ -1151,6 +1208,41 @@ export default function Classroom({ initialGroup }) {
 
                   {assignment.instructions && (
                     <p>{assignment.instructions}</p>
+                  )}
+
+                  {!isTeacher && (
+                    <div
+                      style={{
+                        marginTop: "0.85rem",
+                        paddingTop: "0.85rem",
+                        borderTop: "1px solid var(--line)"
+                      }}
+                    >
+                      <ProgressBar
+                        value={
+                          myAssignmentProgress[assignment.id]
+                            ?.assignmentPercent || 0
+                        }
+                      />
+                      <small
+                        className="muted"
+                        style={{
+                          display: "block",
+                          marginTop: "0.35rem"
+                        }}
+                      >
+                        {myAssignmentProgress[assignment.id]
+                          ?.assignmentPercent || 0}
+                        % ·{" "}
+                        {myAssignmentProgress[assignment.id]
+                          ?.complete
+                          ? "Complete"
+                          : myAssignmentProgress[assignment.id]
+                              ?.progress
+                            ? "In progress"
+                            : "Not started"}
+                      </small>
+                    </div>
                   )}
 
                   {isTeacher && (

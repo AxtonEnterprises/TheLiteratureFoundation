@@ -350,7 +350,15 @@ export default function Reader() {
   useEffect(() => {
     if (!book?.id || !progressLoaded || !pages[pageIndex]) return;
 
-    const paragraphIndex = pages[pageIndex].startParagraphIndex;
+    const paragraphIndex =
+      pages[pageIndex].startParagraphIndex;
+
+    const visibleParagraphIndex = Math.max(
+      paragraphIndex,
+      ...pages[pageIndex].blocks.map(
+        (block) => Number(block.paragraphIndex) || 0
+      )
+    );
 
     saveReadingProgress(
       book,
@@ -358,19 +366,31 @@ export default function Reader() {
       paragraphs.length,
       progress
     ).catch((error) => {
-      if (auth.currentUser) console.error("Could not save reading progress:", error);
+      if (auth.currentUser) {
+        console.error(
+          "Could not save reading progress:",
+          error
+        );
+      }
     });
 
-    // Class progress mirrors run in the background and never block the reader.
+    /*
+     * Class progress uses the furthest paragraph actually visible
+     * on this page. classStorage keeps that value monotonic and
+     * writes it only to classes that assigned this specific book.
+     */
     if (auth.currentUser && myGroups.length) {
       syncClassReadingProgress({
         groups: myGroups,
         book,
-        paragraphIndex,
+        paragraphIndex: visibleParagraphIndex,
         totalParagraphs: paragraphs.length,
         percentComplete: progress
       }).catch((error) => {
-        console.error("Could not sync class reading progress:", error);
+        console.error(
+          "Could not sync class reading progress:",
+          error
+        );
       });
     }
 
