@@ -5259,13 +5259,20 @@ export async function deleteGroupPermanently(groupId) {
   }
 
   if (groupSnapshot.data()?.ownerId !== user.uid) {
-    throw new Error("Only the group owner can delete this group.");
+    throw new Error(
+      "Only the group owner can delete this group."
+    );
   }
 
   /*
    * Firestore does not automatically delete subcollections.
-   * Clean up all Phase 3 group-owned subcollections first.
+   *
+   * IMPORTANT:
+   * The owner's membership must remain in place until the group
+   * document itself is deleted. Firestore security rules use that
+   * membership to verify isGroupOwner(groupId).
    */
+
   const forumSnapshot = await getDocs(
     collection(
       db,
@@ -5308,7 +5315,34 @@ export async function deleteGroupPermanently(groupId) {
     )
   );
 
+  /*
+   * Classroom data.
+   * These may be empty for ordinary reading groups.
+   */
   await deleteCollectionDocuments(
+    collection(
+      db,
+      "groups",
+      String(groupId),
+      "assignments"
+    )
+  );
+
+  await deleteCollectionDocuments(
+    collection(
+      db,
+      "groups",
+      String(groupId),
+      "studentProgress"
+    )
+  );
+
+  /*
+   * Delete every non-owner membership first.
+   * Keep the current owner's membership alive for the final
+   * Firestore permission check.
+   */
+  const membersSnapshot = await getDocs(
     collection(
       db,
       "groups",
@@ -5317,7 +5351,51 @@ export async function deleteGroupPermanently(groupId) {
     )
   );
 
-  await deleteDoc(groupRef);
+  const otherMembers = membersSnapshot.docs.filter(
+    (memberDoc) => memberDoc.id !== user.uid
+  );
+
+  /*
+   * Keep batches comfortably below Firestore's 500-operation limit.
+   */
+  for (
+    let index = 0;
+    index < otherMembers.length;
+    index += 450
+  ) {
+    const batch = writeBatch(db);
+
+    otherMembers
+      .slice(index, index + 450)
+      .forEach((memberDoc) => {
+        batch.delete(memberDoc.ref);
+      });
+
+    await batch.commit();
+  }
+
+  /*
+   * Final atomic deletion:
+   *
+   * Firestore evaluates ownership while the owner's membership
+   * still exists, then removes the group and that final membership
+   * together.
+   */
+  const finalBatch = writeBatch(db);
+
+  finalBatch.delete(groupRef);
+
+  finalBatch.delete(
+    doc(
+      db,
+      "groups",
+      String(groupId),
+      "members",
+      user.uid
+    )
+  );
+
+  await finalBatch.commit();
 
   return {
     deleted: true,
