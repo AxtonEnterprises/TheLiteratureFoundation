@@ -1,9 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useState
-} from "react";
-
+import { useEffect, useMemo, useState } from "react";
 import {
   Bookmark,
   BookOpen,
@@ -15,12 +10,10 @@ import {
   Users,
   X
 } from "lucide-react";
-
 import { Link } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 
 import { auth } from "../firebase";
-
 import {
   getChainFeed,
   getFriendsChainFeed,
@@ -30,26 +23,19 @@ import {
   saveChainEntry,
   unsaveChainEntry
 } from "../services/chainStorage.js";
-
 import {
   deleteChainReply,
   getChainReplies,
   replyToChain
 } from "../services/chainRepliesPhase3A.js";
-
 import { getProfileAvatar } from "../data/avatars.js";
 import { getGroupAvatar } from "../data/groupAvatars.js";
 import SEO from "../components/SEO.jsx";
 
 function formatDate(value) {
   if (!value) return "";
-
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
+  if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -58,9 +44,27 @@ function formatDate(value) {
 }
 
 function savedChainKey(entry) {
-  return [entry?.userId || "", entry?.id || ""]
-    .filter(Boolean)
-    .join("_");
+  return [entry?.userId || "", entry?.id || ""].filter(Boolean).join("_");
+}
+
+function readingLink(entry) {
+  const base = `/read/reader/${entry.bookId}`;
+
+  if (
+    entry.paragraphIndex !== undefined &&
+    entry.paragraphIndex !== null
+  ) {
+    return `${base}?paragraph=${Number(entry.paragraphIndex)}`;
+  }
+
+  if (
+    entry.paragraphNumber !== undefined &&
+    entry.paragraphNumber !== null
+  ) {
+    return `${base}?paragraph=${Math.max(Number(entry.paragraphNumber) - 1, 0)}`;
+  }
+
+  return base;
 }
 
 export default function Chain() {
@@ -80,11 +84,7 @@ export default function Chain() {
   const [reportDetails, setReportDetails] = useState("");
   const [reporting, setReporting] = useState(false);
 
-  useEffect(() => {
-    return onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
-    });
-  }, []);
+  useEffect(() => onAuthStateChanged(auth, setUser), []);
 
   useEffect(() => {
     let active = true;
@@ -101,40 +101,18 @@ export default function Chain() {
               ? await getGroupsChainFeed()
               : await getChainFeed();
 
-        if (active) {
-          setEntries(feed);
-        }
+        if (active) setEntries(feed);
       } catch (error) {
-        console.error(
-          "Could not load The Chain:",
-          error
-        );
-
-        if (active) {
-          setStatus(
-            filter === "groups"
-              ? `Groups feed error: ${
-                  error?.code ||
-                  error?.message ||
-                  "unknown"
-                }`
-              : "We couldn't load The Chain."
-          );
-        }
+        console.error("Could not load The Chain:", error);
+        if (active) setStatus("We couldn't load The Chain.");
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       }
     }
 
     loadChain();
-
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [filter]);
-
 
   useEffect(() => {
     let active = true;
@@ -147,20 +125,14 @@ export default function Chain() {
 
       try {
         const saved = await getSavedChainEntries();
-
-        if (active) {
-          setSavedChainEntries(saved);
-        }
+        if (active) setSavedChainEntries(saved);
       } catch (error) {
         console.error("Could not load saved Chain posts:", error);
       }
     }
 
     loadSaved();
-
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [user]);
 
   useEffect(() => {
@@ -168,48 +140,32 @@ export default function Chain() {
 
     async function loadReplies() {
       if (!entries.length) {
-        if (active) {
-          setRepliesByEntry({});
-        }
+        if (active) setRepliesByEntry({});
         return;
       }
 
-      const loadingState = Object.fromEntries(
-        entries.map((entry) => [entry.id, true])
+      setRepliesLoading(
+        Object.fromEntries(entries.map((entry) => [entry.id, true]))
       );
 
-      if (active) {
-        setRepliesLoading(loadingState);
-      }
-
-      const replyPairs = await Promise.all(
+      const pairs = await Promise.all(
         entries.map(async (entry) => {
           try {
-            const replies = await getChainReplies(entry);
-            return [entry.id, replies];
+            return [entry.id, await getChainReplies(entry)];
           } catch (error) {
-            console.error(
-              `Could not load replies for Chain post ${entry.id}:`,
-              error
-            );
+            console.error(`Could not load replies for ${entry.id}:`, error);
             return [entry.id, []];
           }
         })
       );
 
-      if (!active) {
-        return;
-      }
-
-      setRepliesByEntry(Object.fromEntries(replyPairs));
+      if (!active) return;
+      setRepliesByEntry(Object.fromEntries(pairs));
       setRepliesLoading({});
     }
 
     loadReplies();
-
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [entries, user]);
 
   const savedKeys = useMemo(
@@ -225,64 +181,38 @@ export default function Chain() {
   );
 
   function requireLogin() {
-    if (user) {
-      return true;
-    }
-
+    if (user) return true;
     setStatus("Log in to reply, save, or report Chain posts.");
     return false;
   }
 
   function openReply(entry) {
-    if (!requireLogin()) {
-      return;
-    }
-
+    if (!requireLogin()) return;
     setStatus("");
 
     if (openReplyId === entry.id) {
       setOpenReplyId(null);
       setReplyText("");
-      return;
+    } else {
+      setOpenReplyId(entry.id);
+      setReplyText("");
     }
-
-    setOpenReplyId(entry.id);
-    setReplyText("");
   }
 
   async function refreshReplies(entry) {
     try {
-      setRepliesLoading((current) => ({
-        ...current,
-        [entry.id]: true
-      }));
-
+      setRepliesLoading((current) => ({ ...current, [entry.id]: true }));
       const replies = await getChainReplies(entry);
-
-      setRepliesByEntry((current) => ({
-        ...current,
-        [entry.id]: replies
-      }));
-    } catch (error) {
-      console.error(
-        `Could not refresh replies for Chain post ${entry.id}:`,
-        error
-      );
+      setRepliesByEntry((current) => ({ ...current, [entry.id]: replies }));
     } finally {
-      setRepliesLoading((current) => ({
-        ...current,
-        [entry.id]: false
-      }));
+      setRepliesLoading((current) => ({ ...current, [entry.id]: false }));
     }
   }
 
   async function handleReply(entry) {
-    if (!requireLogin()) {
-      return;
-    }
+    if (!requireLogin()) return;
 
     const cleanReply = replyText.trim();
-
     if (!cleanReply) {
       setStatus("Write a reply first.");
       return;
@@ -295,24 +225,13 @@ export default function Chain() {
       await replyToChain(entry, {
         note: cleanReply,
         visibility: entry.visibility,
-        groupId:
-          entry.visibility === "group"
-            ? entry.groupId
-            : null
+        groupId: entry.visibility === "group" ? entry.groupId : null
       });
 
       setReplyText("");
       setOpenReplyId(null);
-
       await refreshReplies(entry);
-
-      setStatus(
-        entry.visibility === "group"
-          ? "Reply posted to the group."
-          : entry.visibility === "private"
-            ? "Private reply saved."
-            : "Reply posted."
-      );
+      setStatus("Reply posted.");
     } catch (error) {
       console.error("Could not post reply:", error);
       setStatus("We couldn't post your reply.");
@@ -322,33 +241,19 @@ export default function Chain() {
   }
 
   async function handleDeleteReply(entry, reply) {
-    if (
-      !window.confirm(
-        "Delete this reply? This cannot be undone."
-      )
-    ) {
-      return;
-    }
+    if (!window.confirm("Delete this reply? This cannot be undone.")) return;
 
     try {
-      setStatus("");
-
       await deleteChainReply(reply);
       await refreshReplies(entry);
-
       setStatus("Reply removed.");
     } catch (error) {
-      console.error("Could not delete Chain reply:", error);
-      setStatus(
-        error?.message || "We couldn't remove that reply."
-      );
+      setStatus(error?.message || "We couldn't remove that reply.");
     }
   }
 
   async function handleSave(entry) {
-    if (!requireLogin()) {
-      return;
-    }
+    if (!requireLogin()) return;
 
     const key = savedChainKey(entry);
     const alreadySaved = savedKeys.has(key);
@@ -358,7 +263,6 @@ export default function Chain() {
 
       if (alreadySaved) {
         await unsaveChainEntry(entry);
-
         setSavedChainEntries((current) =>
           current.filter(
             (saved) =>
@@ -367,88 +271,54 @@ export default function Chain() {
                 .join("_") !== key
           )
         );
-
         setStatus("Removed from saved Chain posts.");
         return;
       }
 
       const saved = await saveChainEntry(entry);
-
       setSavedChainEntries((current) => [saved, ...current]);
       setStatus("Chain post saved.");
     } catch (error) {
-      console.error("Could not save Chain post:", error);
       setStatus("We couldn't update your saved Chain posts.");
     }
   }
 
   async function handleShare(entry) {
-    const chainUrl =
-      `${window.location.origin}/read/chain#chain-${entry.id}`;
-
+    const chainUrl = `${window.location.origin}/read#chain-${entry.id}`;
     const shareData = {
-      title: `${entry.title || "The Chain"} | Random Reads`,
-      text: entry.note || "Read this Chain post on Random Reads.",
+      title: `${entry.title || "The Chain"} | Lit Chain`,
+      text: entry.note || "Read this Chain post on Lit Chain.",
       url: chainUrl
     };
 
     try {
       if (navigator.share) {
         await navigator.share(shareData);
-        return;
+      } else {
+        await navigator.clipboard.writeText(chainUrl);
+        setStatus("Chain post link copied.");
       }
-
-      await navigator.clipboard.writeText(chainUrl);
-      setStatus("Chain post link copied.");
     } catch (error) {
       if (error?.name !== "AbortError") {
-        console.error("Could not share Chain post:", error);
         setStatus("We couldn't share that Chain post.");
       }
     }
   }
 
-  function openReport(entry) {
-    if (!requireLogin()) {
-      return;
-    }
-
-    setReportEntry(entry);
-    setReportReason("harassment");
-    setReportDetails("");
-    setStatus("");
-  }
-
-  function closeReport() {
-    if (reporting) {
-      return;
-    }
-
-    setReportEntry(null);
-    setReportDetails("");
-  }
-
   async function handleReport(event) {
     event.preventDefault();
-
-    if (!reportEntry) {
-      return;
-    }
+    if (!reportEntry) return;
 
     try {
       setReporting(true);
-      setStatus("");
-
       await reportChainEntry(reportEntry, {
         reason: reportReason,
         details: reportDetails
       });
-
       setReportEntry(null);
       setReportDetails("");
       setStatus("Report submitted. Thank you.");
     } catch (error) {
-      console.error("Could not report Chain post:", error);
       setStatus("We couldn't submit your report.");
     } finally {
       setReporting(false);
@@ -458,18 +328,18 @@ export default function Chain() {
   return (
     <main className="page-wrap">
       <SEO
-        title="The Chain | Random Reads"
-        description="See what readers are discovering, questioning, and discussing across classic literature."
-        path="/read/chain"
+        title="Lit Chain"
+        description="Notes, questions, observations, and discoveries from readers across the library."
+        path="/read"
       />
 
       <div className="stack-lg">
         <section className="hero-card small margins-hero">
           <p className="eyebrow">Reader Community</p>
-          <h1>The Chain</h1>
+          <h1>Lit Chain</h1>
           <p className="muted">
-            Notes, questions, observations, and discoveries
-            from readers across the library.
+            Notes, questions, observations, and discoveries from readers
+            across the library.
           </p>
         </section>
 
@@ -478,11 +348,7 @@ export default function Chain() {
             <button
               key={value}
               type="button"
-              className={
-                filter === value
-                  ? "margins-filter active"
-                  : "margins-filter"
-              }
+              className={filter === value ? "margins-filter active" : "margins-filter"}
               onClick={() => setFilter(value)}
             >
               {value.charAt(0).toUpperCase() + value.slice(1)}
@@ -492,444 +358,295 @@ export default function Chain() {
 
         {status && <p className="status">{status}</p>}
 
-        {["all", "friends", "groups"].includes(filter) && (
-          <>
-            {loading && (
-              <section className="panel margins-loading">
-                <p className="muted">Loading The Chain...</p>
-              </section>
-            )}
+        {loading && (
+          <section className="panel margins-loading">
+            <p className="muted">Loading Lit Chain...</p>
+          </section>
+        )}
 
-            {!loading && !status && entries.length === 0 && (
-              <section className="panel margins-empty">
-                <p className="muted">
-                  Nothing has been posted to The Chain yet.
-                </p>
-              </section>
-            )}
+        {!loading && entries.length === 0 && (
+          <section className="panel margins-empty">
+            <p className="muted">Nothing has been posted to Lit Chain yet.</p>
+          </section>
+        )}
 
-            {!loading && entries.length > 0 && (
-              <div className="margins-feed">
-                {entries.map((entry) => {
-                  const reader = entry.reader;
-                  const avatar = getProfileAvatar(reader?.avatar);
-                  const isSaved = savedKeys.has(savedChainKey(entry));
-                  const replyOpen = openReplyId === entry.id;
-                  const replies = repliesByEntry[entry.id] || [];
-                  const isLoadingReplies = Boolean(
-                    repliesLoading[entry.id]
-                  );
+        {!loading && entries.length > 0 && (
+          <div className="margins-feed">
+            {entries.map((entry) => {
+              const reader = entry.reader;
+              const avatar = getProfileAvatar(reader?.avatar);
+              const groupAvatar = getGroupAvatar(entry.group?.avatar);
+              const isSaved = savedKeys.has(savedChainKey(entry));
+              const replyOpen = openReplyId === entry.id;
+              const replies = repliesByEntry[entry.id] || [];
+              const link = readingLink(entry);
 
-                  return (
-                    <article
-                      key={entry.id}
-                      id={`chain-${entry.id}`}
-                      className="margins-entry"
+              return (
+                <article
+                  key={entry.id}
+                  id={`chain-${entry.id}`}
+                  className="margins-entry"
+                >
+                  <div className="margins-reader-row">
+                    <Link
+                      to={`/read/public/${entry.userId}`}
+                      className="margins-reader-link"
                     >
-                      <div className="margins-reader-row">
-                        <Link
-                          to={`/read/public/${entry.userId}`}
-                          className="margins-reader-link"
-                        >
-                          <div className="margins-reader-avatar">
-                            {avatar ? (
-                              <img src={avatar.image} alt="" />
-                            ) : (
-                              <Users size={20} />
-                            )}
-                          </div>
+                      <div className="margins-reader-avatar">
+                        {avatar ? <img src={avatar.image} alt="" /> : <Users size={20} />}
+                      </div>
+                      <div>
+                        <strong>{reader?.displayName || "Reader"}</strong>
+                        <small>{formatDate(entry.updatedAtISO || entry.createdAt)}</small>
+                      </div>
+                    </Link>
+                  </div>
 
+                  {entry.group && (
+                    <Link
+                      to={`/read/groups/${entry.groupId || entry.group.id}`}
+                      className="margins-group-link"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.55rem",
+                        marginBottom: "0.9rem",
+                        padding: "0.4rem 0.65rem",
+                        borderRadius: 999,
+                        background: "#eef4f3",
+                        textDecoration: "none",
+                        color: "inherit"
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 30,
+                          height: 30,
+                          borderRadius: "50%",
+                          overflow: "hidden",
+                          background: "#fff",
+                          display: "grid",
+                          placeItems: "center"
+                        }}
+                      >
+                        {groupAvatar ? (
+                          <img
+                            src={groupAvatar.image}
+                            alt=""
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                        ) : (
+                          <Users size={16} />
+                        )}
+                      </div>
+                      <strong>{entry.group.name}</strong>
+                    </Link>
+                  )}
+
+                  <div className="public-entry-heading">
+                    <div>
+                      <p className="eyebrow">Reading</p>
+                      <Link to={link} className="public-entry-book-title">
+                        {entry.title || "Untitled"}
+                      </Link>
+                      {entry.author && (
+                        <p className="public-entry-author">{entry.author}</p>
+                      )}
+                    </div>
+
+                    <Link
+                      to={link}
+                      className="public-entry-book-icon"
+                      aria-label={`Open ${entry.title || "book"} at this note`}
+                      title="Open where this note was written"
+                    >
+                      <BookOpen size={20} />
+                    </Link>
+                  </div>
+
+                  <div className="public-entry-meta">
+                    {entry.paragraphNumber && (
+                      <span>Paragraph {entry.paragraphNumber}</span>
+                    )}
+                    {entry.updatedAtISO && <span>Edited</span>}
+                  </div>
+
+                  {entry.paragraphPreview && (
+                    <div className="public-entry-quote">
+                      <p>“{entry.paragraphPreview}”</p>
+                    </div>
+                  )}
+
+                  <p className="public-journal-note">{entry.note}</p>
+
+                  <div className="margins-actions">
+                    <button
+                      type="button"
+                      className={replyOpen ? "margin-action active" : "margin-action"}
+                      onClick={() => openReply(entry)}
+                    >
+                      <MessageCircle size={17} />
+                      Reply{replies.length > 0 ? ` (${replies.length})` : ""}
+                    </button>
+
+                    <button
+                      type="button"
+                      className={isSaved ? "margin-action active" : "margin-action"}
+                      onClick={() => handleSave(entry)}
+                    >
+                      <Bookmark size={17} fill={isSaved ? "currentColor" : "none"} />
+                      {isSaved ? "Saved" : "Save"}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="margin-action"
+                      onClick={() => handleShare(entry)}
+                    >
+                      <Share2 size={17} />
+                      Share
+                    </button>
+
+                    <button
+                      type="button"
+                      className="margin-action report"
+                      onClick={() => {
+                        if (requireLogin()) {
+                          setReportEntry(entry);
+                          setReportReason("harassment");
+                          setReportDetails("");
+                        }
+                      }}
+                    >
+                      <Flag size={17} />
+                      Report
+                    </button>
+                  </div>
+
+                  {replyOpen && (
+                    <div className="margin-reply-box">
+                      <div className="margin-reply-heading">
+                        <strong>Reply</strong>
+                        <button
+                          type="button"
+                          className="margin-close-button"
+                          onClick={() => {
+                            setOpenReplyId(null);
+                            setReplyText("");
+                          }}
+                          aria-label="Close reply"
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+
+                      <textarea
+                        value={replyText}
+                        onChange={(event) => setReplyText(event.target.value)}
+                        rows={4}
+                        maxLength={1000}
+                        placeholder={`Reply to ${reader?.displayName || "this reader"}...`}
+                      />
+
+                      <div className="button-row">
+                        <button
+                          type="button"
+                          className="button primary"
+                          disabled={replying}
+                          onClick={() => handleReply(entry)}
+                        >
+                          <Send size={16} />
+                          {replying ? "Posting..." : "Post Reply"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {replyOpen && repliesLoading[entry.id] && (
+                    <div className="margin-replies">
+                      <p className="muted">Loading replies...</p>
+                    </div>
+                  )}
+
+                  {replyOpen && !repliesLoading[entry.id] && replies.length > 0 && (
+                    <div className="margin-replies">
+                      {replies.map((reply) => (
+                        <div key={reply.id} className="margin-reply">
                           <div>
                             <strong>
-                              {reader?.displayName || "Reader"}
+                              {reply.reader?.displayName ||
+                                reply.profile?.displayName ||
+                                "Reader"}
                             </strong>
-                            <small>
-                              {formatDate(
-                                entry.updatedAtISO || entry.createdAt
-                              )}
-                            </small>
+                            <small>{formatDate(reply.createdAtISO || reply.createdAt)}</small>
                           </div>
-                        </Link>
-                      </div>
+                          <p>{reply.note}</p>
 
-                      {entry.group && (
-                        <div
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "0.55rem",
-                            marginBottom: "0.9rem",
-                            padding: "0.4rem 0.65rem",
-                            borderRadius: 999,
-                            background: "#eef4f3"
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: 30,
-                              height: 30,
-                              borderRadius: "50%",
-                              overflow: "hidden",
-                              background: "#fff",
-                              display: "grid",
-                              placeItems: "center"
-                            }}
-                          >
-                            {getGroupAvatar(entry.group.avatar) ? (
-                              <img
-                                src={getGroupAvatar(entry.group.avatar).image}
-                                alt=""
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover"
-                                }}
-                              />
-                            ) : (
-                              <Users size={16} />
-                            )}
-                          </div>
-
-                          <strong>
-                            {entry.group.name}
-                          </strong>
-                        </div>
-                      )}
-
-                      <div className="public-entry-heading">
-                        <div>
-                          <p className="eyebrow">Reading</p>
-
-                          <Link
-                            to={`/read/reader/${entry.bookId}`}
-                            className="public-entry-book-title"
-                          >
-                            {entry.title || "Untitled"}
-                          </Link>
-
-                          {entry.author && (
-                            <p className="public-entry-author">
-                              {entry.author}
-                            </p>
+                          {reply.canDelete && (
+                            <button
+                              type="button"
+                              className="margin-action report"
+                              onClick={() => handleDeleteReply(entry, reply)}
+                            >
+                              <Trash2 size={15} />
+                              Delete
+                            </button>
                           )}
                         </div>
-
-                        <Link
-                          to={`/read/reader/${entry.bookId}`}
-                          className="public-entry-book-icon"
-                          aria-label={`Open ${entry.title || "book"}`}
-                        >
-                          <BookOpen size={20} />
-                        </Link>
-                      </div>
-
-                      <div className="public-entry-meta">
-                        {entry.paragraphNumber && (
-                          <span>
-                            Paragraph {entry.paragraphNumber}
-                          </span>
-                        )}
-
-                        {entry.updatedAtISO && <span>Edited</span>}
-                      </div>
-
-                      {entry.paragraphPreview && (
-                        <div className="public-entry-quote">
-                          <p>“{entry.paragraphPreview}”</p>
-                        </div>
-                      )}
-
-                      <p className="public-journal-note">
-                        {entry.note}
-                      </p>
-
-                      <div className="margins-actions">
-                        <button
-                          type="button"
-                          className={
-                            replyOpen
-                              ? "margin-action active"
-                              : "margin-action"
-                          }
-                          onClick={() => openReply(entry)}
-                        >
-                          <MessageCircle size={17} />
-                          Reply
-                          {replies.length > 0 && ` (${replies.length})`}
-                        </button>
-
-                        <button
-                          type="button"
-                          className={
-                            isSaved
-                              ? "margin-action active"
-                              : "margin-action"
-                          }
-                          onClick={() => handleSave(entry)}
-                        >
-                          <Bookmark
-                            size={17}
-                            fill={isSaved ? "currentColor" : "none"}
-                          />
-                          {isSaved ? "Saved" : "Save"}
-                        </button>
-
-                        <button
-                          type="button"
-                          className="margin-action"
-                          onClick={() => handleShare(entry)}
-                        >
-                          <Share2 size={17} />
-                          Share
-                        </button>
-
-                        <button
-                          type="button"
-                          className="margin-action report"
-                          onClick={() => openReport(entry)}
-                        >
-                          <Flag size={17} />
-                          Report
-                        </button>
-                      </div>
-
-                      {replyOpen && (
-                        <div className="margin-reply-box">
-                          <div className="margin-reply-heading">
-                            <strong>Reply</strong>
-
-                            <button
-                              type="button"
-                              className="margin-close-button"
-                              onClick={() => {
-                                setOpenReplyId(null);
-                                setReplyText("");
-                              }}
-                              aria-label="Close reply"
-                            >
-                              <X size={18} />
-                            </button>
-                          </div>
-
-                          <textarea
-                            value={replyText}
-                            onChange={(event) =>
-                              setReplyText(event.target.value)
-                            }
-                            rows={4}
-                            maxLength={1000}
-                            placeholder={`Reply to ${
-                              reader?.displayName || "this reader"
-                            }...`}
-                          />
-
-                          <div className="margin-reply-options">
-                            <small className="muted">
-                              {entry.visibility === "group"
-                                ? `Replying in ${
-                                    entry.group?.name || "this group"
-                                  }.`
-                                : entry.visibility === "private"
-                                  ? "This reply will remain private."
-                                  : "This reply will be public."}
-                            </small>
-                          </div>
-
-                          <div className="button-row">
-                            <button
-                              type="button"
-                              className="button primary"
-                              disabled={replying}
-                              onClick={() => handleReply(entry)}
-                            >
-                              <Send size={16} />
-                              {replying
-                                ? "Posting..."
-                                : "Post Reply"}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {replyOpen && isLoadingReplies && (
-                        <div className="margin-replies">
-                          <p className="muted">Loading replies...</p>
-                        </div>
-                      )}
-
-                      {replyOpen && !isLoadingReplies && replies.length > 0 && (
-                        <div className="margin-replies">
-                          {replies.map((reply) => {
-                            const groupRole =
-                              entry.group?.membership?.role ||
-                              entry.membership?.role ||
-                              "";
-
-                            const canModerateReply =
-                              reply.visibility === "group" &&
-                              ["owner", "admin", "moderator"].includes(
-                                groupRole
-                              );
-
-                            const canDeleteReply =
-                              reply.userId === user?.uid ||
-                              canModerateReply;
-
-                            return (
-                              <div
-                                key={reply.id}
-                                className="margin-reply"
-                              >
-                                <div className="margin-reply-meta">
-                                  <strong>
-                                    {reply.userId === user?.uid
-                                      ? "You"
-                                      : reply.reader?.displayName ||
-                                        "Reader"}
-                                  </strong>
-
-                                  <span>
-                                    {formatDate(
-                                      reply.createdAtISO ||
-                                        reply.createdAt
-                                    )}
-                                  </span>
-
-                                  {reply.visibility === "private" && (
-                                    <span>Private</span>
-                                  )}
-
-                                  {canDeleteReply && (
-                                    <button
-                                      type="button"
-                                      className="margin-reply-delete"
-                                      onClick={() =>
-                                        handleDeleteReply(entry, reply)
-                                      }
-                                      aria-label="Delete reply"
-                                      title="Delete reply"
-                                    >
-                                      <Trash2 size={14} />
-                                      Delete
-                                    </button>
-                                  )}
-                                </div>
-
-                                <p>{reply.note}</p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </>
+                      ))}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
         )}
       </div>
 
       {reportEntry && (
-        <div
-          className="margin-modal-backdrop"
-          role="presentation"
-          onClick={closeReport}
-        >
-          <section
-            className="margin-report-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="chain-report-title"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="margin-report-heading">
-              <div>
-                <p className="eyebrow">Community Safety</p>
-                <h2 id="chain-report-title">Report Chain Post</h2>
-              </div>
-
+        <div className="modal-backdrop" role="presentation">
+          <form className="modal-card" onSubmit={handleReport}>
+            <div className="margin-reply-heading">
+              <strong>Report Chain post</strong>
               <button
                 type="button"
                 className="margin-close-button"
-                onClick={closeReport}
+                onClick={() => setReportEntry(null)}
                 aria-label="Close report"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
-            <form
-              className="margin-report-form"
-              onSubmit={handleReport}
-            >
-              <label>
-                Reason
+            <label>
+              Reason
+              <select
+                value={reportReason}
+                onChange={(event) => setReportReason(event.target.value)}
+              >
+                <option value="harassment">Harassment</option>
+                <option value="spam">Spam</option>
+                <option value="hate">Hate or abusive content</option>
+                <option value="sexual">Sexual content</option>
+                <option value="copyright">Copyright concern</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
 
-                <select
-                  value={reportReason}
-                  onChange={(event) =>
-                    setReportReason(event.target.value)
-                  }
-                >
-                  <option value="harassment">
-                    Harassment or bullying
-                  </option>
-                  <option value="hate">
-                    Hate or discrimination
-                  </option>
-                  <option value="sexual">
-                    Sexual content
-                  </option>
-                  <option value="violence">
-                    Violence or threats
-                  </option>
-                  <option value="spam">
-                    Spam
-                  </option>
-                  <option value="other">
-                    Other
-                  </option>
-                </select>
-              </label>
+            <label>
+              Details
+              <textarea
+                rows={4}
+                value={reportDetails}
+                onChange={(event) => setReportDetails(event.target.value)}
+                maxLength={1000}
+              />
+            </label>
 
-              <label>
-                Additional details
-
-                <textarea
-                  value={reportDetails}
-                  onChange={(event) =>
-                    setReportDetails(event.target.value)
-                  }
-                  rows={4}
-                  maxLength={1000}
-                  placeholder="Optional"
-                />
-              </label>
-
-              <div className="button-row">
-                <button
-                  type="submit"
-                  className="button danger"
-                  disabled={reporting}
-                >
-                  <Flag size={16} />
-                  {reporting
-                    ? "Submitting..."
-                    : "Submit Report"}
-                </button>
-
-                <button
-                  type="button"
-                  className="button secondary"
-                  onClick={closeReport}
-                  disabled={reporting}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </section>
+            <button className="button primary" disabled={reporting}>
+              {reporting ? "Submitting..." : "Submit Report"}
+            </button>
+          </form>
         </div>
       )}
     </main>
