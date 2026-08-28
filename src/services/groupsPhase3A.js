@@ -397,6 +397,7 @@ export async function replyToGroupForumPost(
   body
 ) {
   const { user } = await requireMembership(groupId);
+
   const postRef = doc(
     db,
     "groups",
@@ -404,6 +405,7 @@ export async function replyToGroupForumPost(
     "forumPosts",
     String(postId)
   );
+
   const postSnapshot = await getDoc(postRef);
 
   if (!postSnapshot.exists()) {
@@ -415,6 +417,7 @@ export async function replyToGroupForumPost(
   }
 
   const cleanBody = String(body || "").trim();
+
   if (!cleanBody) {
     throw new Error("Write a reply first.");
   }
@@ -442,47 +445,74 @@ export async function replyToGroupForumPost(
     updatedAtISO: now
   };
 
+  // The reply itself is the only required write.
   await setDoc(replyRef, {
     ...reply,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
 
-  await setDoc(
-    postRef,
-    {
-      lastReplyAtISO: now,
-      lastReplyAt: serverTimestamp(),
-      updatedAtISO: now,
-      updatedAt: serverTimestamp()
-    },
-    { merge: true }
-  );
-
-  await setDoc(
-    doc(db, "groups", String(groupId)),
-    {
-      lastActivityAtISO: now,
-      lastActivityAt: serverTimestamp()
-    },
-    { merge: true }
-  );
-
-  const postData = postSnapshot.data();
-  if (postData?.userId) {
-    const groupSnapshot = await getDoc(
-      doc(db, "groups", String(groupId))
-    );
-
-    await createNotification({
-      recipientUserId: postData.userId,
-      type: "forum_reply",
-      actorUserId: user.uid,
-      groupId: String(groupId),
-      groupName: groupSnapshot.exists() ? groupSnapshot.data()?.name || "" : "",
-      postId: String(postId),
-      targetPath: `/read/groups/${groupId}`
+  // Activity metadata is useful but must not turn a successful
+  // reply into a false error message for the student.
+  Promise.allSettled([
+    setDoc(
+      postRef,
+      {
+        lastReplyAtISO: now,
+        lastReplyAt: serverTimestamp(),
+        updatedAtISO: now,
+        updatedAt: serverTimestamp()
+      },
+      { merge: true }
+    ),
+    setDoc(
+      doc(db, "groups", String(groupId)),
+      {
+        lastActivityAtISO: now,
+        lastActivityAt: serverTimestamp()
+      },
+      { merge: true }
+    )
+  ]).then((results) => {
+    results.forEach((result) => {
+      if (result.status === "rejected") {
+        console.warn(
+          "Forum reply metadata update failed:",
+          result.reason
+        );
+      }
     });
+  });
+
+  // Notifications are also best-effort. Notification permissions
+  // should never make a successfully-posted reply appear to fail.
+  const postData = postSnapshot.data();
+
+  if (postData?.userId && postData.userId !== user.uid) {
+    (async () => {
+      try {
+        const groupSnapshot = await getDoc(
+          doc(db, "groups", String(groupId))
+        );
+
+        await createNotification({
+          recipientUserId: postData.userId,
+          type: "forum_reply",
+          actorUserId: user.uid,
+          groupId: String(groupId),
+          groupName: groupSnapshot.exists()
+            ? groupSnapshot.data()?.name || ""
+            : "",
+          postId: String(postId),
+          targetPath: `/read/groups/${groupId}`
+        });
+      } catch (error) {
+        console.warn(
+          "Forum reply notification failed:",
+          error
+        );
+      }
+    })();
   }
 
   return reply;
