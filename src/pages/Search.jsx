@@ -1,137 +1,114 @@
-import { useEffect, useState } from "react";
-
-import BookCard from "../components/BookCard.jsx";
-import SearchBar from "../components/SearchBar.jsx";
+import { useRef, useState } from 'react';
+import BookCard from '../components/BookCard.jsx';
+import SearchBar from '../components/SearchBar.jsx';
 import {
-  getCachedBooks,
-  prefetchSearchBooks,
-  searchBooks
-} from "../services/booksApi.js";
-import { saveBook } from "../services/storage.js";
-import { auth } from "../firebase";
-import SEO from "../components/SEO.jsx";
+  searchBooks,
+  splitSearchResults,
+} from '../services/booksApi.js';
+import { saveBook } from '../services/storage.js';
 
-function localMatches(books, query) {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return [];
+function mergeUniqueBooks(...groups) {
+  const seen = new Set();
 
-  return books.filter((book) => {
-    const subjects = Array.isArray(book.subjects) ? book.subjects.join(" ") : "";
-    const haystack = [book.title, book.author, subjects]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    return haystack.includes(needle);
-  });
-}
-
-function mergeBooks(primary, secondary) {
-  const map = new Map();
-  [...primary, ...secondary].forEach((book) => {
-    if (book?.id !== undefined && book?.id !== null) {
-      map.set(String(book.id), book);
+  return groups.flat().filter((book) => {
+    if (!book?.id || seen.has(book.id)) {
+      return false;
     }
+
+    seen.add(book.id);
+    return true;
   });
-  return [...map.values()];
 }
 
 export default function Search() {
   const [results, setResults] = useState([]);
-  const [status, setStatus] = useState("Search for a book, author, or subject.");
-  const [pendingQuery, setPendingQuery] = useState("");
+  const [status, setStatus] = useState(
+    'Search for a book, author, or subject.'
+  );
 
-  useEffect(() => {
-    const query = pendingQuery.trim();
-    if (query.length < 3) return;
-
-    const timer = window.setTimeout(() => {
-      prefetchSearchBooks(query);
-    }, 250);
-
-    return () => window.clearTimeout(timer);
-  }, [pendingQuery]);
+  const searchRequestRef = useRef(0);
 
   async function handleSearch(query) {
-    const cleanedQuery = query.trim();
+    const trimmedQuery = query.trim();
 
-    if (!cleanedQuery) {
-      setStatus("Enter a search term first.");
+    if (!trimmedQuery) {
+      searchRequestRef.current += 1;
       setResults([]);
+      setStatus('Enter a search term first.');
       return;
     }
 
-    setStatus("Searching...");
+    const requestId = searchRequestRef.current + 1;
+    searchRequestRef.current = requestId;
 
-    let instantResults = [];
+    setStatus('Searching titles...');
 
     try {
-      const cachedPool = await getCachedBooks();
-      instantResults = localMatches(cachedPool, cleanedQuery);
+      const books = await searchBooks(trimmedQuery);
 
-      if (instantResults.length) {
-        setResults(instantResults);
-        setStatus(
-          `${instantResults.length} fast result${instantResults.length === 1 ? "" : "s"} found. Checking the full library...`
-        );
+      if (searchRequestRef.current !== requestId) {
+        return;
       }
-    } catch (error) {
-      console.debug("Local search unavailable:", error);
-    }
 
-    try {
-      const remoteResults = await searchBooks(cleanedQuery);
-      const books = mergeBooks(remoteResults, instantResults);
+      const {
+        titleMatches,
+        authorMatches,
+        otherMatches,
+      } = splitSearchResults(books, trimmedQuery);
 
-      setResults(books);
+      // Paint title matches first.
+      setResults(titleMatches);
+
+      const titleCount = titleMatches.length;
       setStatus(
-        books.length
-          ? `${books.length} result${books.length === 1 ? "" : "s"} found.`
-          : "No books found."
+        titleCount
+          ? `${titleCount} title match${titleCount === 1 ? '' : 'es'} found. Checking authors...`
+          : 'Checking authors...'
       );
-    } catch (error) {
-      console.error("Search failed:", error);
 
-      if (!instantResults.length) {
-        setStatus("Search failed. Check your connection and try again.");
-      } else {
+      // Give React/browser a chance to paint title results before
+      // merging the author and broader matches.
+      requestAnimationFrame(() => {
+        if (searchRequestRef.current !== requestId) {
+          return;
+        }
+
+        const merged = mergeUniqueBooks(
+          titleMatches,
+          authorMatches,
+          otherMatches
+        );
+
+        setResults(merged);
         setStatus(
-          `${instantResults.length} cached result${instantResults.length === 1 ? "" : "s"} found. Full-library search is temporarily unavailable.`
+          merged.length
+            ? `${merged.length} result${merged.length === 1 ? '' : 's'} found.`
+            : 'No books found.'
+        );
+      });
+    } catch {
+      if (searchRequestRef.current === requestId) {
+        setStatus(
+          'Search failed. Check your connection and try again.'
         );
       }
     }
   }
 
-  async function handleSave(book) {
-    try {
-      setStatus("Saving book...");
-      await saveBook(book);
-      setStatus(`Saved “${book.title}.”`);
-    } catch (error) {
-      console.error("Could not save book:", error);
-      setStatus(
-        !auth.currentUser
-          ? "Log in to save books to your account."
-          : "We couldn't save that book. Please try again."
-      );
-    }
+  function handleSave(book) {
+    saveBook(book);
+    setStatus(`Saved “${book.title}.”`);
   }
 
   return (
     <section className="stack-md">
-      <SEO
-        title="Search Classic Literature | Random Reads"
-        description="Search public-domain books by title, author, or subject and read classic literature free with Random Reads."
-        path="/read/search"
-        image="https://theliteraturefoundation.org/branding/random-reads-icon.svg"
-      />
-
       <div className="section-heading">
         <p className="eyebrow">Library search</p>
         <h1>Search public domain books</h1>
       </div>
 
-      <SearchBar onSearch={handleSearch} onQueryChange={setPendingQuery} />
+      <SearchBar onSearch={handleSearch} />
+
       <p className="status">{status}</p>
 
       <div className="results-list">
