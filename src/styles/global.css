@@ -4037,3 +4037,120 @@ p {
 .button.danger:focus-visible {
   filter: brightness(0.94);
 }
+/* ==================================================
+   LIT CHAIN HEADER — LOGO REPLACES "THE CHAIN"
+   ================================================== */
+
+.rr-header {
+  justify-content: center;
+  padding: 0.7rem 1rem;
+}
+
+.rr-header .top-nav {
+  width: min(820px, 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding-bottom: 0;
+}
+
+.rr-header .nav-link {
+  flex: 0 0 auto;
+}
+
+.chain-logo-link {
+  flex: 0 1 auto;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 0;
+  padding: 0.1rem 0.35rem;
+
+  border-radius: 14px;
+
+  line-height: 0;
+}
+
+/*
+ * The current PNG has a white background.
+ * Multiply blending makes that white disappear against
+ * the cream header without modifying the image.
+ */
+.chain-logo-image {
+  display: block;
+
+  width: clamp(150px, 24vw, 230px);
+  height: 48px;
+
+  object-fit: contain;
+  object-position: center;
+
+  mix-blend-mode: multiply;
+}
+
+.chain-logo-link:focus-visible {
+  outline: 3px solid var(--secondary);
+  outline-offset: 3px;
+}
+
+@media (max-width: 720px) {
+  .site-header.rr-header {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .rr-header .top-nav {
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.25rem;
+
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .rr-header .top-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .chain-logo-image {
+    width: clamp(128px, 38vw, 165px);
+    height: 44px;
+  }
+}
+
+@media (max-width: 430px) {
+  .rr-header {
+    padding-inline: 0.7rem;
+  }
+
+  .rr-header .nav-link {
+    padding-inline: 0.55rem;
+  }
+
+  .chain-logo-link {
+    padding-inline: 0.1rem;
+  }
+
+  .chain-logo-image {
+    width: 132px;
+    height: 42px;
+  }
+}
+
+@media (max-width: 390px) {
+  .rr-header .top-nav {
+    gap: 0.12rem;
+  }
+
+  .rr-header .nav-link {
+    padding-inline: 0.45rem;
+  }
+
+  .chain-logo-image {
+    width: 118px;
+  }
+}
