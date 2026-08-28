@@ -8,9 +8,10 @@ export default function Terms() {
     <main className="page-wrap">
       <SEO
         title="Terms of Use | The Literature Foundation"
-        description="Terms governing use of The Literature Foundation and Random Reads."
+        description="Terms governing use of The Literature Foundation and Lit Chain."
         path="/terms"
       />
+
       <FoundationHeader />
 
       <div className="stack-lg">
@@ -20,7 +21,7 @@ export default function Terms() {
           <h1>Terms of Use</h1>
 
           <p className="muted">
-            Last updated: August 17, 2026
+            Last updated: August 27, 2026
           </p>
         </section>
 
@@ -29,9 +30,9 @@ export default function Terms() {
             <h2>Use of the service</h2>
 
             <p>
-              The Literature Foundation and Random Reads provide
-              tools for discovering, reading, saving, and reflecting
-              on literature.
+              The Literature Foundation and Lit Chain provide
+              tools for discovering, reading, saving, discussing,
+              and reflecting on literature.
             </p>
 
             <p>
@@ -43,7 +44,7 @@ export default function Terms() {
             <h2>Accounts</h2>
 
             <p>
-              Some Random Reads features require an account. You are
+              Some Lit Chain features require an account. You are
               responsible for maintaining the security of your
               account credentials and for activity performed through
               your account.
@@ -52,7 +53,7 @@ export default function Terms() {
             <h2>Reading materials</h2>
 
             <p>
-              Random Reads primarily provides access to or links to
+              Lit Chain primarily provides access to or links to
               public-domain literature supplied by third-party
               sources. Public-domain status may vary by jurisdiction,
               and users are responsible for complying with laws that
@@ -63,14 +64,22 @@ export default function Terms() {
 
             <p>
               You retain ownership of original journal entries,
-              notes, and other content you create through the
-              service.
+              notes, replies, group posts, and other content you
+              create through the service.
             </p>
 
             <p>
-              By storing content through the service, you grant us
-              permission to process and store that content as needed
-              to provide the features you request.
+              By storing or sharing content through the service,
+              you grant us permission to process, store, display,
+              and transmit that content as needed to provide the
+              features you request.
+            </p>
+
+            <p>
+              You are responsible for content you post or share
+              through community features and agree not to use those
+              features for unlawful, abusive, infringing, or
+              disruptive activity.
             </p>
 
             <h2>Availability</h2>

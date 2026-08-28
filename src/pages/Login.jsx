@@ -152,15 +152,15 @@ export default function Login() {
   return (
     <main className="login-page">
       <SEO
-        title="Log In | Random Reads"
-        description="Log in to Random Reads to save books, reading progress, and journal entries."
+        title="Log In | Lit Chain"
+        description="Log in to Lit Chain to save books, reading progress, notes, journal entries, and participate in the literary community."
         path="/read/login"
         noindex
-/>
-      <section className="login-card">
+      />
 
+      <section className="login-card">
         <p className="login-eyebrow">
-          Random Reads
+          Lit Chain
         </p>
 
         <h1>
@@ -172,7 +172,7 @@ export default function Login() {
         <p className="login-description">
           {mode === "login"
             ? "Log in to continue your reading journey."
-            : "Create an account to save your books, reading progress, and journal entries."}
+            : "Create an account to save your books, reading progress, notes, and journal entries."}
         </p>
 
         <form
@@ -278,7 +278,6 @@ export default function Login() {
               : "Log In"}
           </button>
         </div>
-
       </section>
     </main>
   );
