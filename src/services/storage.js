@@ -3971,6 +3971,57 @@ async function getGroupMemberRecord(groupId, userId) {
 }
 
 
+async function getGroupBanRecord(
+  groupId,
+  userId
+) {
+  if (!groupId || !userId) {
+    return null;
+  }
+
+  const banRef = doc(
+    db,
+    "groups",
+    String(groupId),
+    "bans",
+    String(userId)
+  );
+
+  const snapshot =
+    await getDoc(
+      banRef
+    );
+
+  if (!snapshot.exists()) {
+    return null;
+  }
+
+  return {
+    id:
+      snapshot.id,
+    ...snapshot.data()
+  };
+}
+
+
+async function assertNotGroupBanned(
+  groupId,
+  userId
+) {
+  const ban =
+    await getGroupBanRecord(
+      groupId,
+      userId
+    );
+
+  if (ban) {
+    throw new Error(
+      "This reader is banned from the group until a moderator lifts the ban."
+    );
+  }
+}
+
+
 export async function createGroup({
   name,
   description = "",
@@ -4327,6 +4378,11 @@ export async function inviteFriendToGroup(
     );
   }
 
+  await assertNotGroupBanned(
+    groupId,
+    otherUserId
+  );
+
   const existingMember =
     await getGroupMemberRecord(
       groupId,
@@ -4486,6 +4542,13 @@ export async function respondToGroupInvite(
 
   const now =
     new Date().toISOString();
+
+  if (accept) {
+    await assertNotGroupBanned(
+      groupId,
+      user.uid
+    );
+  }
 
   const inviteBeforeResponse = await getDoc(inviteRef);
   const inviteBeforeData = inviteBeforeResponse.exists()
@@ -4858,6 +4921,11 @@ export async function requestToJoinGroup(groupId) {
 
   const group = groupSnapshot.data();
 
+  await assertNotGroupBanned(
+    groupId,
+    user.uid
+  );
+
   if (
     !["discoverable", "public"].includes(group.visibility)
   ) {
@@ -5064,6 +5132,13 @@ export async function respondToGroupJoinRequest(
   );
 
   const now = new Date().toISOString();
+
+  if (accept) {
+    await assertNotGroupBanned(
+      groupId,
+      userId
+    );
+  }
 
   await runTransaction(db, async (transaction) => {
     transaction.update(requestRef, {
@@ -5338,6 +5413,62 @@ export async function deleteGroupPermanently(groupId) {
   );
 
   /*
+   * Phase 4.2 enforcement data.
+   *
+   * Bans may be removed while the group still exists because
+   * the Owner is a moderator. Moderation reports and audit actions
+   * remain protected until the final atomic deletion below.
+   */
+  await deleteCollectionDocuments(
+    collection(
+      db,
+      "groups",
+      String(groupId),
+      "bans"
+    )
+  );
+
+  const [
+    moderationReportsSnapshot,
+    moderationActionsSnapshot
+  ] = await Promise.all([
+    getDocs(
+      collection(
+        db,
+        "groups",
+        String(groupId),
+        "moderationReports"
+      )
+    ),
+    getDocs(
+      collection(
+        db,
+        "groups",
+        String(groupId),
+        "moderationActions"
+      )
+    )
+  ]);
+
+  const protectedModerationDocs = [
+    ...moderationReportsSnapshot.docs,
+    ...moderationActionsSnapshot.docs
+  ];
+
+  /*
+   * Firestore batches support at most 500 operations.
+   * Keep room for the group document and final Owner membership.
+   */
+  if (
+    protectedModerationDocs.length >
+    448
+  ) {
+    throw new Error(
+      "This group has too much moderation history for safe client-side deletion. Archive or delete it with an administrative cleanup process."
+    );
+  }
+
+  /*
    * Delete every non-owner membership first.
    * Keep the current owner's membership alive for the final
    * Firestore permission check.
@@ -5386,6 +5517,14 @@ export async function deleteGroupPermanently(groupId) {
  * still exists so Firestore can verify ownership.
  */
 const finalBatch = writeBatch(db);
+
+protectedModerationDocs.forEach(
+  (moderationDoc) => {
+    finalBatch.delete(
+      moderationDoc.ref
+    );
+  }
+);
 
 finalBatch.delete(groupRef);
 
