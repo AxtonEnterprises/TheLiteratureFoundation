@@ -26,7 +26,12 @@ import {
   UserMinus,
   UserPlus,
   Users,
-  X
+  X,
+  Flag,
+  Ban,
+  AlertTriangle,
+  History,
+  RotateCcw
 } from "lucide-react";
 
 import { auth } from "../firebase";
@@ -45,7 +50,6 @@ import {
   getGroupMembers,
   inviteFriendToGroup,
   leaveGroup,
-  removeGroupMember,
   respondToGroupJoinRequest,
   setGroupMemberRole,
   transferGroupOwnership
@@ -71,11 +75,26 @@ import {
   GROUP_PERMISSION_LABELS,
   GROUP_PERMISSIONS,
   GROUP_ROLES,
-  canManageTargetMember,
   groupRoleDescription,
   groupRoleLabel,
   hasGroupPermission
 } from "../services/groupPermissions.js";
+
+import {
+  assertCanModerateTarget,
+  banGroupMember,
+  canDisciplineRole,
+  getForumModerationReports,
+  getGroupBans,
+  getModerationActions,
+  issueGroupWarning,
+  removeGroupMemberModerated,
+  removeReportedForumContent,
+  reportGroupForumContent,
+  resolveForumModerationReport,
+  recordGroupModerationAction,
+  unbanGroupMember
+} from "../services/groupModeration.js";
 
 import SEO from "../components/SEO.jsx";
 
@@ -314,6 +333,21 @@ export default function Group() {
   ] = useState([]);
 
   const [
+    forumModerationReports,
+    setForumModerationReports
+  ] = useState([]);
+
+  const [
+    moderationActions,
+    setModerationActions
+  ] = useState([]);
+
+  const [
+    groupBans,
+    setGroupBans
+  ] = useState([]);
+
+  const [
     transferOwnerId,
     setTransferOwnerId
   ] = useState("");
@@ -489,11 +523,45 @@ export default function Group() {
     group?.membership?.role ||
     "member";
 
-  const canManageMembers =
-    hasGroupPermission(
-      myRole,
-      "manageMembers"
+  const memberRoleByUserId =
+    useMemo(
+      () =>
+        new Map(
+          members.map(
+            (member) => [
+              String(
+                member.userId
+              ),
+              member.role ||
+                "member"
+            ]
+          )
+        ),
+      [members]
     );
+
+  function canModerateUserContent(
+    targetUserId
+  ) {
+    if (
+      String(targetUserId) ===
+      String(user?.uid)
+    ) {
+      return true;
+    }
+
+    const targetRole =
+      memberRoleByUserId.get(
+        String(targetUserId)
+      ) ||
+      "member";
+
+    return canDisciplineRole(
+      myRole,
+      targetRole
+    );
+  }
+
 
   const canManageJoinRequests =
     hasGroupPermission(
@@ -585,14 +653,38 @@ export default function Group() {
       }
 
       try {
-        const reports =
-          await getGroupModerationQueue(
+        const [
+          reports,
+          forumReports,
+          actions,
+          bans
+        ] = await Promise.all([
+          getGroupModerationQueue(
             groupId
-          );
+          ),
+          getForumModerationReports(
+            groupId
+          ),
+          getModerationActions(
+            groupId
+          ),
+          getGroupBans(
+            groupId
+          )
+        ]);
 
         if (active) {
           setModerationQueue(
             reports
+          );
+          setForumModerationReports(
+            forumReports
+          );
+          setModerationActions(
+            actions
+          );
+          setGroupBans(
+            bans
           );
         }
       } catch (error) {
@@ -612,6 +704,376 @@ export default function Group() {
     groupId,
     canModerate
   ]);
+
+  async function refreshModeration() {
+    if (!canModerate) {
+      return;
+    }
+
+    const [
+      forumReports,
+      actions,
+      bans
+    ] = await Promise.all([
+      getForumModerationReports(
+        groupId
+      ),
+      getModerationActions(
+        groupId
+      ),
+      getGroupBans(
+        groupId
+      )
+    ]);
+
+    setForumModerationReports(
+      forumReports
+    );
+    setModerationActions(
+      actions
+    );
+    setGroupBans(
+      bans
+    );
+  }
+
+  async function reportForumPost(
+    post
+  ) {
+    const reason =
+      window.prompt(
+        "Why are you reporting this discussion?"
+      );
+
+    if (!reason?.trim()) {
+      return;
+    }
+
+    try {
+      setStatus("");
+
+      await reportGroupForumContent(
+        groupId,
+        {
+          contentType:
+            "forum_post",
+          postId:
+            post.id,
+          reportedUserId:
+            post.userId,
+          title:
+            post.title,
+          body:
+            post.body,
+          reason
+        }
+      );
+
+      setStatus(
+        "Discussion reported to the group moderators."
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't submit that report."
+      );
+    }
+  }
+
+  async function reportForumReply(
+    post,
+    reply
+  ) {
+    const reason =
+      window.prompt(
+        "Why are you reporting this reply?"
+      );
+
+    if (!reason?.trim()) {
+      return;
+    }
+
+    try {
+      setStatus("");
+
+      await reportGroupForumContent(
+        groupId,
+        {
+          contentType:
+            "forum_reply",
+          postId:
+            post.id,
+          replyId:
+            reply.id,
+          reportedUserId:
+            reply.userId,
+          title:
+            post.title,
+          body:
+            reply.body,
+          reason
+        }
+      );
+
+      setStatus(
+        "Reply reported to the group moderators."
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't submit that report."
+      );
+    }
+  }
+
+  async function warnMember(
+    member
+  ) {
+    const reason =
+      window.prompt(
+        `Warning for ${memberName(
+          member
+        )}:`
+      );
+
+    if (!reason?.trim()) {
+      return;
+    }
+
+    try {
+      setBusyUserId(
+        member.userId
+      );
+      setStatus("");
+
+      await issueGroupWarning(
+        groupId,
+        member.userId,
+        reason
+      );
+
+      await refreshModeration();
+
+      setStatus(
+        `Warning sent to ${memberName(
+          member
+        )}.`
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't issue that warning."
+      );
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  async function moderatedRemove(
+    member
+  ) {
+    const reason =
+      window.prompt(
+        `Reason for removing ${memberName(
+          member
+        )}:`
+      );
+
+    if (reason === null) {
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Remove ${memberName(
+          member
+        )} from the group? They may rejoin later unless banned.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setBusyUserId(
+        member.userId
+      );
+      setStatus("");
+
+      await removeGroupMemberModerated(
+        groupId,
+        member.userId,
+        reason
+      );
+
+      await refresh();
+      await refreshModeration();
+
+      setStatus(
+        `${memberName(
+          member
+        )} was removed.`
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't remove that member."
+      );
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  async function banMember(
+    member
+  ) {
+    const reason =
+      window.prompt(
+        `Reason for banning ${memberName(
+          member
+        )}:`
+      );
+
+    if (!reason?.trim()) {
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Ban ${memberName(
+          member
+        )}? They will be removed and blocked from rejoining until the ban is lifted.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setBusyUserId(
+        member.userId
+      );
+      setStatus("");
+
+      await banGroupMember(
+        groupId,
+        member.userId,
+        reason
+      );
+
+      await refresh();
+      await refreshModeration();
+
+      setStatus(
+        `${memberName(
+          member
+        )} was banned.`
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't ban that member."
+      );
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  async function liftBan(
+    ban
+  ) {
+    if (
+      !window.confirm(
+        `Lift the ban for ${
+          ban.profile
+            ?.displayName ||
+          "this reader"
+        }?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setStatus("");
+
+      await unbanGroupMember(
+        groupId,
+        ban.userId
+      );
+
+      await refreshModeration();
+
+      setStatus(
+        "Ban lifted."
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't lift that ban."
+      );
+    }
+  }
+
+  async function resolveForumReport(
+    report,
+    resolution
+  ) {
+    try {
+      setStatus("");
+
+      await resolveForumModerationReport(
+        groupId,
+        report.id,
+        resolution
+      );
+
+      await refreshModeration();
+
+      setStatus(
+        resolution ===
+        "dismissed"
+          ? "Report dismissed."
+          : "Report resolved."
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't update that report."
+      );
+    }
+  }
+
+  async function removeForumReportContent(
+    report
+  ) {
+    if (
+      !window.confirm(
+        "Remove the reported content? The moderation history will be preserved."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setStatus("");
+
+      await removeReportedForumContent(
+        groupId,
+        report
+      );
+
+      await refresh();
+      await refreshModeration();
+
+      setStatus(
+        "Reported content removed."
+      );
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't remove that content."
+      );
+    }
+  }
 
   async function handleJoinRequest(
     request,
@@ -735,56 +1197,6 @@ export default function Group() {
       setStatus(
         error?.message ||
           "We couldn't update that role."
-      );
-    } finally {
-      setBusyUserId(null);
-    }
-  }
-
-  async function remove(member) {
-    if (
-      !canManageTargetMember(
-        myRole,
-        member.role
-      )
-    ) {
-      setStatus(
-        "Your role cannot remove this member."
-      );
-      return;
-    }
-
-    if (
-      !window.confirm(
-        `Remove ${memberName(
-          member
-        )} from the group?`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      setBusyUserId(
-        member.userId
-      );
-
-      setStatus("");
-
-      await removeGroupMember(
-        groupId,
-        member.userId
-      );
-
-      await refresh();
-
-      setStatus(
-        "Member removed."
-      );
-    } catch (error) {
-      setStatus(
-        error?.message ||
-          "We couldn't remove that member."
       );
     } finally {
       setBusyUserId(null);
@@ -1234,10 +1646,42 @@ export default function Group() {
     try {
       setStatus("");
 
+      if (report.reportedUserId) {
+        await assertCanModerateTarget(
+          groupId,
+          report.reportedUserId
+        );
+      }
+
       await resolveGroupChainReport(
         groupId,
         report.id,
         resolution
+      );
+
+      await recordGroupModerationAction(
+        groupId,
+        {
+          action:
+            resolution === "dismissed"
+              ? "chain_report_dismissed"
+              : "chain_report_resolved",
+          targetUserId:
+            report.reportedUserId ||
+            null,
+          contentType:
+            "chain_post",
+          contentId:
+            report.reportedEntryId ||
+            report.chainEntry?.id ||
+            null,
+          reportId:
+            report.id,
+          reason:
+            report.reason || "",
+          details:
+            report.details || ""
+        }
       );
 
       setModerationQueue(
@@ -1274,9 +1718,39 @@ export default function Group() {
     try {
       setStatus("");
 
+      if (report.reportedUserId) {
+        await assertCanModerateTarget(
+          groupId,
+          report.reportedUserId
+        );
+      }
+
       await deleteReportedGroupChainEntry(
         groupId,
         report
+      );
+
+      await recordGroupModerationAction(
+        groupId,
+        {
+          action:
+            "chain_content_removed",
+          targetUserId:
+            report.reportedUserId ||
+            null,
+          contentType:
+            "chain_post",
+          contentId:
+            report.reportedEntryId ||
+            report.chainEntry?.id ||
+            null,
+          reportId:
+            report.id,
+          reason:
+            report.reason || "",
+          details:
+            report.details || ""
+        }
       );
 
       setModerationQueue(
@@ -1555,6 +2029,11 @@ export default function Group() {
                         post.userId ===
                         user.uid;
 
+                      const canModeratePost =
+                        canModerateUserContent(
+                          post.userId
+                        );
+
                       const replies =
                         forumReplies[
                           post.id
@@ -1613,7 +2092,7 @@ export default function Group() {
                             </div>
 
                             <div className="button-row">
-                              {canModerate && (
+                              {canModeratePost && (
                                 <>
                                   <button
                                     type="button"
@@ -1669,7 +2148,7 @@ export default function Group() {
                                 </>
                               )}
 
-                              {(canModerate ||
+                              {(canModeratePost ||
                                 isAuthor) && (
                                 <button
                                   type="button"
@@ -1688,6 +2167,23 @@ export default function Group() {
                                     size={
                                       14
                                     }
+                                  />
+                                </button>
+                              )}
+
+                              {!isAuthor && (
+                                <button
+                                  type="button"
+                                  className="button secondary"
+                                  onClick={() =>
+                                    reportForumPost(
+                                      post
+                                    )
+                                  }
+                                  title="Report discussion"
+                                >
+                                  <Flag
+                                    size={14}
                                   />
                                 </button>
                               )}
@@ -1738,6 +2234,11 @@ export default function Group() {
                                     reply.userId ===
                                     user.uid;
 
+                                  const canModerateReply =
+                                    canModerateUserContent(
+                                      reply.userId
+                                    );
+
                                   return (
                                     <div
                                       key={
@@ -1773,25 +2274,43 @@ export default function Group() {
                                         </p>
                                       </div>
 
-                                      {(canModerate ||
-                                        isReplyAuthor) && (
-                                        <button
-                                          type="button"
-                                          className="button secondary"
-                                          onClick={() =>
-                                            deleteForumReply(
-                                              post,
-                                              reply
-                                            )
-                                          }
-                                        >
-                                          <Trash2
-                                            size={
-                                              14
+                                      <div className="button-row">
+                                        {(canModerateReply ||
+                                          isReplyAuthor) && (
+                                          <button
+                                            type="button"
+                                            className="button secondary"
+                                            onClick={() =>
+                                              deleteForumReply(
+                                                post,
+                                                reply
+                                              )
                                             }
-                                          />
-                                        </button>
-                                      )}
+                                          >
+                                            <Trash2
+                                              size={14}
+                                            />
+                                          </button>
+                                        )}
+
+                                        {!isReplyAuthor && (
+                                          <button
+                                            type="button"
+                                            className="button secondary"
+                                            onClick={() =>
+                                              reportForumReply(
+                                                post,
+                                                reply
+                                              )
+                                            }
+                                            title="Report reply"
+                                          >
+                                            <Flag
+                                              size={14}
+                                            />
+                                          </button>
+                                        )}
+                                      </div>
                                     </div>
                                   );
                                 }
@@ -1969,15 +2488,6 @@ export default function Group() {
               <div className="public-profile-entry-list">
                 {members.map(
                   (member) => {
-                    const canRemove =
-                      member.userId !==
-                        user.uid &&
-                      canManageMembers &&
-                      canManageTargetMember(
-                        myRole,
-                        member.role
-                      );
-
                     return (
                       <article
                         key={
@@ -2069,28 +2579,72 @@ export default function Group() {
                             </label>
                           )}
 
-                        {canRemove && (
-                          <button
-                            type="button"
-                            className="button secondary"
-                            disabled={
-                              busyUserId ===
-                              member.userId
-                            }
-                            onClick={() =>
-                              remove(
-                                member
-                              )
-                            }
-                          >
-                            <UserMinus
-                              size={
-                                15
-                              }
-                            />
-                            Remove
-                          </button>
-                        )}
+                        {member.userId !==
+                          user.uid &&
+                          canDisciplineRole(
+                            myRole,
+                            member.role ||
+                              "member"
+                          ) && (
+                            <div className="button-row">
+                              <button
+                                type="button"
+                                className="button secondary"
+                                disabled={
+                                  busyUserId ===
+                                  member.userId
+                                }
+                                onClick={() =>
+                                  warnMember(
+                                    member
+                                  )
+                                }
+                              >
+                                <AlertTriangle
+                                  size={15}
+                                />
+                                Warn
+                              </button>
+
+                              <button
+                                type="button"
+                                className="button secondary"
+                                disabled={
+                                  busyUserId ===
+                                  member.userId
+                                }
+                                onClick={() =>
+                                  moderatedRemove(
+                                    member
+                                  )
+                                }
+                              >
+                                <UserMinus
+                                  size={15}
+                                />
+                                Remove
+                              </button>
+
+                              <button
+                                type="button"
+                                className="button danger"
+                                disabled={
+                                  busyUserId ===
+                                  member.userId
+                                }
+                                onClick={() =>
+                                  banMember(
+                                    member
+                                  )
+                                }
+                              >
+                                <Ban
+                                  size={15}
+                                />
+                                Ban
+                              </button>
+                            </div>
+                          )}
                       </article>
                     );
                   }
@@ -2167,130 +2721,405 @@ export default function Group() {
         {activeTab ===
           "moderation" &&
           canModerate && (
-            <section className="panel profile-panel">
-              <p className="eyebrow">
-                Group Moderation
-              </p>
-
-              <h2>
-                Reported Chain
-                Posts
-              </h2>
-
-              {moderationQueue.length ===
-              0 ? (
-                <p className="muted">
-                  No open group
-                  Chain post
-                  reports.
+            <>
+              <section className="panel profile-panel">
+                <p className="eyebrow">
+                  Group Moderation
                 </p>
-              ) : (
-                <div className="public-profile-entry-list">
-                  {moderationQueue.map(
-                    (
-                      report
-                    ) => (
-                      <article
-                        key={
-                          report.id
-                        }
-                        className="public-profile-entry"
-                      >
-                        <strong>
-                          {report
-                            .reportedProfile
-                            ?.displayName ||
-                            "Reported reader"}
-                        </strong>
 
-                        <p>
+                <h2>
+                  Reported Discussions & Replies
+                </h2>
+
+                {forumModerationReports.length ===
+                0 ? (
+                  <p className="muted">
+                    No open discussion or reply reports.
+                  </p>
+                ) : (
+                  <div className="public-profile-entry-list">
+                    {forumModerationReports.map(
+                      (
+                        report
+                      ) => (
+                        <article
+                          key={
+                            report.id
+                          }
+                          className="public-profile-entry"
+                        >
                           <strong>
-                            Reason:
-                          </strong>{" "}
-                          {report.reason ||
-                            "Other"}
-                        </p>
+                            {report.contentType ===
+                            "forum_reply"
+                              ? "Reported Reply"
+                              : "Reported Discussion"}
+                          </strong>
 
-                        {report.details && (
-                          <p>
-                            {
-                              report.details
-                            }
+                          <p className="muted">
+                            By{" "}
+                            {report
+                              .reportedProfile
+                              ?.displayName ||
+                              "Reader"}
+                            {" · Reported by "}
+                            {report
+                              .reporterProfile
+                              ?.displayName ||
+                              "a member"}
                           </p>
-                        )}
 
-                        {report.chainEntry && (
-                          <>
-                            <p className="muted">
-                              {report
-                                .chainEntry
-                                .title ||
-                                "Untitled"}
-                            </p>
-
-                            <p>
+                          {report.title && (
+                            <h3>
                               {
-                                report
-                                  .chainEntry
-                                  .note
+                                report.title
+                              }
+                            </h3>
+                          )}
+
+                          <p>
+                            {report.body}
+                          </p>
+
+                          <p>
+                            <strong>
+                              Reason:
+                            </strong>{" "}
+                            {report.reason ||
+                              "Other"}
+                          </p>
+
+                          {report.details && (
+                            <p>
+                              <strong>
+                                Details:
+                              </strong>{" "}
+                              {
+                                report.details
                               }
                             </p>
-                          </>
-                        )}
+                          )}
 
-                        <div className="button-row">
-                          {report.chainEntry && (
+                          <div className="button-row">
                             <button
                               type="button"
                               className="button danger"
                               onClick={() =>
-                                handleDeleteReportedChainEntry(
+                                removeForumReportContent(
                                   report
                                 )
                               }
                             >
                               <Trash2
-                                size={
-                                  16
-                                }
+                                size={16}
                               />
-                              Delete
-                              Chain Post
+                              Remove Content
                             </button>
+
+                            <button
+                              type="button"
+                              className="button secondary"
+                              onClick={() =>
+                                resolveForumReport(
+                                  report,
+                                  "dismissed"
+                                )
+                              }
+                            >
+                              Dismiss
+                            </button>
+
+                            <button
+                              type="button"
+                              className="button secondary"
+                              onClick={() =>
+                                resolveForumReport(
+                                  report,
+                                  "resolved"
+                                )
+                              }
+                            >
+                              Resolve
+                            </button>
+                          </div>
+                        </article>
+                      )
+                    )}
+                  </div>
+                )}
+              </section>
+
+              <section className="panel profile-panel">
+                <p className="eyebrow">
+                  Chain Moderation
+                </p>
+
+                <h2>
+                  Reported Chain Posts
+                </h2>
+
+                {moderationQueue.length ===
+                0 ? (
+                  <p className="muted">
+                    No open group Chain post reports.
+                  </p>
+                ) : (
+                  <div className="public-profile-entry-list">
+                    {moderationQueue.map(
+                      (
+                        report
+                      ) => (
+                        <article
+                          key={
+                            report.id
+                          }
+                          className="public-profile-entry"
+                        >
+                          <strong>
+                            {report
+                              .reportedProfile
+                              ?.displayName ||
+                              "Reported reader"}
+                          </strong>
+
+                          <p>
+                            <strong>
+                              Reason:
+                            </strong>{" "}
+                            {report.reason ||
+                              "Other"}
+                          </p>
+
+                          {report.details && (
+                            <p>
+                              {
+                                report.details
+                              }
+                            </p>
                           )}
 
-                          <button
-                            type="button"
-                            className="button secondary"
-                            onClick={() =>
-                              handleResolveReport(
-                                report,
-                                "dismissed"
-                              )
-                            }
-                          >
-                            Dismiss
-                          </button>
+                          {report.chainEntry && (
+                            <>
+                              <p className="muted">
+                                {report
+                                  .chainEntry
+                                  .title ||
+                                  "Untitled"}
+                              </p>
+
+                              <p>
+                                {report
+                                  .chainEntry
+                                  .note}
+                              </p>
+                            </>
+                          )}
+
+                          <div className="button-row">
+                            {report.chainEntry && (
+                              <button
+                                type="button"
+                                className="button danger"
+                                onClick={() =>
+                                  handleDeleteReportedChainEntry(
+                                    report
+                                  )
+                                }
+                              >
+                                <Trash2
+                                  size={16}
+                                />
+                                Delete Chain Post
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              className="button secondary"
+                              onClick={() =>
+                                handleResolveReport(
+                                  report,
+                                  "dismissed"
+                                )
+                              }
+                            >
+                              Dismiss
+                            </button>
+
+                            <button
+                              type="button"
+                              className="button secondary"
+                              onClick={() =>
+                                handleResolveReport(
+                                  report,
+                                  "resolved"
+                                )
+                              }
+                            >
+                              Resolve
+                            </button>
+                          </div>
+                        </article>
+                      )
+                    )}
+                  </div>
+                )}
+              </section>
+
+              <section className="panel profile-panel">
+                <p className="eyebrow">
+                  Enforcement
+                </p>
+
+                <h2>
+                  Banned Readers
+                </h2>
+
+                {groupBans.length ===
+                0 ? (
+                  <p className="muted">
+                    No readers are banned from this group.
+                  </p>
+                ) : (
+                  <div className="public-profile-entry-list">
+                    {groupBans.map(
+                      (
+                        ban
+                      ) => (
+                        <article
+                          key={
+                            ban.id
+                          }
+                          className="public-profile-entry"
+                        >
+                          <strong>
+                            {ban
+                              .profile
+                              ?.displayName ||
+                              "Reader"}
+                          </strong>
+
+                          <p>
+                            <strong>
+                              Reason:
+                            </strong>{" "}
+                            {ban.reason ||
+                              "No reason recorded"}
+                          </p>
+
+                          <p className="muted">
+                            {ban.createdAtISO
+                              ? `Banned ${formatDate(
+                                  ban.createdAtISO
+                                )}`
+                              : ""}
+                          </p>
 
                           <button
                             type="button"
                             className="button secondary"
                             onClick={() =>
-                              handleResolveReport(
-                                report,
-                                "resolved"
+                              liftBan(
+                                ban
                               )
                             }
                           >
-                            Resolve
+                            <RotateCcw
+                              size={15}
+                            />
+                            Lift Ban
                           </button>
-                        </div>
-                      </article>
-                    )
-                  )}
-                </div>
-              )}
-            </section>
+                        </article>
+                      )
+                    )}
+                  </div>
+                )}
+              </section>
+
+              <section className="panel profile-panel">
+                <p className="eyebrow">
+                  <History
+                    size={15}
+                  />{" "}
+                  Audit Trail
+                </p>
+
+                <h2>
+                  Moderation History
+                </h2>
+
+                {moderationActions.length ===
+                0 ? (
+                  <p className="muted">
+                    No moderation actions have been recorded yet.
+                  </p>
+                ) : (
+                  <div className="public-profile-entry-list">
+                    {moderationActions.map(
+                      (
+                        action
+                      ) => (
+                        <article
+                          key={
+                            action.id
+                          }
+                          className="public-profile-entry"
+                        >
+                          <strong>
+                            {String(
+                              action.action ||
+                                ""
+                            ).replaceAll(
+                              "_",
+                              " "
+                            )}
+                          </strong>
+
+                          <p className="muted">
+                            By{" "}
+                            {action
+                              .moderatorProfile
+                              ?.displayName ||
+                              "Moderator"}
+                            {action.targetProfile
+                              ? ` · ${
+                                  action
+                                    .targetProfile
+                                    .displayName ||
+                                  "Reader"
+                                }`
+                              : ""}
+                            {action.createdAtISO
+                              ? ` · ${formatDate(
+                                  action.createdAtISO
+                                )}`
+                              : ""}
+                          </p>
+
+                          {action.reason && (
+                            <p>
+                              <strong>
+                                Reason:
+                              </strong>{" "}
+                              {
+                                action.reason
+                              }
+                            </p>
+                          )}
+
+                          {action.details && (
+                            <p>
+                              {
+                                action.details
+                              }
+                            </p>
+                          )}
+                        </article>
+                      )
+                    )}
+                  </div>
+                )}
+              </section>
+            </>
           )}
 
         {activeTab ===
