@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import {
   Routes,
   Route,
@@ -6,12 +6,8 @@ import {
   useLocation
 } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
 
-import { auth, db } from "./firebase";
-import {
-  getMyPlatformRole
-} from "./services/platformModeration.js";
+import { db } from "./firebase";
 
 import Header from "./components/Header";
 import FoundationHome from "./pages/FoundationHome";
@@ -38,8 +34,6 @@ export default function App() {
     location.pathname === "/read" ||
     location.pathname.startsWith("/read/");
 
-  const [platformTest, setPlatformTest] = useState(null);
-
   useEffect(() => {
     async function testFirebase() {
       try {
@@ -62,31 +56,6 @@ export default function App() {
     }
 
     testFirebase();
-
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      async (user) => {
-        if (!user) {
-          setPlatformTest({
-            error: "No authenticated user."
-          });
-          return;
-        }
-
-        try {
-          const role =
-            await getMyPlatformRole();
-
-          setPlatformTest(role);
-        } catch (error) {
-          setPlatformTest({
-            error: error.message
-          });
-        }
-      }
-    );
-
-    return () => unsubscribe();
   }, []);
 
   return (
@@ -100,29 +69,6 @@ export default function App() {
             : "foundation-app"
         }
       >
-        {platformTest && (
-          <div
-            style={{
-              padding: "12px",
-              background: "#fff",
-              color: "#000",
-              overflowX: "auto"
-            }}
-          >
-            <strong>
-              Platform Role Test
-            </strong>
-
-            <pre>
-              {JSON.stringify(
-                platformTest,
-                null,
-                2
-              )}
-            </pre>
-          </div>
-        )}
-
         <Routes>
           <Route
             path="/"
@@ -215,9 +161,7 @@ export default function App() {
 
           <Route
             path="/reader/:id"
-            element={
-              <LegacyReaderRedirect />
-            }
+            element={<LegacyReaderRedirect />}
           />
 
           <Route
