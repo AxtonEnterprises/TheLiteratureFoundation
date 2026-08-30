@@ -26,6 +26,7 @@ import {
   Pencil,
   Plus,
   Search,
+  ShieldCheck,
   User,
   UserCheck,
   UserMinus,
@@ -39,6 +40,10 @@ import { auth } from "../firebase";
 import {
   getSavedChainEntries
 } from "../services/chainStorage.js";
+
+import {
+  getMyPlatformRole
+} from "../services/platformModeration.js";
 
 import {
   cancelFriendRequest,
@@ -187,6 +192,11 @@ export default function Profile() {
   const [
     profile,
     setProfile
+  ] = useState(null);
+
+  const [
+    platformRole,
+    setPlatformRole
   ] = useState(null);
 
   const [
@@ -413,6 +423,7 @@ export default function Profile() {
             !firebaseUser
           ) {
             setProfile(null);
+            setPlatformRole(null);
             setReadingTimeline([]);
             setJournalEntries([]);
             setSavedBooks([]);
@@ -442,11 +453,21 @@ export default function Profile() {
             setLoading(true);
             setStatus("");
 
-            const loadedProfile =
-              await getUserProfile();
+            const [
+              loadedProfile,
+              loadedPlatformRole
+            ] =
+              await Promise.all([
+                getUserProfile(),
+                getMyPlatformRole()
+              ]);
 
             setProfile(
               loadedProfile
+            );
+
+            setPlatformRole(
+              loadedPlatformRole
             );
 
             setDisplayName(
@@ -1880,6 +1901,19 @@ export default function Profile() {
               <Pencil size={16} />
               Edit Profile
             </button>
+
+            {platformRole?.isPlatformModerator && (
+              <Link
+                to="/read/moderation"
+                className="button secondary profile-edit-button"
+                style={{
+                  marginTop: "0.45rem"
+                }}
+              >
+                <ShieldCheck size={16} />
+                Moderation
+              </Link>
+            )}
 
             {profile?.about && (
               <p
