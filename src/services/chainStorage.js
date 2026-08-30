@@ -23,6 +23,10 @@ import {
   getPublicProfile
 } from "./storage.js";
 
+import {
+  reportPlatformContent
+} from "./platformModeration.js";
+
 
 async function requireUser() {
   const user =
@@ -631,6 +635,51 @@ export async function reportChainEntry(
     throw new Error(
       "Missing Chain entry."
     );
+  }
+
+  /*
+   * Public Chain posts are platform content and go to the
+   * global moderation queue. Group-only Chain posts keep
+   * using the existing Phase 4.2 group moderation system.
+   */
+  if (
+    entry.visibility === "public" &&
+    !entry.groupId
+  ) {
+    return reportPlatformContent({
+      targetType:
+        "chain_entry",
+      targetId:
+        String(
+          entry.id
+        ),
+      targetUserId:
+        String(
+          entry.userId
+        ),
+      reason:
+        String(
+          reason ||
+          "other"
+        ),
+      details:
+        String(
+          details ||
+          ""
+        ).trim(),
+      title:
+        entry.title ||
+        "Untitled",
+      body:
+        entry.note ||
+        "",
+      bookId:
+        entry.bookId
+          ? String(
+              entry.bookId
+            )
+          : null
+    });
   }
 
   const user =
