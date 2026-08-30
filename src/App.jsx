@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
+import {
+  getMyPlatformRole
+} from "./services/platformModeration.js";
 
 import { db } from "./firebase";
 import Header from "./components/Header";
@@ -28,17 +31,34 @@ export default function App() {
     location.pathname.startsWith("/read/");
 
   useEffect(() => {
-    async function testFirebase() {
-      try {
-        const snap = await getDoc(doc(db, "test", "welcome"));
-        if (snap.exists()) console.log("Firebase connected:", snap.data());
-      } catch (err) {
-        console.error("Firebase error:", err);
-      }
+  async function testFirebase() {
+    try {
+      const snap = await getDoc(doc(db, "test", "welcome"));
+      if (snap.exists()) console.log("Firebase connected:", snap.data());
+    } catch (err) {
+      console.error("Firebase error:", err);
     }
+  }
 
-    testFirebase();
-  }, []);
+  async function testPlatformRole() {
+    try {
+      const role = await getMyPlatformRole();
+
+      console.log(
+        "Platform moderation role:",
+        role
+      );
+    } catch (error) {
+      console.error(
+        "Platform moderation test failed:",
+        error
+      );
+    }
+  }
+
+  testFirebase();
+  testPlatformRole();
+}, []);
 
   return (
     <>
