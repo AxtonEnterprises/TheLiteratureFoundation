@@ -111,6 +111,17 @@ async function requireModerator(
     );
   }
 
+  const group = await groupData(groupId);
+
+  if (
+    group?.type === "class" &&
+    actorMembership.role === "moderator"
+  ) {
+    throw new Error(
+      "Classroom moderation requires an owner or admin."
+    );
+  }
+
   if (targetUserId) {
     const targetMembership =
       await membership(
@@ -140,6 +151,32 @@ async function requireModerator(
   }
 
   return { user, actorMembership };
+}
+
+export async function assertCanModerateTarget(
+  groupId,
+  targetUserId = null
+) {
+  return requireModerator(groupId, targetUserId);
+}
+
+export async function recordGroupModerationAction(
+  groupId,
+  actionOrData,
+  details = {}
+) {
+  await requireModerator(groupId);
+
+  const payload =
+    typeof actionOrData === "object" && actionOrData !== null
+      ? actionOrData
+      : { ...details, action: actionOrData };
+
+  if (!payload.action) {
+    throw new Error("A moderation action is required.");
+  }
+
+  return logAction(groupId, payload);
 }
 
 async function logAction(
@@ -569,6 +606,10 @@ export async function banGroupMember(
   }
 
   const group = await groupData(groupId);
+  const targetMembership =
+    await membership(groupId, targetUserId);
+  const targetRole =
+    targetMembership?.role || "member";
 
   const banRef = doc(
     db,
@@ -584,6 +625,7 @@ export async function banGroupMember(
     groupId: String(groupId),
     userId: String(targetUserId),
     bannedBy: user.uid,
+    targetRole,
     reason: cleanReason,
     createdAtISO: now,
     createdAt: serverTimestamp()
