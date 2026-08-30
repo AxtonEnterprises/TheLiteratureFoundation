@@ -23,20 +23,23 @@ import PublicProfile from "./pages/PublicProfile";
 import GroupRouter from "./pages/GroupRouter";
 import Notifications from "./pages/Notifications";
 import DiscoverGroups from "./pages/DiscoverGroups";
+import { useEffect, useState } from "react";
 
 export default function App() {
   const location = useLocation();
   const isLitChain =
     location.pathname === "/read" ||
-    location.pathname.startsWith("/read/");
+    location.pathname.startsWith("/read/")
+    const [platformTest, setPlatformTest] = useState(null);
 
-  useEffect(() => {
-  async function testFirebase() {
-    try {
-      const snap = await getDoc(doc(db, "test", "welcome"));
-      if (snap.exists()) console.log("Firebase connected:", snap.data());
-    } catch (err) {
-      console.error("Firebase error:", err);
+  async function testPlatformRole() {
+  try {
+    const role = await getMyPlatformRole();
+    setPlatformTest(role);
+  } catch (error) {
+    setPlatformTest({
+      error: error.message
+    });
     }
   }
 
@@ -65,6 +68,13 @@ export default function App() {
       {isLitChain && <Header />}
 
       <main className={isLitChain ? "app-main random-reads-app" : "foundation-app"}>
+       {platformTest && (
+  <div style={{ padding: "12px", background: "#fff" }}>
+    <pre>
+      {JSON.stringify(platformTest, null, 2)}
+    </pre>
+  </div>
+)}
         <Routes>
           <Route path="/" element={<FoundationHome />} />
 
