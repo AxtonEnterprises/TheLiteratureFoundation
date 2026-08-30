@@ -11,6 +11,7 @@ import {
 import {
   BookOpen,
   Clock3,
+  Flag,
   User,
   UserCheck,
   UserMinus,
@@ -33,6 +34,10 @@ import {
 
 import SEO from "../components/SEO.jsx";
 import { auth } from "../firebase";
+
+import {
+  reportPlatformContent
+} from "../services/platformModeration.js";
 
 
 function formatDate(
@@ -99,6 +104,12 @@ export default function PublicProfile() {
   const [
     friendshipBusy,
     setFriendshipBusy
+  ] = useState(false);
+
+
+  const [
+    reportBusy,
+    setReportBusy
   ] = useState(false);
 
 
@@ -306,6 +317,77 @@ export default function PublicProfile() {
   }
 
 
+  async function handleReportProfile() {
+    if (
+      !auth.currentUser ||
+      auth.currentUser.uid ===
+        String(
+          userId
+        )
+    ) {
+      return;
+    }
+
+    const reason =
+      window.prompt(
+        "Why are you reporting this reader? Examples: harassment, spam, impersonation, inappropriate content."
+      );
+
+    if (
+      !reason ||
+      !reason.trim()
+    ) {
+      return;
+    }
+
+    const details =
+      window.prompt(
+        "Add any additional details (optional)."
+      ) || "";
+
+    try {
+      setReportBusy(true);
+      setStatus("");
+
+      await reportPlatformContent({
+        targetType:
+          "profile",
+        targetId:
+          String(
+            userId
+          ),
+        targetUserId:
+          String(
+            userId
+          ),
+        reason:
+          reason.trim(),
+        details:
+          details.trim(),
+        title:
+          profile?.displayName ||
+          "Reader profile"
+      });
+
+      setStatus(
+        "Report submitted for platform review."
+      );
+    } catch (error) {
+      console.error(
+        "Could not report reader:",
+        error
+      );
+
+      setStatus(
+        error?.message ||
+        "We couldn't submit this report."
+      );
+    } finally {
+      setReportBusy(false);
+    }
+  }
+
+
   const avatar =
     getProfileAvatar(
       profile?.avatar
@@ -499,6 +581,24 @@ export default function PublicProfile() {
                     Friends
                   </button>
                 )}
+
+                <button
+                  type="button"
+                  className="button secondary"
+                  disabled={
+                    reportBusy
+                  }
+                  onClick={
+                    handleReportProfile
+                  }
+                >
+                  <Flag
+                    size={16}
+                  />
+                  {reportBusy
+                    ? "Reporting..."
+                    : "Report Reader"}
+                </button>
               </div>
             )}
           </div>

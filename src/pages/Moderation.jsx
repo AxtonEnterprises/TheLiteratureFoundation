@@ -13,17 +13,22 @@ import {
 
 import {
   ArrowLeft,
+  Check,
   Flag,
   History,
   KeyRound,
   ShieldCheck,
-  UserX
+  UserX,
+  X
 } from "lucide-react";
 
 import { auth } from "../firebase";
 
 import {
-  getMyPlatformRole
+  getMyPlatformRole,
+  getPlatformModerationActions,
+  getPlatformModerationReports,
+  resolvePlatformModerationReport
 } from "../services/platformModeration.js";
 
 import SEO from "../components/SEO.jsx";
@@ -43,6 +48,71 @@ function roleLabel(role) {
   }
 
   return "User";
+}
+
+
+function targetTypeLabel(
+  targetType
+) {
+  const labels = {
+    profile:
+      "Reader Profile",
+    chain_entry:
+      "Chain Entry",
+    chain_reply:
+      "Chain Reply",
+    group:
+      "Group",
+    group_forum_post:
+      "Forum Post",
+    group_forum_reply:
+      "Forum Reply"
+  };
+
+  return (
+    labels[targetType] ||
+    targetType ||
+    "Content"
+  );
+}
+
+
+function formatDate(
+  value
+) {
+  if (!value) {
+    return "";
+  }
+
+  const date =
+    new Date(
+      value
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "";
+  }
+
+  return date.toLocaleString();
+}
+
+
+function profileName(
+  profile,
+  fallback = "Reader"
+) {
+  return (
+    profile?.displayName ||
+    (
+      profile?.username
+        ? `@${profile.username}`
+        : fallback
+    )
+  );
 }
 
 
@@ -80,58 +150,244 @@ function DashboardCard({
 
 
 export default function Moderation() {
-  const [authLoading, setAuthLoading] = useState(true);
-  const [platformRole, setPlatformRole] = useState(null);
-  const [error, setError] = useState("");
+  const [
+    authLoading,
+    setAuthLoading
+  ] = useState(true);
+
+  const [
+    platformRole,
+    setPlatformRole
+  ] = useState(null);
+
+  const [
+    error,
+    setError
+  ] = useState("");
+
+  const [
+    reports,
+    setReports
+  ] = useState([]);
+
+  const [
+    actions,
+    setActions
+  ] = useState([]);
+
+  const [
+    queueLoading,
+    setQueueLoading
+  ] = useState(false);
+
+  const [
+    queueStatus,
+    setQueueStatus
+  ] = useState("");
+
+  const [
+    reviewingId,
+    setReviewingId
+  ] = useState(null);
+
+
+  async function loadDashboard() {
+    try {
+      setQueueLoading(true);
+      setQueueStatus("");
+
+      const [
+        loadedReports,
+        loadedActions
+      ] =
+        await Promise.all([
+          getPlatformModerationReports(),
+          getPlatformModerationActions()
+        ]);
+
+      setReports(
+        loadedReports
+      );
+
+      setActions(
+        loadedActions
+      );
+    } catch (loadError) {
+      console.error(
+        "Could not load platform moderation dashboard:",
+        loadError
+      );
+
+      setQueueStatus(
+        loadError?.message ||
+        "We couldn't load the moderation queue."
+      );
+    } finally {
+      setQueueLoading(false);
+    }
+  }
+
 
   useEffect(() => {
     let active = true;
 
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      async (firebaseUser) => {
-        if (!active) return;
+    const unsubscribe =
+      onAuthStateChanged(
+        auth,
+        async (
+          firebaseUser
+        ) => {
+          if (!active) {
+            return;
+          }
 
-        setError("");
+          setError("");
 
-        if (!firebaseUser) {
-          setPlatformRole(null);
-          setAuthLoading(false);
-          return;
-        }
+          if (
+            !firebaseUser
+          ) {
+            setPlatformRole(
+              null
+            );
 
-        try {
-          const loadedRole = await getMyPlatformRole();
+            setAuthLoading(
+              false
+            );
 
-          if (!active) return;
+            return;
+          }
 
-          setPlatformRole(loadedRole);
-        } catch (loadError) {
-          console.error(
-            "Could not load platform moderation role:",
+          try {
+            const loadedRole =
+              await getMyPlatformRole();
+
+            if (!active) {
+              return;
+            }
+
+            setPlatformRole(
+              loadedRole
+            );
+
+            if (
+              loadedRole
+                ?.isPlatformModerator
+            ) {
+              const [
+                loadedReports,
+                loadedActions
+              ] =
+                await Promise.all([
+                  getPlatformModerationReports(),
+                  getPlatformModerationActions()
+                ]);
+
+              if (!active) {
+                return;
+              }
+
+              setReports(
+                loadedReports
+              );
+
+              setActions(
+                loadedActions
+              );
+            }
+          } catch (
             loadError
-          );
+          ) {
+            console.error(
+              "Could not load platform moderation role:",
+              loadError
+            );
 
-          if (!active) return;
+            if (!active) {
+              return;
+            }
 
-          setPlatformRole(null);
-          setError(
-            loadError?.message ||
-            "We couldn't verify your moderation access."
-          );
-        } finally {
-          if (active) {
-            setAuthLoading(false);
+            setPlatformRole(
+              null
+            );
+
+            setError(
+              loadError?.message ||
+              "We couldn't verify your moderation access."
+            );
+          } finally {
+            if (active) {
+              setAuthLoading(
+                false
+              );
+            }
           }
         }
-      }
-    );
+      );
 
     return () => {
       active = false;
       unsubscribe();
     };
   }, []);
+
+
+  async function handleReview(
+    report,
+    resolution
+  ) {
+    const verb =
+      resolution ===
+      "dismissed"
+        ? "dismiss"
+        : "resolve";
+
+    const confirmed =
+      window.confirm(
+        `Are you sure you want to ${verb} this report?`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setReviewingId(
+        report.id
+      );
+
+      setQueueStatus("");
+
+      await resolvePlatformModerationReport(
+        report.id,
+        resolution
+      );
+
+      await loadDashboard();
+
+      setQueueStatus(
+        resolution ===
+        "dismissed"
+          ? "Report dismissed."
+          : "Report resolved."
+      );
+    } catch (
+      reviewError
+    ) {
+      console.error(
+        "Could not review platform report:",
+        reviewError
+      );
+
+      setQueueStatus(
+        reviewError?.message ||
+        "We couldn't update this report."
+      );
+    } finally {
+      setReviewingId(
+        null
+      );
+    }
+  }
 
 
   if (authLoading) {
@@ -260,64 +516,286 @@ export default function Moderation() {
           <div
             className="button-row"
             style={{
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "0.75rem",
-              flexWrap: "wrap"
+              alignItems:
+                "center",
+              justifyContent:
+                "space-between",
+              gap:
+                "0.75rem",
+              flexWrap:
+                "wrap"
             }}
           >
             <span
               className="button secondary"
               style={{
-                cursor: "default"
+                cursor:
+                  "default"
               }}
             >
-              <ShieldCheck size={16} />
-              {roleLabel(platformRole.role)}
+              <ShieldCheck
+                size={16}
+              />
+              {roleLabel(
+                platformRole.role
+              )}
             </span>
 
             <Link
               to="/read/profile"
               className="button secondary"
             >
-              <ArrowLeft size={16} />
+              <ArrowLeft
+                size={16}
+              />
               My Library
             </Link>
           </div>
         </section>
 
 
+        {queueStatus && (
+          <p className="status">
+            {queueStatus}
+          </p>
+        )}
+
+
         <DashboardCard
           eyebrow="Report Queue"
-          title="Open Reports"
-          icon={<Flag size={22} />}
+          title={`Open Reports (${reports.length})`}
+          icon={
+            <Flag
+              size={22}
+            />
+          }
         >
-          <p className="muted">
-            Global reports for public profiles, Chain entries, Chain replies,
-            groups, forum posts, and forum replies will appear here.
-          </p>
+          {queueLoading ? (
+            <p className="muted">
+              Loading reports...
+            </p>
+          ) : reports.length ===
+            0 ? (
+            <p className="muted">
+              There are no open platform reports.
+            </p>
+          ) : (
+            <div className="public-profile-entry-list">
+              {reports.map(
+                (report) => (
+                  <article
+                    key={
+                      report.id
+                    }
+                    className="public-profile-entry"
+                  >
+                    <div className="section-heading-row">
+                      <div>
+                        <p className="eyebrow">
+                          {targetTypeLabel(
+                            report.targetType
+                          )}
+                        </p>
 
-          <p className="muted">
-            Report loading and resolution controls are the next Phase 4.3A step.
-          </p>
+                        <strong className="public-entry-book-title">
+                          {report.title ||
+                            profileName(
+                              report.targetProfile,
+                              "Reported content"
+                            )}
+                        </strong>
+                      </div>
+
+                      <span className="button secondary">
+                        Open
+                      </span>
+                    </div>
+
+                    <p>
+                      <strong>
+                        Reason:
+                      </strong>{" "}
+                      {report.reason}
+                    </p>
+
+                    {report.details && (
+                      <p className="muted">
+                        {report.details}
+                      </p>
+                    )}
+
+                    {report.body && (
+                      <div className="public-entry-quote">
+                        <p>
+                          {report.body}
+                        </p>
+                      </div>
+                    )}
+
+                    <p className="muted">
+                      Reported user:{" "}
+                      {profileName(
+                        report.targetProfile,
+                        report.targetUserId
+                      )}
+                    </p>
+
+                    <p className="muted">
+                      Reported by:{" "}
+                      {profileName(
+                        report.reporterProfile,
+                        report.reporterUserId
+                      )}
+                    </p>
+
+                    {report.createdAtISO && (
+                      <small className="muted">
+                        {formatDate(
+                          report.createdAtISO
+                        )}
+                      </small>
+                    )}
+
+                    <div
+                      className="button-row"
+                      style={{
+                        marginTop:
+                          "1rem"
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className="button primary"
+                        disabled={
+                          reviewingId ===
+                          report.id
+                        }
+                        onClick={() =>
+                          handleReview(
+                            report,
+                            "resolved"
+                          )
+                        }
+                      >
+                        <Check
+                          size={16}
+                        />
+                        Resolve
+                      </button>
+
+                      <button
+                        type="button"
+                        className="button secondary"
+                        disabled={
+                          reviewingId ===
+                          report.id
+                        }
+                        onClick={() =>
+                          handleReview(
+                            report,
+                            "dismissed"
+                          )
+                        }
+                      >
+                        <X
+                          size={16}
+                        />
+                        Dismiss
+                      </button>
+                    </div>
+                  </article>
+                )
+              )}
+            </div>
+          )}
         </DashboardCard>
 
 
         <DashboardCard
           eyebrow="Audit Log"
-          title="Moderation History"
-          icon={<History size={22} />}
+          title={`Moderation History (${actions.length})`}
+          icon={
+            <History
+              size={22}
+            />
+          }
         >
-          <p className="muted">
-            Append-only platform moderation actions will appear here.
-          </p>
+          {actions.length ===
+          0 ? (
+            <p className="muted">
+              No platform moderation actions have been recorded yet.
+            </p>
+          ) : (
+            <div className="public-profile-entry-list">
+              {actions.map(
+                (action) => (
+                  <article
+                    key={
+                      action.id
+                    }
+                    className="public-profile-entry"
+                  >
+                    <p className="eyebrow">
+                      {action.action ===
+                      "report_dismissed"
+                        ? "Report Dismissed"
+                        : "Report Resolved"}
+                    </p>
+
+                    <strong className="public-entry-book-title">
+                      {targetTypeLabel(
+                        action.targetType
+                      )}
+                    </strong>
+
+                    <p className="muted">
+                      Moderator:{" "}
+                      {profileName(
+                        action.moderatorProfile,
+                        action.moderatorUserId
+                      )}
+                    </p>
+
+                    <p className="muted">
+                      Target:{" "}
+                      {profileName(
+                        action.targetProfile,
+                        action.targetUserId
+                      )}
+                    </p>
+
+                    {action.reason && (
+                      <p>
+                        <strong>
+                          Original reason:
+                        </strong>{" "}
+                        {action.reason}
+                      </p>
+                    )}
+
+                    {action.createdAtISO && (
+                      <small className="muted">
+                        {formatDate(
+                          action.createdAtISO
+                        )}
+                      </small>
+                    )}
+                  </article>
+                )
+              )}
+            </div>
+          )}
         </DashboardCard>
 
 
         <DashboardCard
           eyebrow="Account Controls"
           title="Enforcement"
-          icon={<UserX size={22} />}
+          icon={
+            <UserX
+              size={22}
+            />
+          }
         >
           <p className="muted">
             Account warnings, suspensions, and platform bans will be connected
@@ -330,7 +808,11 @@ export default function Moderation() {
         <DashboardCard
           eyebrow="Platform Access"
           title="Platform Roles"
-          icon={<KeyRound size={22} />}
+          icon={
+            <KeyRound
+              size={22}
+            />
+          }
         >
           {platformRole.isFoundationAdmin ? (
             <p className="muted">
