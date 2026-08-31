@@ -39,6 +39,7 @@ import {
   getPlatformRoleSummary,
   resolvePlatformModerationReport,
   reviewPlatformAppeal,
+  searchPlatformRoleCandidates,
   setPlatformRole
 } from "../services/platformModeration.js";
 
@@ -300,6 +301,14 @@ export default function Moderation() {
     changingRoleId,
     setChangingRoleId
   ] = useState(null);
+  const [rolePickerOpen, setRolePickerOpen] = useState(false);
+  const [roleSearch, setRoleSearch] = useState("");
+  const [roleSearchResults, setRoleSearchResults] = useState([]);
+  const [roleSearchLoading, setRoleSearchLoading] = useState(false);
+  const [selectedRoleCandidate, setSelectedRoleCandidate] = useState(null);
+  const [selectedPlatformRole, setSelectedPlatformRole] = useState("platform_moderator");
+  const [roleChangeReason, setRoleChangeReason] = useState("");
+
 
   const [
     queueLoading,
@@ -871,12 +880,73 @@ export default function Moderation() {
     }
   }
 
-  async function handleAssignPlatformRole() {
-    const uid = window.prompt(
-      "Firebase UID of the account to assign:"
-    );
-    if (uid === null || !String(uid).trim()) return;
-    await handlePlatformRoleChange(String(uid).trim(), "user");
+  function openPlatformRolePicker() {
+    setRolePickerOpen(true);
+    setRoleSearch("");
+    setRoleSearchResults([]);
+    setSelectedRoleCandidate(null);
+    setSelectedPlatformRole("platform_moderator");
+    setRoleChangeReason("");
+    setQueueStatus("");
+  }
+
+  function closePlatformRolePicker() {
+    if (changingRoleId) return;
+    setRolePickerOpen(false);
+  }
+
+  async function handlePlatformUserSearch(event) {
+    event.preventDefault();
+    const term = String(roleSearch || "").trim();
+    if (term.length < 2) {
+      setQueueStatus("Enter at least two characters of a username or display name.");
+      return;
+    }
+
+    try {
+      setRoleSearchLoading(true);
+      setQueueStatus("");
+      const results = await searchPlatformRoleCandidates(term);
+      setRoleSearchResults(results);
+      if (!results.length) setQueueStatus("No matching public profiles were found.");
+    } catch (error) {
+      setQueueStatus(error?.message || "We couldn't search users.");
+    } finally {
+      setRoleSearchLoading(false);
+    }
+  }
+
+  async function handleRolePickerSubmit(event) {
+    event.preventDefault();
+    if (!selectedRoleCandidate) {
+      setQueueStatus("Select a user first.");
+      return;
+    }
+
+    const reason = String(roleChangeReason || "").trim();
+    if (!reason) {
+      setQueueStatus("Enter a reason for the role assignment.");
+      return;
+    }
+
+    const targetUserId = selectedRoleCandidate.userId || selectedRoleCandidate.id;
+
+    try {
+      setChangingRoleId(targetUserId);
+      setQueueStatus("");
+      await setPlatformRole({
+        targetUserId,
+        role: selectedPlatformRole,
+        reason
+      });
+      setRolePickerOpen(false);
+      await loadDashboard();
+      setQueueStatus(`Platform role changed to ${roleLabel(selectedPlatformRole)}.`);
+    } catch (error) {
+      setQueueStatus(error?.message || "We couldn't assign this platform role.");
+    } finally {
+      setChangingRoleId(null);
+    }
   }
 
 
@@ -2110,7 +2180,7 @@ export default function Moderation() {
                     <button
                       type="button"
                       className="button primary"
-                      onClick={handleAssignPlatformRole}
+                      onClick={openPlatformRolePicker}
                     >
                       Assign Platform Role
                     </button>
@@ -2167,6 +2237,170 @@ export default function Moderation() {
             </DashboardCard>
         </div>
       </div>
+
+      {rolePickerOpen && (
+        <div
+          onClick={closePlatformRolePicker}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem"
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "min(100%, 620px)",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              background: "white",
+              borderRadius: "1.5rem",
+              padding: "1.25rem"
+            }}
+          >
+            <div className="section-heading-row">
+              <div>
+                <p className="eyebrow">Governance</p>
+                <h2 style={{ marginTop: 0 }}>Assign Platform Role</h2>
+              </div>
+              <button type="button" className="button secondary" onClick={closePlatformRolePicker}>
+                Close
+              </button>
+            </div>
+
+            {!selectedRoleCandidate ? (
+              <>
+                <form onSubmit={handlePlatformUserSearch}>
+                  <label>
+                    <strong>Search users</strong>
+                    <input
+                      type="search"
+                      value={roleSearch}
+                      onChange={(event) => setRoleSearch(event.target.value)}
+                      placeholder="Username or display name"
+                      autoFocus
+                      style={{ width: "100%", marginTop: "0.4rem" }}
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    className="button primary"
+                    disabled={roleSearchLoading}
+                    style={{ marginTop: "0.75rem" }}
+                  >
+                    {roleSearchLoading ? "Searching..." : "Search"}
+                  </button>
+                </form>
+
+                <div className="public-profile-entry-list" style={{ marginTop: "1rem" }}>
+                  {roleSearchResults.map((profile) => {
+                    const userId = profile.userId || profile.id;
+                    return (
+                      <button
+                        key={userId}
+                        type="button"
+                        className="public-profile-entry"
+                        onClick={() => {
+                          setSelectedRoleCandidate(profile);
+                          setSelectedPlatformRole(
+                            profile.platformRole === "platform_admin"
+                              ? "platform_admin"
+                              : "platform_moderator"
+                          );
+                        }}
+                        style={{ width: "100%", textAlign: "left", cursor: "pointer" }}
+                      >
+                        <strong>{profileName(profile, userId)}</strong>
+                        {profile.username && (
+                          <p className="muted" style={{ margin: "0.25rem 0 0" }}>
+                            @{profile.username}
+                          </p>
+                        )}
+                        {profile.platformRole !== "user" && (
+                          <small className="muted">
+                            Current role: {roleLabel(profile.platformRole)}
+                          </small>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <form onSubmit={handleRolePickerSubmit}>
+                <div className="public-profile-entry">
+                  <p className="eyebrow">Selected User</p>
+                  <strong>
+                    {profileName(
+                      selectedRoleCandidate,
+                      selectedRoleCandidate.userId || selectedRoleCandidate.id
+                    )}
+                  </strong>
+                  {selectedRoleCandidate.username && (
+                    <p className="muted">@{selectedRoleCandidate.username}</p>
+                  )}
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => setSelectedRoleCandidate(null)}
+                  >
+                    Choose Different User
+                  </button>
+                </div>
+
+                <label style={{ display: "block", marginTop: "1rem" }}>
+                  <strong>Platform role</strong>
+                  <select
+                    value={selectedPlatformRole}
+                    onChange={(event) => setSelectedPlatformRole(event.target.value)}
+                    style={{ width: "100%", marginTop: "0.4rem" }}
+                  >
+                    <option value="platform_moderator">Platform Moderator</option>
+                    <option value="platform_admin">Platform Admin</option>
+                  </select>
+                </label>
+
+                <label style={{ display: "block", marginTop: "1rem" }}>
+                  <strong>Reason</strong>
+                  <textarea
+                    value={roleChangeReason}
+                    onChange={(event) => setRoleChangeReason(event.target.value)}
+                    rows={4}
+                    placeholder="Why is this user being assigned this role?"
+                    style={{ width: "100%", marginTop: "0.4rem" }}
+                  />
+                </label>
+
+                <div className="button-row" style={{ marginTop: "1rem", gap: "0.5rem" }}>
+                  <button
+                    type="submit"
+                    className="button primary"
+                    disabled={Boolean(changingRoleId)}
+                  >
+                    {changingRoleId ? "Assigning..." : "Confirm Assignment"}
+                  </button>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={closePlatformRolePicker}
+                    disabled={Boolean(changingRoleId)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </section>
+        </div>
+      )}
+
     </main>
   );
 }
