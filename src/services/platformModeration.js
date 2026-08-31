@@ -867,6 +867,274 @@ export async function getPlatformRoleSummary() {
 }
 
 
+export async function getPlatformEnforcements() {
+  await requirePlatformAdmin();
+
+  const snapshot =
+    await getDocs(
+      collection(
+        db,
+        "platformEnforcement"
+      )
+    );
+
+  const records =
+    snapshot.docs
+      .map(
+        (item) => ({
+          id:
+            item.id,
+          ...item.data()
+        })
+      )
+      .filter(
+        (item) =>
+          [
+            "warning",
+            "suspended",
+            "banned"
+          ].includes(
+            item.status
+          )
+      )
+      .sort(
+        (a, b) =>
+          String(
+            b.updatedAtISO ||
+            b.startedAtISO ||
+            ""
+          ).localeCompare(
+            String(
+              a.updatedAtISO ||
+              a.startedAtISO ||
+              ""
+            )
+          )
+      );
+
+  return Promise.all(
+    records.map(
+      async (record) => ({
+        ...record,
+        targetProfile:
+          await publicProfile(
+            record.userId ||
+            record.id
+          ),
+        targetRole:
+          (
+            await getPlatformRole(
+              record.userId ||
+              record.id
+            )
+          ).role
+      })
+    )
+  );
+}
+
+
+export async function applyPlatformEnforcement({
+  targetUserId,
+  status,
+  reason,
+  details = "",
+  durationHours = null,
+  reportId = null,
+  targetType = "",
+  targetId = "",
+  bookId = null
+}) {
+  const moderator =
+    requireUser();
+
+  const actorRole =
+    await requirePlatformAdmin();
+
+  const cleanTargetUserId =
+    String(
+      targetUserId ||
+      ""
+    ).trim();
+
+  if (!cleanTargetUserId) {
+    throw new Error(
+      "Missing enforcement target."
+    );
+  }
+
+  if (
+    cleanTargetUserId ===
+    moderator.uid
+  ) {
+    throw new Error(
+      "You cannot apply platform enforcement to your own account."
+    );
+  }
+
+  const targetRole =
+    await getPlatformRole(
+      cleanTargetUserId
+    );
+
+  if (
+    !canPlatformDisciplineRole(
+      actorRole.role,
+      targetRole.role
+    )
+  ) {
+    throw new Error(
+      "You cannot discipline an account with the same or a higher platform role."
+    );
+  }
+
+  const normalizedStatus =
+    String(
+      status ||
+      ""
+    ).trim();
+
+  if (
+    ![
+      "warning",
+      "suspended",
+      "banned"
+    ].includes(
+      normalizedStatus
+    )
+  ) {
+    throw new Error(
+      "Unsupported enforcement status."
+    );
+  }
+
+  const cleanReason =
+    String(
+      reason ||
+      ""
+    ).trim();
+
+  if (!cleanReason) {
+    throw new Error(
+      "An enforcement reason is required."
+    );
+  }
+
+  let normalizedDurationHours = null;
+  let endsAtISO = null;
+
+  if (normalizedStatus === "suspended") {
+    normalizedDurationHours = Number(durationHours);
+
+    if (![24, 168, 720].includes(normalizedDurationHours)) {
+      throw new Error(
+        "Choose a 24-hour, 7-day, or 30-day suspension."
+      );
+    }
+
+    endsAtISO = new Date(
+      Date.now() + normalizedDurationHours * 60 * 60 * 1000
+    ).toISOString();
+  }
+
+  const now = new Date().toISOString();
+
+  const enforcementRef = doc(
+    db,
+    "platformEnforcement",
+    cleanTargetUserId
+  );
+
+  const actionRef = doc(
+    collection(
+      db,
+      "moderationActions"
+    )
+  );
+
+  const batch = writeBatch(db);
+
+  batch.set(
+    enforcementRef,
+    {
+      userId: cleanTargetUserId,
+      status: normalizedStatus,
+      reason: cleanReason,
+      details: String(details || "").trim(),
+      actionedBy: moderator.uid,
+      targetRole: targetRole.role,
+      durationHours: normalizedDurationHours,
+      startedAtISO: now,
+      endsAtISO,
+      reportId: reportId ? String(reportId) : null,
+      updatedAtISO: now,
+      updatedAt: serverTimestamp()
+    }
+  );
+
+  batch.set(
+    actionRef,
+    {
+      id: actionRef.id,
+      moderatorUserId: moderator.uid,
+      action:
+        normalizedStatus === "warning"
+          ? "platform_warning"
+          : normalizedStatus === "suspended"
+            ? "platform_suspension"
+            : "platform_ban",
+      targetUserId: cleanTargetUserId,
+      targetRole: targetRole.role,
+      targetType: String(targetType || "profile"),
+      targetId: String(targetId || cleanTargetUserId),
+      bookId: bookId ? String(bookId) : null,
+      reportId: reportId ? String(reportId) : null,
+      reason: cleanReason,
+      details: String(details || "").trim(),
+      enforcementStatus: normalizedStatus,
+      durationHours: normalizedDurationHours,
+      endsAtISO,
+      createdAtISO: now,
+      createdAt: serverTimestamp()
+    }
+  );
+
+  if (reportId) {
+    const reportRef = doc(
+      db,
+      "moderationReports",
+      String(reportId)
+    );
+
+    const reportSnapshot = await getDoc(reportRef);
+
+    if (
+      reportSnapshot.exists() &&
+      reportSnapshot.data()?.status === "open"
+    ) {
+      batch.update(
+        reportRef,
+        {
+          status: "resolved",
+          resolvedBy: moderator.uid,
+          resolvedAtISO: now,
+          resolvedAt: serverTimestamp(),
+          enforcementAction: normalizedStatus
+        }
+      );
+    }
+  }
+
+  await batch.commit();
+
+  return {
+    userId: cleanTargetUserId,
+    status: normalizedStatus,
+    endsAtISO
+  };
+}
+
+
 export async function getPlatformModerationActions() {
   await requirePlatformModerator();
 
