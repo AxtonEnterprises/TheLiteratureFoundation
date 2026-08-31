@@ -665,9 +665,9 @@ export default function Moderation() {
 
       setQueueStatus(
         status === "warning"
-          ? "Warning issued and report resolved."
+          ? "Warning recorded and report resolved. Any stronger active suspension or ban remains in effect."
           : status === "suspended"
-            ? "Account suspended and report resolved."
+            ? "Suspension recorded and report resolved. An existing ban, if present, remains in effect."
             : "Account banned and report resolved."
       );
     } catch (enforcementError) {
@@ -1573,7 +1573,11 @@ export default function Moderation() {
 
                     <div
                       className="button-row"
-                      style={{ marginTop: "0.75rem" }}
+                      style={{
+                        marginTop: "0.75rem",
+                        gap: "0.5rem",
+                        flexWrap: "wrap"
+                      }}
                     >
                       <Link
                         to={`/read/public/${record.userId || record.id}`}
@@ -1582,6 +1586,24 @@ export default function Moderation() {
                         <ExternalLink size={16} />
                         View Profile
                       </Link>
+
+                      <button
+                        type="button"
+                        className="button secondary"
+                        disabled={
+                          enforcingId === record.id
+                        }
+                        onClick={() =>
+                          handleClearEnforcement(record)
+                        }
+                      >
+                        <Check size={16} />
+                        {record.status === "banned"
+                          ? "Unban"
+                          : record.status === "suspended"
+                            ? "Unsuspend"
+                            : "Clear Warning"}
+                      </button>
                     </div>
                   </article>
                 ))}
