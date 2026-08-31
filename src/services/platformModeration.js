@@ -8,6 +8,7 @@ import {
   onSnapshot,
   serverTimestamp,
   setDoc,
+  Timestamp,
   where,
   writeBatch
 } from "firebase/firestore";
@@ -1050,6 +1051,12 @@ export async function clearPlatformEnforcement(
         moderator.uid,
       clearedAtISO:
         now,
+      durationHours:
+        null,
+      endsAtISO:
+        null,
+      endsAt:
+        null,
       updatedAtISO:
         now,
       updatedAt:
@@ -1275,6 +1282,7 @@ export async function applyPlatformEnforcement({
 
   let normalizedDurationHours = null;
   let endsAtISO = null;
+  let endsAtDate = null;
 
   if (normalizedStatus === "suspended") {
     normalizedDurationHours = Number(durationHours);
@@ -1285,9 +1293,11 @@ export async function applyPlatformEnforcement({
       );
     }
 
-    endsAtISO = new Date(
+    endsAtDate = new Date(
       Date.now() + normalizedDurationHours * 60 * 60 * 1000
-    ).toISOString();
+    );
+
+    endsAtISO = endsAtDate.toISOString();
   }
 
   const now = new Date().toISOString();
@@ -1359,6 +1369,10 @@ export async function applyPlatformEnforcement({
         durationHours: normalizedDurationHours,
         startedAtISO: now,
         endsAtISO,
+        endsAt:
+          endsAtDate
+            ? Timestamp.fromDate(endsAtDate)
+            : null,
         reportId: reportId ? String(reportId) : null,
         updatedAtISO: now,
         updatedAt: serverTimestamp()
@@ -1388,6 +1402,10 @@ export async function applyPlatformEnforcement({
       enforcementStatus: normalizedStatus,
       durationHours: normalizedDurationHours,
       endsAtISO,
+      endsAt:
+        endsAtDate
+          ? Timestamp.fromDate(endsAtDate)
+          : null,
       createdAtISO: now,
       createdAt: serverTimestamp()
     }
