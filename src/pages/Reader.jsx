@@ -180,8 +180,10 @@ export default function Reader() {
   }, [id, location.state, requestedParagraph]);
 
   useEffect(() => {
-    let active = true;
+    if (!showAddNote && !showPageNotes) return;
+    if (myGroups.length) return;
 
+    let active = true;
     getMyGroups()
       .then((groups) => {
         if (active) setMyGroups(groups);
@@ -192,10 +194,10 @@ export default function Reader() {
       });
 
     return () => { active = false; };
-  }, []);
+  }, [showAddNote, showPageNotes, myGroups.length]);
 
   useEffect(() => {
-    if (!book?.id) return;
+    if (!book?.id || !progressLoaded) return;
     let active = true;
 
     async function loadJournal() {
@@ -212,7 +214,7 @@ export default function Reader() {
 
     loadJournal();
     return () => { active = false; };
-  }, [book?.id]);
+  }, [book?.id, progressLoaded]);
 
   useEffect(() => {
     function updateSize() {
@@ -234,33 +236,6 @@ export default function Reader() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!readerRef.current || typeof ResizeObserver === "undefined") return;
-
-    let frameId = null;
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) return;
-
-      if (frameId) window.cancelAnimationFrame(frameId);
-      frameId = window.requestAnimationFrame(() => {
-        const width = Math.round(entry.contentRect.width);
-        const height = Math.round(entry.contentRect.height);
-        setReaderSize((current) =>
-          current.width === width && current.height === height
-            ? current
-            : { width, height }
-        );
-      });
-    });
-
-    observer.observe(readerRef.current);
-
-    return () => {
-      if (frameId) window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, []);
 
   const pages = useMemo(() => {
     if (!paragraphs.length || !readerSize.width || !readerSize.height) return [];
@@ -566,24 +541,6 @@ export default function Reader() {
           Contents
         </button>
 
-        <button type="button" className="button secondary" onClick={() => setShowPageNotes((current) => !current)}>
-          <NotebookPen size={16} />
-          Notes on this page ({notesForCurrentPage.length})
-        </button>
-
-        <button
-          type="button"
-          className="button secondary"
-          onClick={() => {
-            setSelectedParagraphIndex(
-              currentParagraphIndexes[0] ?? readingAnchorRef.current
-            );
-            setShowAddNote((current) => !current);
-          }}
-        >
-          <Pencil size={16} />
-          Add Note
-        </button>
       </div>
 
       {showToc && (
@@ -648,6 +605,7 @@ export default function Reader() {
                   }
                   onClick={() => {
                     setSelectedParagraphIndex(block.paragraphIndex);
+                    setShowPageNotes(true);
                     setShowAddNote(true);
                   }}
                   aria-label={`Add a note to paragraph ${block.paragraphIndex + 1}`}
@@ -663,33 +621,37 @@ export default function Reader() {
         )}
       </section>
 
-      <div className="reader-nav">
+      <div className="reader-nav reader-bottom-toolbar">
         <button
           type="button"
-          className="button secondary"
+          className="reader-nav-button"
           disabled={pageIndex <= 0}
           onClick={() => goToPage(pageIndex - 1)}
         >
           Previous
         </button>
-        <input
-          className="page-input"
-          type="number"
-          min="1"
-          max={totalPages}
-          value={pageIndex + 1}
-          disabled={loading}
-          aria-label="Page number"
-          onChange={(event) => {
-            const value = Number(event.target.value);
-            if (Number.isFinite(value) && value >= 1) {
-              goToPage(value - 1);
-            }
-          }}
-        />
+
+        <span className="reader-page-position">
+          {loading ? "Loading…" : `${pageIndex + 1} / ${totalPages}`}
+        </span>
+
         <button
           type="button"
-          className="button secondary"
+          className="reader-notes-button"
+          onClick={() => {
+            setSelectedParagraphIndex(
+              selectedParagraphIndex ?? currentParagraphIndexes[0] ?? readingAnchorRef.current
+            );
+            setShowPageNotes((current) => !current);
+          }}
+        >
+          <NotebookPen size={18} />
+          Notes{notesForCurrentPage.length ? ` (${notesForCurrentPage.length})` : ""}
+        </button>
+
+        <button
+          type="button"
+          className="reader-nav-button"
           disabled={pageIndex >= totalPages - 1}
           onClick={() => goToPage(pageIndex + 1)}
         >
@@ -784,9 +746,24 @@ export default function Reader() {
         <aside className="reader-notes-panel">
           <div className="margin-reply-heading">
             <h2>Notes on this page</h2>
-            <Link to="/read/journal" className="button secondary">
-              Open Full Journal
-            </Link>
+            <div className="button-row">
+              <button
+                type="button"
+                className="button primary"
+                onClick={() => {
+                  setSelectedParagraphIndex(
+                    selectedParagraphIndex ?? currentParagraphIndexes[0] ?? readingAnchorRef.current
+                  );
+                  setShowAddNote(true);
+                }}
+              >
+                <Pencil size={15} />
+                Add Note
+              </button>
+              <Link to="/read/journal" className="button secondary">
+                Full Journal
+              </Link>
+            </div>
           </div>
 
           {journalLoading && <p className="muted">Loading notes...</p>}
