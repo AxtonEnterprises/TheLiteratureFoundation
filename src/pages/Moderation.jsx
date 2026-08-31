@@ -29,6 +29,7 @@ import { auth } from "../firebase";
 import {
   getMyPlatformRole,
   applyPlatformEnforcement,
+  clearPlatformEnforcement,
   getPlatformEnforcements,
   getPlatformEnforcementSummary,
   getPlatformModerationActions,
@@ -130,7 +131,8 @@ function moderationActionLabel(
     report_resolved: "Report Resolved",
     platform_warning: "Platform Warning",
     platform_suspension: "Platform Suspension",
-    platform_ban: "Platform Ban"
+    platform_ban: "Platform Ban",
+    platform_enforcement_cleared: "Enforcement Cleared"
   };
 
   return labels[action] || action || "Moderation Action";
@@ -680,6 +682,74 @@ export default function Moderation() {
       );
     } finally {
       setEnforcingId(null);
+    }
+  }
+
+
+  async function handleClearEnforcement(
+    record
+  ) {
+    const statusLabel =
+      record.status ===
+      "banned"
+        ? "ban"
+        : record.status ===
+            "suspended"
+          ? "suspension"
+          : "warning";
+
+    const confirmed =
+      window.confirm(
+        `Remove the ${statusLabel} from ${profileName(
+          record.targetProfile,
+          record.userId ||
+            record.id
+        )}?`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setEnforcingId(
+        record.id
+      );
+
+      setQueueStatus("");
+
+      await clearPlatformEnforcement(
+        record.userId ||
+          record.id
+      );
+
+      await loadDashboard();
+
+      setQueueStatus(
+        record.status ===
+        "banned"
+          ? "User unbanned."
+          : record.status ===
+              "suspended"
+            ? "User unsuspended."
+            : "Warning cleared."
+      );
+    } catch (
+      clearError
+    ) {
+      console.error(
+        "Could not clear platform enforcement:",
+        clearError
+      );
+
+      setQueueStatus(
+        clearError?.message ||
+        "We couldn't clear this enforcement action."
+      );
+    } finally {
+      setEnforcingId(
+        null
+      );
     }
   }
 
