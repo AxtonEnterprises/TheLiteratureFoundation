@@ -5,6 +5,7 @@ import {
   getDocs,
   orderBy,
   query,
+  onSnapshot,
   serverTimestamp,
   setDoc,
   where,
@@ -864,6 +865,233 @@ export async function getPlatformRoleSummary() {
       count: null
     };
   }
+}
+
+
+export function subscribeToMyPlatformEnforcement(
+  callback
+) {
+  const user =
+    auth.currentUser;
+
+  if (!user) {
+    callback(null);
+    return () => {};
+  }
+
+  const enforcementRef =
+    doc(
+      db,
+      "platformEnforcement",
+      user.uid
+    );
+
+  return onSnapshot(
+    enforcementRef,
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        callback(null);
+        return;
+      }
+
+      const data = {
+        id:
+          snapshot.id,
+        ...snapshot.data()
+      };
+
+      if (
+        data.status ===
+        "cleared"
+      ) {
+        callback(null);
+        return;
+      }
+
+      if (
+        data.status ===
+          "suspended" &&
+        data.endsAtISO
+      ) {
+        const end =
+          new Date(
+            data.endsAtISO
+          ).getTime();
+
+        if (
+          Number.isFinite(end) &&
+          end <= Date.now()
+        ) {
+          callback(null);
+          return;
+        }
+      }
+
+      callback(data);
+    },
+    (error) => {
+      console.error(
+        "Could not subscribe to platform enforcement:",
+        error
+      );
+
+      callback(null);
+    }
+  );
+}
+
+
+export async function clearPlatformEnforcement(
+  targetUserId
+) {
+  const moderator =
+    requireUser();
+
+  const actorRole =
+    await requirePlatformAdmin();
+
+  const cleanTargetUserId =
+    String(
+      targetUserId ||
+      ""
+    ).trim();
+
+  if (!cleanTargetUserId) {
+    throw new Error(
+      "Missing enforcement target."
+    );
+  }
+
+  if (
+    cleanTargetUserId ===
+    moderator.uid
+  ) {
+    throw new Error(
+      "You cannot change enforcement on your own account."
+    );
+  }
+
+  const targetRole =
+    await getPlatformRole(
+      cleanTargetUserId
+    );
+
+  if (
+    !canPlatformDisciplineRole(
+      actorRole.role,
+      targetRole.role
+    )
+  ) {
+    throw new Error(
+      "You cannot change enforcement for an account with the same or a higher platform role."
+    );
+  }
+
+  const enforcementRef =
+    doc(
+      db,
+      "platformEnforcement",
+      cleanTargetUserId
+    );
+
+  const snapshot =
+    await getDoc(
+      enforcementRef
+    );
+
+  if (!snapshot.exists()) {
+    throw new Error(
+      "No active enforcement record was found."
+    );
+  }
+
+  const existing =
+    snapshot.data();
+
+  if (
+    ![
+      "warning",
+      "suspended",
+      "banned"
+    ].includes(
+      existing.status
+    )
+  ) {
+    throw new Error(
+      "This enforcement record is already cleared."
+    );
+  }
+
+  const now =
+    new Date()
+      .toISOString();
+
+  const actionRef =
+    doc(
+      collection(
+        db,
+        "moderationActions"
+      )
+    );
+
+  const batch =
+    writeBatch(
+      db
+    );
+
+  batch.update(
+    enforcementRef,
+    {
+      status:
+        "cleared",
+      enforcedBy:
+        moderator.uid,
+      clearedBy:
+        moderator.uid,
+      clearedAtISO:
+        now,
+      updatedAtISO:
+        now,
+      updatedAt:
+        serverTimestamp()
+    }
+  );
+
+  batch.set(
+    actionRef,
+    {
+      id:
+        actionRef.id,
+      moderatorUserId:
+        moderator.uid,
+      action:
+        "platform_enforcement_cleared",
+      targetUserId:
+        cleanTargetUserId,
+      targetRole:
+        targetRole.role,
+      targetType:
+        "profile",
+      targetId:
+        cleanTargetUserId,
+      previousEnforcementStatus:
+        existing.status,
+      reason:
+        existing.reason ||
+        "Platform enforcement cleared.",
+      details:
+        existing.details ||
+        "",
+      createdAtISO:
+        now,
+      createdAt:
+        serverTimestamp()
+    }
+  );
+
+  await batch.commit();
+
+  return true;
 }
 
 
