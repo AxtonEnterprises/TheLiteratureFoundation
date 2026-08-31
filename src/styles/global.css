@@ -4462,3 +4462,788 @@ p {
     font-size: 0.58em;
   }
 }
+
+/* ============================================================
+   LIT CHAIN — IMMERSIVE E-READER (AUTHORITATIVE OVERRIDES)
+   Keep this block at the END of global.css.
+   ============================================================ */
+
+/* Remove normal app chrome while the dedicated reader is open. */
+body.reader-mode {
+  overflow: hidden;
+  background: #fbf8f1;
+}
+
+body.reader-mode .site-header,
+body.reader-mode .foundation-footer,
+body.reader-mode .foundation-footer-new {
+  display: none !important;
+}
+
+body.reader-mode .app-shell {
+  min-height: 100dvh;
+}
+
+/* The reader owns the viewport. */
+.reader-page.reader-page-immersive {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+
+  width: 100%;
+  max-width: none;
+  min-height: 100dvh;
+  height: 100dvh;
+
+  margin: 0;
+  padding: 0;
+
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+
+  overflow: hidden;
+
+  background: #fbf8f1;
+  color: var(--ink);
+}
+
+/* -------------------- TOP READER BAR -------------------- */
+
+.reader-page-immersive .ereader-topbar {
+  position: relative;
+  z-index: 30;
+
+  min-width: 0;
+  min-height: 64px;
+
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+
+  padding:
+    max(0.7rem, env(safe-area-inset-top))
+    max(0.8rem, env(safe-area-inset-right))
+    0.7rem
+    max(0.8rem, env(safe-area-inset-left));
+
+  background: rgba(251, 248, 241, 0.94);
+  border-bottom: 1px solid rgba(11, 45, 69, 0.08);
+
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.reader-page-immersive .ereader-topbar.hidden {
+  opacity: 0;
+  transform: translateY(-110%);
+  pointer-events: none;
+}
+
+.reader-page-immersive .ereader-topbar.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reader-page-immersive .ereader-back-button,
+.reader-page-immersive .ereader-icon-button {
+  appearance: none;
+
+  min-width: 42px;
+  min-height: 42px;
+
+  padding: 0.5rem;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+
+  border: 0;
+  border-radius: 999px;
+
+  background: transparent;
+  color: var(--ink);
+
+  font: inherit;
+  cursor: pointer;
+}
+
+.reader-page-immersive .ereader-back-button {
+  padding-inline: 0.35rem 0.6rem;
+}
+
+.reader-page-immersive .ereader-back-button:hover,
+.reader-page-immersive .ereader-icon-button:hover,
+.reader-page-immersive .ereader-back-button:focus-visible,
+.reader-page-immersive .ereader-icon-button:focus-visible {
+  background: rgba(11, 45, 69, 0.07);
+}
+
+.reader-page-immersive .ereader-book-heading {
+  min-width: 0;
+  text-align: center;
+}
+
+.reader-page-immersive .ereader-book-heading strong,
+.reader-page-immersive .ereader-book-heading small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reader-page-immersive .ereader-book-heading strong {
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.reader-page-immersive .ereader-book-heading small {
+  margin-top: 0.1rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.reader-page-immersive .ereader-top-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.15rem;
+}
+
+.reader-page-immersive .reader-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  width: auto;
+  margin: 0;
+}
+
+.reader-page-immersive .reader-controls button {
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0.3rem;
+
+  border: 0;
+  border-radius: 999px;
+
+  background: transparent;
+  color: var(--ink);
+}
+
+.reader-page-immersive .reader-controls span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+/* -------------------- READING CANVAS -------------------- */
+
+.reader-page-immersive .ereader-canvas,
+.reader-page-immersive .reader-window.ereader-canvas {
+  width: min(820px, 100%);
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+
+  margin: 0 auto;
+  padding:
+    clamp(1.35rem, 4.5vw, 3.25rem)
+    clamp(1rem, 6vw, 4rem);
+
+  overflow: hidden;
+
+  background: transparent;
+  color: var(--ink);
+
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+
+  line-height: 1.72;
+
+  touch-action: pan-y pinch-zoom;
+  overscroll-behavior-x: contain;
+}
+
+.reader-page-immersive .ereader-canvas p {
+  margin: 0 0 1.12em;
+  color: inherit;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1em;
+  line-height: 1.72;
+  letter-spacing: 0.002em;
+}
+
+.reader-page-immersive .reader-paragraph-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 0.6rem;
+  align-items: start;
+}
+
+.reader-page-immersive .ereader-paragraph-number {
+  width: 28px;
+  min-width: 28px;
+
+  padding: 0.18rem 0.15rem;
+  margin-top: 0.25em;
+
+  border: 0;
+  border-radius: 7px;
+
+  background: transparent;
+  color: rgba(97, 113, 124, 0.42);
+
+  font-size: 0.61em;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: right;
+
+  opacity: 1;
+}
+
+.reader-page-immersive .ereader-paragraph-number.has-note {
+  background: rgba(47, 142, 156, 0.08);
+  color: var(--primary);
+}
+
+.reader-page-immersive .reader-paragraph-target p,
+.reader-page-immersive .reader-paragraph-selected p {
+  border-radius: 8px;
+  background: rgba(47, 142, 156, 0.045);
+}
+
+.reader-page-immersive .ereader-loading {
+  height: 100%;
+
+  display: grid;
+  place-content: center;
+  gap: 0.4rem;
+
+  text-align: center;
+}
+
+.reader-page-immersive .ereader-loading strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.1rem;
+}
+
+.reader-page-immersive .ereader-loading span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.reader-page-immersive .ereader-status {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  z-index: 45;
+
+  max-width: calc(100vw - 2rem);
+
+  margin: 0;
+  padding: 0.55rem 0.8rem;
+
+  transform: translateX(-50%);
+
+  border-radius: 999px;
+
+  background: rgba(11, 45, 69, 0.92);
+  color: #fff;
+
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+/* -------------------- BOTTOM READER BAR -------------------- */
+
+.reader-page-immersive .ereader-bottombar {
+  position: relative;
+  z-index: 30;
+
+  min-height: 92px;
+
+  padding:
+    0.65rem
+    max(1rem, env(safe-area-inset-right))
+    max(0.65rem, env(safe-area-inset-bottom))
+    max(1rem, env(safe-area-inset-left));
+
+  background: rgba(251, 248, 241, 0.95);
+  border-top: 1px solid rgba(11, 45, 69, 0.08);
+
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.reader-page-immersive .ereader-bottombar.hidden {
+  opacity: 0;
+  transform: translateY(110%);
+  pointer-events: none;
+}
+
+.reader-page-immersive .ereader-bottombar.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reader-page-immersive .ereader-progress-meta {
+  width: min(680px, 100%);
+
+  margin: 0 auto 0.25rem;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+
+  color: var(--muted);
+
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.reader-page-immersive .ereader-progress-slider {
+  width: min(680px, 100%);
+  height: 22px;
+
+  display: block;
+
+  margin: 0 auto 0.25rem;
+
+  accent-color: var(--primary);
+}
+
+.reader-page-immersive .ereader-bottom-actions {
+  width: min(680px, 100%);
+
+  margin: 0 auto;
+
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.reader-page-immersive .ereader-page-button,
+.reader-page-immersive .ereader-notes-button {
+  appearance: none;
+
+  min-height: 38px;
+
+  border: 0;
+  border-radius: 999px;
+
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.reader-page-immersive .ereader-page-button {
+  padding: 0.45rem 0.7rem;
+  background: transparent;
+  color: var(--ink);
+}
+
+.reader-page-immersive .ereader-page-button:first-child {
+  justify-self: start;
+}
+
+.reader-page-immersive .ereader-page-button:last-child {
+  justify-self: end;
+}
+
+.reader-page-immersive .ereader-page-button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.reader-page-immersive .ereader-notes-button {
+  padding: 0.5rem 0.9rem;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+
+  background: var(--primary);
+  color: #fff;
+}
+
+/* -------------------- BOTTOM SHEETS -------------------- */
+
+.reader-page-immersive .ereader-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+
+  padding-top: 2rem;
+
+  background: rgba(11, 45, 69, 0.32);
+}
+
+.reader-page-immersive .ereader-sheet {
+  width: min(760px, 100%);
+  max-height: min(82dvh, 780px);
+
+  overflow-y: auto;
+
+  padding: 1.1rem;
+
+  background: #fffdf8;
+  color: var(--ink);
+
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 24px 24px 0 0;
+
+  box-shadow: 0 -20px 60px rgba(11, 45, 69, 0.16);
+}
+
+.reader-page-immersive .ereader-sheet-heading {
+  position: sticky;
+  top: -1.1rem;
+  z-index: 5;
+
+  margin: -1.1rem -1.1rem 1rem;
+  padding: 1rem 1.1rem;
+
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+
+  background: rgba(255, 253, 248, 0.97);
+  border-bottom: 1px solid var(--line);
+
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.reader-page-immersive .ereader-sheet-heading small {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: var(--primary);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.reader-page-immersive .ereader-sheet-heading h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.reader-page-immersive .ereader-toc-list,
+.reader-page-immersive .ereader-note-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.reader-page-immersive .ereader-toc-list .toc-link {
+  width: 100%;
+  padding: 0.8rem 0.25rem;
+
+  border-bottom: 1px solid var(--line);
+
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.reader-page-immersive .ereader-note-card {
+  padding: 0.9rem;
+
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.reader-page-immersive .ereader-note-card textarea,
+.reader-page-immersive .ereader-note-card select,
+.reader-page-immersive .ereader-add-note textarea,
+.reader-page-immersive .ereader-add-note select {
+  width: 100%;
+  max-width: 100%;
+
+  padding: 0.75rem;
+
+  border: 1px solid var(--line);
+  border-radius: 12px;
+
+  background: #fff;
+  color: var(--ink);
+}
+
+.reader-page-immersive .ereader-paragraph-preview {
+  margin: 0 0 0.9rem;
+  padding: 0.8rem 0.9rem;
+
+  border-left: 3px solid var(--primary);
+
+  background: #f4f8f7;
+  color: var(--muted);
+
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  line-height: 1.55;
+}
+
+.reader-page-immersive .ereader-sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+
+  margin-top: 1rem;
+}
+
+/* -------------------- DARK MODE -------------------- */
+
+body.reader-mode.reader-dark-mode {
+  background: #101214;
+}
+
+.reader-page-immersive.reader-theme-dark {
+  --reader-bg-dark: #101214;
+  --reader-surface-dark: #181b1e;
+  --reader-surface-dark-2: #202428;
+  --reader-text-dark: #d7d7d3;
+  --reader-muted-dark: #90979b;
+  --reader-line-dark: rgba(255, 255, 255, 0.10);
+  --reader-accent-dark: #78c9c5;
+
+  background: var(--reader-bg-dark);
+  color: var(--reader-text-dark);
+}
+
+.reader-theme-dark .ereader-topbar,
+.reader-theme-dark .ereader-bottombar {
+  background: rgba(16, 18, 20, 0.95);
+  border-color: var(--reader-line-dark);
+}
+
+.reader-theme-dark .ereader-canvas,
+.reader-theme-dark .ereader-canvas p {
+  background: transparent;
+  color: var(--reader-text-dark);
+}
+
+.reader-theme-dark .ereader-book-heading strong,
+.reader-theme-dark .ereader-back-button,
+.reader-theme-dark .ereader-icon-button,
+.reader-theme-dark .reader-controls button,
+.reader-theme-dark .ereader-page-button {
+  color: var(--reader-text-dark);
+}
+
+.reader-theme-dark .ereader-book-heading small,
+.reader-theme-dark .reader-controls span,
+.reader-theme-dark .ereader-progress-meta,
+.reader-theme-dark .ereader-loading span,
+.reader-theme-dark .muted {
+  color: var(--reader-muted-dark);
+}
+
+.reader-theme-dark .ereader-back-button:hover,
+.reader-theme-dark .ereader-icon-button:hover,
+.reader-theme-dark .reader-controls button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.reader-theme-dark .ereader-notes-button {
+  background: #deded8;
+  color: #141719;
+}
+
+.reader-theme-dark .ereader-progress-slider {
+  accent-color: #deded8;
+}
+
+.reader-theme-dark .ereader-paragraph-number {
+  color: rgba(215, 215, 211, 0.30);
+}
+
+.reader-theme-dark .ereader-paragraph-number.has-note {
+  background: rgba(120, 201, 197, 0.08);
+  color: var(--reader-accent-dark);
+}
+
+.reader-theme-dark .reader-paragraph-target p,
+.reader-theme-dark .reader-paragraph-selected p {
+  background: rgba(120, 201, 197, 0.06);
+}
+
+.reader-theme-dark .ereader-sheet-backdrop {
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.reader-theme-dark .ereader-sheet {
+  background: var(--reader-surface-dark);
+  color: var(--reader-text-dark);
+  border-color: var(--reader-line-dark);
+}
+
+.reader-theme-dark .ereader-sheet-heading {
+  background: rgba(24, 27, 30, 0.97);
+  border-color: var(--reader-line-dark);
+}
+
+.reader-theme-dark .ereader-sheet-heading h2,
+.reader-theme-dark .ereader-note-card p,
+.reader-theme-dark .paragraph-select-label {
+  color: var(--reader-text-dark);
+}
+
+.reader-theme-dark .ereader-note-card {
+  background: var(--reader-surface-dark-2);
+  border-color: var(--reader-line-dark);
+}
+
+.reader-theme-dark .ereader-note-card textarea,
+.reader-theme-dark .ereader-note-card select,
+.reader-theme-dark .ereader-add-note textarea,
+.reader-theme-dark .ereader-add-note select {
+  background: #101214;
+  color: var(--reader-text-dark);
+  border-color: var(--reader-line-dark);
+}
+
+.reader-theme-dark .ereader-paragraph-preview {
+  background: rgba(120, 201, 197, 0.07);
+  color: #b6bbbd;
+  border-left-color: var(--reader-accent-dark);
+}
+
+/* -------------------- PHONE LAYOUT -------------------- */
+
+@media (max-width: 720px) {
+  .reader-page-immersive .ereader-topbar {
+    min-height: 58px;
+
+    grid-template-columns: auto minmax(0, 1fr) auto;
+
+    padding-left: max(0.35rem, env(safe-area-inset-left));
+    padding-right: max(0.35rem, env(safe-area-inset-right));
+  }
+
+  .reader-page-immersive .ereader-back-button span {
+    display: none;
+  }
+
+  .reader-page-immersive .ereader-back-button,
+  .reader-page-immersive .ereader-icon-button {
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0.35rem;
+  }
+
+  .reader-page-immersive .ereader-book-heading strong {
+    font-size: 0.82rem;
+  }
+
+  .reader-page-immersive .ereader-book-heading small {
+    font-size: 0.66rem;
+  }
+
+  .reader-page-immersive .ereader-top-actions {
+    gap: 0;
+  }
+
+  .reader-page-immersive .reader-controls {
+    gap: 0;
+  }
+
+  .reader-page-immersive .reader-controls button {
+    min-width: 32px;
+    min-height: 34px;
+    padding: 0.18rem;
+  }
+
+  .reader-page-immersive .reader-controls span {
+    display: none;
+  }
+
+  .reader-page-immersive .ereader-canvas,
+  .reader-page-immersive .reader-window.ereader-canvas {
+    width: 100%;
+
+    padding:
+      1.15rem
+      max(0.9rem, env(safe-area-inset-right))
+      1rem
+      max(0.65rem, env(safe-area-inset-left));
+  }
+
+  .reader-page-immersive .reader-paragraph-row {
+    grid-template-columns: 27px minmax(0, 1fr);
+    gap: 0.42rem;
+  }
+
+  .reader-page-immersive .ereader-paragraph-number {
+    width: 24px;
+    min-width: 24px;
+    padding-inline: 0;
+    font-size: 0.57em;
+  }
+
+  .reader-page-immersive .ereader-canvas p {
+    line-height: 1.66;
+  }
+
+  .reader-page-immersive .ereader-bottombar {
+    min-height: 86px;
+    padding-top: 0.45rem;
+  }
+
+  .reader-page-immersive .ereader-progress-meta {
+    font-size: 0.7rem;
+  }
+
+  .reader-page-immersive .ereader-progress-slider {
+    height: 18px;
+  }
+
+  .reader-page-immersive .ereader-page-button {
+    font-size: 0.8rem;
+  }
+
+  .reader-page-immersive .ereader-notes-button {
+    min-height: 36px;
+    padding: 0.42rem 0.75rem;
+    font-size: 0.84rem;
+  }
+
+  .reader-page-immersive .ereader-sheet {
+    max-height: 86dvh;
+    border-radius: 22px 22px 0 0;
+  }
+}
+
+@media (max-width: 390px) {
+  .reader-page-immersive .ereader-book-heading small {
+    display: none;
+  }
+
+  .reader-page-immersive .ereader-icon-button {
+    min-width: 34px;
+  }
+
+  .reader-page-immersive .ereader-canvas,
+  .reader-page-immersive .reader-window.ereader-canvas {
+    padding-left: 0.5rem;
+    padding-right: 0.7rem;
+  }
+}
