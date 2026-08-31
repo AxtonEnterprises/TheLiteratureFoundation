@@ -309,6 +309,10 @@ export default function Moderation() {
   const [selectedPlatformRole, setSelectedPlatformRole] = useState("platform_moderator");
   const [roleChangeReason, setRoleChangeReason] = useState("");
 
+  const [actionDialog, setActionDialog] = useState(null);
+  const [actionDialogBusy, setActionDialogBusy] = useState(false);
+
+
 
   const [
     queueLoading,
@@ -607,61 +611,25 @@ export default function Moderation() {
     report,
     resolution
   ) {
-    const verb =
-      resolution ===
-      "dismissed"
-        ? "dismiss"
-        : "resolve";
-
-    const confirmed =
-      window.confirm(
-        `Are you sure you want to ${verb} this ${targetTypeLabel(
-          report.targetType
-        ).toLowerCase()} report?\n\nReason: ${report.reason || "other"}`
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      setReviewingId(
-        report.id
-      );
-
-      setQueueStatus("");
-
-      await resolvePlatformModerationReport(
-        report.id,
-        resolution
-      );
-
-      await loadDashboard();
-
-      setQueueStatus(
-        resolution ===
-        "dismissed"
-          ? "Report dismissed."
-          : "Report resolved."
-      );
-    } catch (
-      reviewError
-    ) {
-      console.error(
-        "Could not review platform report:",
-        reviewError
-      );
-
-      setQueueStatus(
-        reviewError?.message ||
-        "We couldn't update this report."
-      );
-    } finally {
-      setReviewingId(
-        null
-      );
-    }
+    setActionDialog({
+      type: "report_review",
+      report,
+      resolution,
+      title:
+        resolution === "dismissed"
+          ? "Dismiss Report"
+          : "Resolve Report",
+      message:
+        resolution === "dismissed"
+          ? "Dismiss this report without platform enforcement?"
+          : "Mark this report as resolved?",
+      confirmLabel:
+        resolution === "dismissed"
+          ? "Dismiss Report"
+          : "Resolve Report"
+    });
   }
+
 
 
   async function handleEnforcement(
@@ -676,147 +644,58 @@ export default function Moderation() {
     }
 
     const labels = {
-      warning: "issue a warning",
-      suspended: "suspend this account",
-      banned: "permanently ban this account"
+      warning: "Issue Warning",
+      suspended: "Suspend Account",
+      banned: "Ban Account"
     };
 
-    let durationHours = null;
-
-    if (status === "suspended") {
-      const duration = window.prompt(
-        "Suspension length:\n1 = 24 hours\n2 = 7 days\n3 = 30 days",
-        "2"
-      );
-
-      if (duration === null) return;
-
-      durationHours =
-        duration === "1" ? 24 : duration === "3" ? 720 : 168;
-    }
-
-    const reason = window.prompt(
-      `Reason to ${labels[status]}:`,
-      report.reason || ""
-    );
-
-    if (reason === null || !String(reason).trim()) return;
-
-    const confirmed = window.confirm(
-      `Are you sure you want to ${labels[status]} for ${profileName(
+    setActionDialog({
+      type: "enforcement",
+      report,
+      status,
+      title: labels[status],
+      message: `${labels[status]} for ${profileName(
         report.targetProfile,
         report.targetUserId
-      )}?`
-    );
-
-    if (!confirmed) return;
-
-    try {
-      setEnforcingId(report.id);
-      setQueueStatus("");
-
-      await applyPlatformEnforcement({
-        targetUserId: report.targetUserId,
-        status,
-        reason,
-        details: report.details || "",
-        durationHours,
-        reportId: report.id,
-        targetType: report.targetType,
-        targetId: report.targetId,
-        bookId: report.bookId || null
-      });
-
-      await loadDashboard();
-
-      setQueueStatus(
-        status === "warning"
-          ? "Warning recorded and report resolved. Any stronger active suspension or ban remains in effect."
-          : status === "suspended"
-            ? "Suspension recorded and report resolved. An existing ban, if present, remains in effect."
-            : "Account banned and report resolved."
-      );
-    } catch (enforcementError) {
-      console.error(
-        "Could not apply platform enforcement:",
-        enforcementError
-      );
-
-      setQueueStatus(
-        enforcementError?.message ||
-        "We couldn't apply this enforcement action."
-      );
-    } finally {
-      setEnforcingId(null);
-    }
+      )}?`,
+      reason: report.reason || "",
+      durationHours: status === "suspended" ? 168 : null,
+      confirmLabel: labels[status]
+    });
   }
+
 
 
   async function handleClearEnforcement(
     record
   ) {
     const statusLabel =
-      record.status ===
-      "banned"
+      record.status === "banned"
         ? "ban"
-        : record.status ===
-            "suspended"
+        : record.status === "suspended"
           ? "suspension"
           : "warning";
 
-    const confirmed =
-      window.confirm(
-        `Remove the ${statusLabel} from ${profileName(
-          record.targetProfile,
-          record.userId ||
-            record.id
-        )}?`
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      setEnforcingId(
-        record.id
-      );
-
-      setQueueStatus("");
-
-      await clearPlatformEnforcement(
-        record.userId ||
-          record.id
-      );
-
-      await loadDashboard();
-
-      setQueueStatus(
-        record.status ===
-        "banned"
-          ? "User unbanned."
-          : record.status ===
-              "suspended"
-            ? "User unsuspended."
-            : "Warning cleared."
-      );
-    } catch (
-      clearError
-    ) {
-      console.error(
-        "Could not clear platform enforcement:",
-        clearError
-      );
-
-      setQueueStatus(
-        clearError?.message ||
-        "We couldn't clear this enforcement action."
-      );
-    } finally {
-      setEnforcingId(
-        null
-      );
-    }
+    setActionDialog({
+      type: "clear_enforcement",
+      record,
+      title:
+        record.status === "banned"
+          ? "Unban Account"
+          : record.status === "suspended"
+            ? "Unsuspend Account"
+            : "Clear Warning",
+      message: `Remove the ${statusLabel} from ${profileName(
+        record.targetProfile,
+        record.userId || record.id
+      )}?`,
+      confirmLabel:
+        record.status === "banned"
+          ? "Unban"
+          : record.status === "suspended"
+            ? "Unsuspend"
+            : "Clear Warning"
+    });
   }
 
 
@@ -826,59 +705,27 @@ export default function Moderation() {
     currentRole = "user"
   ) {
     if (!platformRole?.isFoundationAdmin) {
-      setQueueStatus("Foundation Administrator access is required.");
+      setQueueStatus(
+        "Foundation Administrator access is required."
+      );
       return;
     }
 
-    const choice = window.prompt(
-      "Platform role:\n1 = User (remove authority)\n2 = Platform Moderator\n3 = Platform Admin",
-      currentRole === "platform_admin"
-        ? "3"
-        : currentRole === "platform_moderator"
-          ? "2"
-          : "1"
-    );
-
-    if (choice === null) return;
-
-    const role =
-      choice === "3"
-        ? "platform_admin"
-        : choice === "2"
-          ? "platform_moderator"
-          : "user";
-
-    const reason = window.prompt(
-      "Reason for this platform role change:"
-    );
-
-    if (reason === null || !String(reason).trim()) return;
-
-    if (!window.confirm(
-      `Change this account from ${roleLabel(currentRole)} to ${roleLabel(role)}?`
-    )) return;
-
-    try {
-      setChangingRoleId(targetUserId);
-      setQueueStatus("");
-
-      await setPlatformRole({
-        targetUserId,
-        role,
-        reason
-      });
-
-      await loadDashboard();
-      setQueueStatus(`Platform role changed to ${roleLabel(role)}.`);
-    } catch (roleError) {
-      setQueueStatus(
-        roleError?.message ||
-        "We couldn't change this platform role."
-      );
-    } finally {
-      setChangingRoleId(null);
-    }
+    setActionDialog({
+      type: "role_change",
+      targetUserId,
+      currentRole,
+      selectedRole: currentRole,
+      reason: "",
+      title: "Change Platform Role",
+      message: `Change this account's platform access from ${roleLabel(
+        currentRole
+      )}.`,
+      confirmLabel: "Save Role"
+    });
   }
+
+
 
   function openPlatformRolePicker() {
     setRolePickerOpen(true);
@@ -961,71 +808,198 @@ export default function Moderation() {
       return;
     }
 
-    const label =
-      decision === "approved"
-        ? "approve"
-        : "deny";
+    setActionDialog({
+      type: "appeal_review",
+      appeal,
+      decision,
+      reason: "",
+      title:
+        decision === "approved"
+          ? "Approve Appeal"
+          : "Deny Appeal",
+      message:
+        decision === "approved"
+          ? "Approve this appeal and clear the active suspension or ban?"
+          : "Deny this appeal and keep the current enforcement in place?",
+      confirmLabel:
+        decision === "approved"
+          ? "Approve Appeal"
+          : "Deny Appeal"
+    });
+  }
 
-    const reviewReason =
-      window.prompt(
-        `Reason to ${label} this appeal:`
-      );
 
-    if (
-      reviewReason === null ||
-      !String(
-        reviewReason
-      ).trim()
-    ) {
+
+  function closeActionDialog() {
+    if (actionDialogBusy) {
       return;
     }
 
-    const confirmed =
-      window.confirm(
-        decision === "approved"
-          ? "Approve this appeal and clear the active suspension or ban?"
-          : "Deny this appeal and keep the current enforcement in place?"
-      );
+    setActionDialog(null);
+  }
 
-    if (!confirmed) {
+
+  async function submitActionDialog(event) {
+    event.preventDefault();
+
+    if (!actionDialog || actionDialogBusy) {
+      return;
+    }
+
+    const reason =
+      String(
+        actionDialog.reason || ""
+      ).trim();
+
+    if (
+      ["enforcement", "appeal_review", "role_change"].includes(
+        actionDialog.type
+      ) &&
+      !reason
+    ) {
+      setQueueStatus(
+        "A reason is required."
+      );
       return;
     }
 
     try {
-      setReviewingAppealId(
-        appeal.id
-      );
-
+      setActionDialogBusy(true);
       setQueueStatus("");
 
-      await reviewPlatformAppeal({
-        appealId:
-          appeal.id,
-        decision,
-        reviewReason
-      });
+      if (actionDialog.type === "report_review") {
+        const { report, resolution } = actionDialog;
 
+        setReviewingId(report.id);
+
+        await resolvePlatformModerationReport(
+          report.id,
+          resolution
+        );
+
+        setQueueStatus(
+          resolution === "dismissed"
+            ? "Report dismissed."
+            : "Report resolved."
+        );
+      }
+
+      if (actionDialog.type === "enforcement") {
+        const { report, status } = actionDialog;
+
+        setEnforcingId(report.id);
+
+        await applyPlatformEnforcement({
+          targetUserId: report.targetUserId,
+          status,
+          reason,
+          details: report.details || "",
+          durationHours:
+            status === "suspended"
+              ? Number(actionDialog.durationHours || 168)
+              : null,
+          reportId: report.id,
+          targetType: report.targetType,
+          targetId: report.targetId,
+          bookId: report.bookId || null
+        });
+
+        setQueueStatus(
+          status === "warning"
+            ? "Warning recorded and report resolved."
+            : status === "suspended"
+              ? "Suspension recorded and report resolved."
+              : "Account banned and report resolved."
+        );
+      }
+
+      if (actionDialog.type === "clear_enforcement") {
+        const { record } = actionDialog;
+
+        setEnforcingId(record.id);
+
+        await clearPlatformEnforcement(
+          record.userId || record.id
+        );
+
+        setQueueStatus(
+          record.status === "banned"
+            ? "User unbanned."
+            : record.status === "suspended"
+              ? "User unsuspended."
+              : "Warning cleared."
+        );
+      }
+
+      if (actionDialog.type === "role_change") {
+        const nextRole =
+          actionDialog.selectedRole || "user";
+
+        if (
+          nextRole === actionDialog.currentRole
+        ) {
+          throw new Error(
+            "Choose a different platform role."
+          );
+        }
+
+        setChangingRoleId(
+          actionDialog.targetUserId
+        );
+
+        await updatePlatformRole({
+          targetUserId:
+            actionDialog.targetUserId,
+          role:
+            nextRole,
+          reason
+        });
+
+        setQueueStatus(
+          `Platform role changed to ${roleLabel(nextRole)}.`
+        );
+      }
+
+      if (actionDialog.type === "appeal_review") {
+        const { appeal, decision } = actionDialog;
+
+        setReviewingAppealId(
+          appeal.id
+        );
+
+        await reviewPlatformAppeal({
+          appealId:
+            appeal.id,
+          decision,
+          reviewReason:
+            reason
+        });
+
+        setQueueStatus(
+          decision === "approved"
+            ? "Appeal approved and enforcement cleared."
+            : "Appeal denied. Enforcement remains active."
+        );
+      }
+
+      setActionDialog(null);
       await loadDashboard();
-
-      setQueueStatus(
-        decision === "approved"
-          ? "Appeal approved and enforcement cleared."
-          : "Appeal denied. Enforcement remains active."
-      );
-    } catch (reviewError) {
+    } catch (actionError) {
       console.error(
-        "Could not review platform appeal:",
-        reviewError
+        "Could not complete moderation action:",
+        actionError
       );
 
       setQueueStatus(
-        reviewError?.message ||
-        "We couldn't review this appeal."
+        actionError?.message ||
+        "We couldn't complete this moderation action."
       );
     } finally {
-      setReviewingAppealId(
-        null
-      );
+      setActionDialogBusy(false);
+      setReviewingId(null);
+      setEnforcingId(null);
+      setReviewingAppealId(null);
+      setChangingRoleId(null);
     }
   }
 
@@ -2237,6 +2211,243 @@ export default function Moderation() {
             </DashboardCard>
         </div>
       </div>
+
+      {actionDialog && (
+        <div
+          role="presentation"
+          onClick={closeActionDialog}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1100,
+            background: "rgba(0, 0, 0, 0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem"
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="moderation-action-title"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+            style={{
+              width: "min(100%, 560px)",
+              maxHeight: "88vh",
+              overflowY: "auto",
+              background: "white",
+              borderRadius: "1.5rem",
+              padding: "1.25rem",
+              boxShadow: "0 18px 60px rgba(0,0,0,0.25)"
+            }}
+          >
+            <div
+              className="section-heading-row"
+              style={{
+                alignItems: "flex-start",
+                gap: "1rem"
+              }}
+            >
+              <div>
+                <p className="eyebrow">
+                  Moderation Action
+                </p>
+                <h2
+                  id="moderation-action-title"
+                  style={{
+                    marginTop: 0
+                  }}
+                >
+                  {actionDialog.title}
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                className="button secondary"
+                onClick={closeActionDialog}
+                disabled={actionDialogBusy}
+              >
+                Close
+              </button>
+            </div>
+
+            <p>
+              {actionDialog.message}
+            </p>
+
+            {actionDialog.type === "report_review" &&
+              actionDialog.report && (
+                <div className="public-profile-entry">
+                  <p className="eyebrow">
+                    Report
+                  </p>
+                  <strong>
+                    {targetTypeLabel(
+                      actionDialog.report.targetType
+                    )}
+                  </strong>
+                  <p className="muted">
+                    Reason:{" "}
+                    {actionDialog.report.reason ||
+                      "other"}
+                  </p>
+                </div>
+              )}
+
+            <form
+              onSubmit={submitActionDialog}
+              style={{
+                display: "grid",
+                gap: "1rem",
+                marginTop: "1rem"
+              }}
+            >
+              {actionDialog.type === "enforcement" &&
+                actionDialog.status === "suspended" && (
+                  <label>
+                    <strong>
+                      Suspension length
+                    </strong>
+                    <select
+                      value={
+                        actionDialog.durationHours ||
+                        168
+                      }
+                      onChange={(event) =>
+                        setActionDialog(
+                          (current) => ({
+                            ...current,
+                            durationHours:
+                              Number(
+                                event.target.value
+                              )
+                          })
+                        )
+                      }
+                      style={{
+                        width: "100%",
+                        marginTop: "0.4rem"
+                      }}
+                    >
+                      <option value={24}>
+                        24 hours
+                      </option>
+                      <option value={168}>
+                        7 days
+                      </option>
+                      <option value={720}>
+                        30 days
+                      </option>
+                    </select>
+                  </label>
+                )}
+
+              {actionDialog.type === "role_change" && (
+                <label>
+                  <strong>
+                    Platform role
+                  </strong>
+                  <select
+                    value={
+                      actionDialog.selectedRole ||
+                      "user"
+                    }
+                    onChange={(event) =>
+                      setActionDialog(
+                        (current) => ({
+                          ...current,
+                          selectedRole:
+                            event.target.value
+                        })
+                      )
+                    }
+                    style={{
+                      width: "100%",
+                      marginTop: "0.4rem"
+                    }}
+                  >
+                    <option value="user">
+                      User — remove platform authority
+                    </option>
+                    <option value="platform_moderator">
+                      Platform Moderator
+                    </option>
+                    <option value="platform_admin">
+                      Platform Admin
+                    </option>
+                  </select>
+                </label>
+              )}
+
+              {[
+                "enforcement",
+                "appeal_review",
+                "role_change"
+              ].includes(
+                actionDialog.type
+              ) && (
+                <label>
+                  <strong>
+                    Reason
+                  </strong>
+                  <textarea
+                    rows={4}
+                    value={
+                      actionDialog.reason ||
+                      ""
+                    }
+                    onChange={(event) =>
+                      setActionDialog(
+                        (current) => ({
+                          ...current,
+                          reason:
+                            event.target.value
+                        })
+                      )
+                    }
+                    placeholder="Enter the reason for this action."
+                    style={{
+                      width: "100%",
+                      marginTop: "0.4rem"
+                    }}
+                  />
+                </label>
+              )}
+
+              <div
+                className="button-row"
+                style={{
+                  gap: "0.5rem",
+                  flexWrap: "wrap"
+                }}
+              >
+                <button
+                  type="submit"
+                  className="button primary"
+                  disabled={actionDialogBusy}
+                >
+                  {actionDialogBusy
+                    ? "Working..."
+                    : actionDialog.confirmLabel}
+                </button>
+
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={closeActionDialog}
+                  disabled={actionDialogBusy}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
 
       {rolePickerOpen && (
         <div
