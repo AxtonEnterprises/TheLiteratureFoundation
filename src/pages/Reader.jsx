@@ -125,11 +125,16 @@ export default function Reader() {
   }, []);
 
   useEffect(() => {
+    document.body.classList.toggle("reader-dark-mode", readerTheme === "dark");
     try {
       window.localStorage.setItem("litChainReaderTheme", readerTheme);
     } catch {
       // Reader theme persistence is optional.
     }
+
+    return () => {
+      document.body.classList.remove("reader-dark-mode");
+    };
   }, [readerTheme]);
 
   useEffect(() => {
@@ -564,6 +569,18 @@ export default function Reader() {
 
         <div className="ereader-top-actions">
           <ReaderControls fontSize={fontSize} setFontSize={setFontSize} />
+          <button
+            type="button"
+            className="ereader-icon-button"
+            onClick={() =>
+              setReaderTheme((current) => current === "dark" ? "light" : "dark")
+            }
+            aria-label={readerTheme === "dark" ? "Use light mode" : "Use dark mode"}
+            title={readerTheme === "dark" ? "Light mode" : "Dark mode"}
+          >
+            {readerTheme === "dark" ? <Sun size={21} /> : <Moon size={21} />}
+          </button>
+
           <button
             type="button"
             className="ereader-icon-button"
