@@ -35,9 +35,11 @@ import {
   getPlatformEnforcementSummary,
   getPlatformModerationActions,
   getPlatformModerationReports,
+  getPlatformRoleRecords,
   getPlatformRoleSummary,
   resolvePlatformModerationReport,
-  reviewPlatformAppeal
+  reviewPlatformAppeal,
+  setPlatformRole
 } from "../services/platformModeration.js";
 
 import SEO from "../components/SEO.jsx";
@@ -136,7 +138,10 @@ function moderationActionLabel(
     platform_ban: "Platform Ban",
     platform_enforcement_cleared: "Enforcement Cleared",
     platform_appeal_approved: "Appeal Approved",
-    platform_appeal_denied: "Appeal Denied"
+    platform_appeal_denied: "Appeal Denied",
+    platform_role_assigned: "Platform Role Assigned",
+    platform_role_changed: "Platform Role Changed",
+    platform_role_removed: "Platform Role Removed"
   };
 
   return labels[action] || action || "Moderation Action";
@@ -287,6 +292,16 @@ export default function Moderation() {
   });
 
   const [
+    platformRoleRecords,
+    setPlatformRoleRecords
+  ] = useState([]);
+
+  const [
+    changingRoleId,
+    setChangingRoleId
+  ] = useState(null);
+
+  const [
     queueLoading,
     setQueueLoading
   ] = useState(false);
@@ -382,7 +397,8 @@ export default function Moderation() {
         loadedEnforcement,
         loadedRoles,
         loadedEnforcementRecords,
-        loadedAppeals
+        loadedAppeals,
+        loadedRoleRecords
       ] =
         await Promise.all([
           getPlatformModerationReports(),
@@ -392,7 +408,10 @@ export default function Moderation() {
           platformRole?.isPlatformAdmin
             ? getPlatformEnforcements()
             : Promise.resolve([]),
-          getPlatformAppeals()
+          getPlatformAppeals(),
+          platformRole?.isFoundationAdmin
+            ? getPlatformRoleRecords()
+            : Promise.resolve([])
         ]);
 
       setReports(
@@ -417,6 +436,10 @@ export default function Moderation() {
 
       setAppeals(
         loadedAppeals
+      );
+
+      setPlatformRoleRecords(
+        loadedRoleRecords
       );
     } catch (loadError) {
       console.error(
@@ -485,7 +508,8 @@ export default function Moderation() {
                 loadedEnforcement,
                 loadedRoles,
                 loadedEnforcementRecords,
-                loadedAppeals
+                loadedAppeals,
+                loadedRoleRecords
               ] =
                 await Promise.all([
                   getPlatformModerationReports(),
@@ -495,7 +519,10 @@ export default function Moderation() {
                   loadedRole.isPlatformAdmin
                     ? getPlatformEnforcements()
                     : Promise.resolve([]),
-                  getPlatformAppeals()
+                  getPlatformAppeals(),
+                  loadedRole.isFoundationAdmin
+                    ? getPlatformRoleRecords()
+                    : Promise.resolve([])
                 ]);
 
               if (!active) {
@@ -524,6 +551,10 @@ export default function Moderation() {
 
               setAppeals(
                 loadedAppeals
+              );
+
+              setPlatformRoleRecords(
+                loadedRoleRecords
               );
             }
           } catch (
@@ -779,6 +810,74 @@ export default function Moderation() {
     }
   }
 
+
+
+  async function handlePlatformRoleChange(
+    targetUserId,
+    currentRole = "user"
+  ) {
+    if (!platformRole?.isFoundationAdmin) {
+      setQueueStatus("Foundation Administrator access is required.");
+      return;
+    }
+
+    const choice = window.prompt(
+      "Platform role:\n1 = User (remove authority)\n2 = Platform Moderator\n3 = Platform Admin",
+      currentRole === "platform_admin"
+        ? "3"
+        : currentRole === "platform_moderator"
+          ? "2"
+          : "1"
+    );
+
+    if (choice === null) return;
+
+    const role =
+      choice === "3"
+        ? "platform_admin"
+        : choice === "2"
+          ? "platform_moderator"
+          : "user";
+
+    const reason = window.prompt(
+      "Reason for this platform role change:"
+    );
+
+    if (reason === null || !String(reason).trim()) return;
+
+    if (!window.confirm(
+      `Change this account from ${roleLabel(currentRole)} to ${roleLabel(role)}?`
+    )) return;
+
+    try {
+      setChangingRoleId(targetUserId);
+      setQueueStatus("");
+
+      await setPlatformRole({
+        targetUserId,
+        role,
+        reason
+      });
+
+      await loadDashboard();
+      setQueueStatus(`Platform role changed to ${roleLabel(role)}.`);
+    } catch (roleError) {
+      setQueueStatus(
+        roleError?.message ||
+        "We couldn't change this platform role."
+      );
+    } finally {
+      setChangingRoleId(null);
+    }
+  }
+
+  async function handleAssignPlatformRole() {
+    const uid = window.prompt(
+      "Firebase UID of the account to assign:"
+    );
+    if (uid === null || !String(uid).trim()) return;
+    await handlePlatformRoleChange(String(uid).trim(), "user");
+  }
 
 
   async function handleAppealReview(
@@ -1634,148 +1733,253 @@ export default function Moderation() {
             </p>
           ) : (
             <div className="public-profile-entry-list">
-              {filteredActions.map(
-                (action) => {
-                  const profilePath =
-                    action.targetUserId
-                      ? `/read/public/${action.targetUserId}`
-                      : null;
+              {Object.values(
+                filteredActions.reduce(
+                  (groups, action) => {
+                    const userKey =
+                      action.targetUserId ||
+                      "unknown-target";
 
-                  const chainPath =
-                    [
-                      "chain_entry",
-                      "chain_reply"
-                    ].includes(
-                      action.targetType
-                    ) &&
-                    action.bookId
-                      ? `/read/reader/${action.bookId}`
-                      : null;
+                    if (!groups[userKey]) {
+                      groups[userKey] = {
+                        userId:
+                          action.targetUserId ||
+                          null,
+                        profile:
+                          action.targetProfile ||
+                          null,
+                        actions: []
+                      };
+                    }
 
-                  return (
-                    <article
-                      key={
-                        action.id
-                      }
-                      className="public-profile-entry"
+                    groups[userKey].actions.push(
+                      action
+                    );
+
+                    if (
+                      !groups[userKey].profile &&
+                      action.targetProfile
+                    ) {
+                      groups[userKey].profile =
+                        action.targetProfile;
+                    }
+
+                    return groups;
+                  },
+                  {}
+                )
+              )
+                .sort(
+                  (a, b) =>
+                    String(
+                      b.actions[0]?.createdAtISO ||
+                      ""
+                    ).localeCompare(
+                      String(
+                        a.actions[0]?.createdAtISO ||
+                        ""
+                      )
+                    )
+                )
+                .map((group) => (
+                  <details
+                    key={
+                      group.userId ||
+                      "unknown-target"
+                    }
+                    className="public-profile-entry"
+                  >
+                    <summary
+                      style={{
+                        cursor: "pointer",
+                        listStyle: "none"
+                      }}
                     >
-                      <div className="section-heading-row">
+                      <div
+                        className="section-heading-row"
+                        style={{
+                          alignItems: "center"
+                        }}
+                      >
                         <div>
                           <p className="eyebrow">
-                            {moderationActionLabel(
-                              action.action
-                            )}
+                            Moderation History
                           </p>
 
                           <strong className="public-entry-book-title">
-                            {targetTypeLabel(
-                              action.targetType
+                            {profileName(
+                              group.profile,
+                              group.userId
                             )}
                           </strong>
+
+                          {group.userId && (
+                            <p
+                              className="muted"
+                              style={{
+                                margin:
+                                  "0.25rem 0 0"
+                              }}
+                            >
+                              UID: {group.userId}
+                            </p>
+                          )}
                         </div>
 
                         <span className="button secondary">
-                          Reviewed
+                          {group.actions.length}{" "}
+                          {group.actions.length === 1
+                            ? "Action"
+                            : "Actions"}
                         </span>
                       </div>
+                    </summary>
 
-                      <p className="muted">
-                        Moderator:{" "}
-                        {profileName(
-                          action.moderatorProfile,
-                          action.moderatorUserId
-                        )}
-                      </p>
+                    <div
+                      style={{
+                        marginTop: "1rem"
+                      }}
+                    >
+                      {group.actions.map(
+                        (action) => {
+                          const profilePath =
+                            action.targetUserId
+                              ? `/read/public/${action.targetUserId}`
+                              : null;
 
-                      <p className="muted">
-                        Target:{" "}
-                        {profileName(
-                          action.targetProfile,
-                          action.targetUserId
-                        )}
-                      </p>
+                          const chainPath =
+                            [
+                              "chain_entry",
+                              "chain_reply"
+                            ].includes(
+                              action.targetType
+                            ) &&
+                            action.bookId
+                              ? `/read/reader/${action.bookId}`
+                              : null;
 
-                      {action.reason && (
-                        <p>
-                          <strong>
-                            Original reason:
-                          </strong>{" "}
-                          {action.reason}
-                        </p>
-                      )}
-
-                      {action.details && (
-                        <p className="muted">
-                          {action.details}
-                        </p>
-                      )}
-
-                      <p className="muted">
-                        Report ID:{" "}
-                        {action.reportId ||
-                          "Unavailable"}
-                      </p>
-
-                      <p className="muted">
-                        Target ID:{" "}
-                        {action.targetId ||
-                          "Unavailable"}
-                      </p>
-
-                      {(profilePath ||
-                        chainPath) && (
-                        <div
-                          className="button-row"
-                          style={{
-                            marginTop:
-                              "0.75rem",
-                            gap:
-                              "0.5rem",
-                            flexWrap:
-                              "wrap"
-                          }}
-                        >
-                          {profilePath && (
-                            <Link
-                              to={
-                                profilePath
+                          return (
+                            <article
+                              key={
+                                action.id
                               }
-                              className="button secondary"
+                              style={{
+                                padding:
+                                  "1rem 0",
+                                borderTop:
+                                  "1px solid rgba(0, 0, 0, 0.1)"
+                              }}
                             >
-                              <ExternalLink
-                                size={16}
-                              />
-                              View Profile
-                            </Link>
-                          )}
+                              <div className="section-heading-row">
+                                <div>
+                                  <p className="eyebrow">
+                                    {moderationActionLabel(
+                                      action.action
+                                    )}
+                                  </p>
 
-                          {chainPath && (
-                            <Link
-                              to={
-                                chainPath
-                              }
-                              className="button secondary"
-                            >
-                              <ExternalLink
-                                size={16}
-                              />
-                              View Chain Content
-                            </Link>
-                          )}
-                        </div>
-                      )}
+                                  <strong>
+                                    {targetTypeLabel(
+                                      action.targetType
+                                    )}
+                                  </strong>
+                                </div>
 
-                      {action.createdAtISO && (
-                        <small className="muted">
-                          {formatDate(
-                            action.createdAtISO
-                          )}
-                        </small>
+                                {action.createdAtISO && (
+                                  <small className="muted">
+                                    {formatDate(
+                                      action.createdAtISO
+                                    )}
+                                  </small>
+                                )}
+                              </div>
+
+                              <p className="muted">
+                                Moderator:{" "}
+                                {profileName(
+                                  action.moderatorProfile,
+                                  action.moderatorUserId
+                                )}
+                              </p>
+
+                              {action.reason && (
+                                <p>
+                                  <strong>
+                                    Reason:
+                                  </strong>{" "}
+                                  {action.reason}
+                                </p>
+                              )}
+
+                              {action.details && (
+                                <p className="muted">
+                                  {action.details}
+                                </p>
+                              )}
+
+                              {action.reportId && (
+                                <p className="muted">
+                                  Report ID:{" "}
+                                  {action.reportId}
+                                </p>
+                              )}
+
+                              {action.targetId && (
+                                <p className="muted">
+                                  Target ID:{" "}
+                                  {action.targetId}
+                                </p>
+                              )}
+
+                              {(profilePath ||
+                                chainPath) && (
+                                <div
+                                  className="button-row"
+                                  style={{
+                                    marginTop:
+                                      "0.75rem",
+                                    gap:
+                                      "0.5rem",
+                                    flexWrap:
+                                      "wrap"
+                                  }}
+                                >
+                                  {profilePath && (
+                                    <Link
+                                      to={
+                                        profilePath
+                                      }
+                                      className="button secondary"
+                                    >
+                                      <ExternalLink
+                                        size={16}
+                                      />
+                                      View Profile
+                                    </Link>
+                                  )}
+
+                                  {chainPath && (
+                                    <Link
+                                      to={
+                                        chainPath
+                                      }
+                                      className="button secondary"
+                                    >
+                                      <ExternalLink
+                                        size={16}
+                                      />
+                                      View Chain Content
+                                    </Link>
+                                  )}
+                                </div>
+                              )}
+                            </article>
+                          );
+                        }
                       )}
-                    </article>
-                  );
-                }
-              )}
+                    </div>
+                  </details>
+                ))}
             </div>
           )}
         </DashboardCard>
@@ -1892,25 +2096,75 @@ export default function Moderation() {
 
         <div id="platform-roles">
         <DashboardCard
-          eyebrow="Platform Access"
-          title="Platform Roles"
-          icon={
-            <KeyRound
-              size={22}
-            />
-          }
-        >
-          {platformRole.isFoundationAdmin ? (
-            <p className="muted">
-              Foundation administrators will manage platform moderator and
-              platform administrator assignments here.
-            </p>
-          ) : (
-            <p className="muted">
-              Platform role management is restricted to Foundation administrators.
-            </p>
-          )}
-        </DashboardCard>
+              eyebrow="Governance"
+              title="Platform Roles"
+              icon={<KeyRound size={22} />}
+            >
+              {!platformRole.isFoundationAdmin ? (
+                <p className="muted">
+                  Foundation Administrator access is required to manage platform roles.
+                </p>
+              ) : (
+                <>
+                  <div className="button-row" style={{ marginBottom: "1rem" }}>
+                    <button
+                      type="button"
+                      className="button primary"
+                      onClick={handleAssignPlatformRole}
+                    >
+                      Assign Platform Role
+                    </button>
+                  </div>
+
+                  {platformRoleRecords.length === 0 ? (
+                    <p className="muted">No platform role records found.</p>
+                  ) : (
+                    <div className="public-profile-entry-list">
+                      {platformRoleRecords.map((record) => (
+                        <article key={record.id} className="public-profile-entry">
+                          <strong>
+                            {profileName(
+                              record.profile,
+                              record.userId || record.id
+                            )}
+                          </strong>
+                          <p className="muted" style={{ margin: "0.25rem 0" }}>
+                            {roleLabel(record.role)}
+                          </p>
+                          <small className="muted">
+                            UID: {record.userId || record.id}
+                          </small>
+
+                          {record.role !== "foundation_admin" ? (
+                            <div className="button-row" style={{ marginTop: "0.75rem" }}>
+                              <button
+                                type="button"
+                                className="button secondary"
+                                disabled={
+                                  changingRoleId === (record.userId || record.id)
+                                }
+                                onClick={() =>
+                                  handlePlatformRoleChange(
+                                    record.userId || record.id,
+                                    record.role
+                                  )
+                                }
+                              >
+                                Change Role
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="muted">
+                              Foundation Administrator is protected from client-side role changes.
+                            </p>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </DashboardCard>
         </div>
       </div>
     </main>
