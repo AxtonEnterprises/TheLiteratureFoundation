@@ -258,6 +258,125 @@ export async function requireFoundationAdmin() {
 
 
 /* ============================================================
+   PHASE 4.3C.4 PLATFORM ROLE GOVERNANCE
+============================================================ */
+
+export async function getPlatformRoleRecords() {
+  await requireFoundationAdmin();
+
+  const snapshot = await getDocs(
+    collection(db, "platformRoles")
+  );
+
+  const records = snapshot.docs
+    .map((item) => ({
+      id: item.id,
+      ...item.data()
+    }))
+    .sort(
+      (a, b) =>
+        platformRoleRank(b.role) -
+        platformRoleRank(a.role)
+    );
+
+  return Promise.all(
+    records.map(async (record) => ({
+      ...record,
+      profile: await publicProfile(
+        record.userId || record.id
+      )
+    }))
+  );
+}
+
+export async function setPlatformRole({
+  targetUserId,
+  role,
+  reason
+}) {
+  const actor = requireUser();
+  await requireFoundationAdmin();
+
+  const uid = String(targetUserId || "").trim();
+  const nextRole = String(role || "").trim();
+  const cleanReason = String(reason || "").trim();
+
+  if (!uid) throw new Error("Enter the user's Firebase UID.");
+  if (uid === actor.uid) {
+    throw new Error("You cannot change your own platform role.");
+  }
+  if (!["user", PLATFORM_ROLES.MODERATOR, PLATFORM_ROLES.ADMIN].includes(nextRole)) {
+    throw new Error("Unsupported platform role.");
+  }
+  if (!cleanReason) {
+    throw new Error("A reason for the role change is required.");
+  }
+
+  const roleRef = doc(db, "platformRoles", uid);
+  const snapshot = await getDoc(roleRef);
+  const existingRole = snapshot.exists()
+    ? (snapshot.data().role || "user")
+    : "user";
+
+  if (existingRole === PLATFORM_ROLES.FOUNDATION_ADMIN) {
+    throw new Error(
+      "Foundation Administrator roles cannot be changed from the client."
+    );
+  }
+  if (existingRole === nextRole) {
+    throw new Error("This account already has that platform role.");
+  }
+  if (!snapshot.exists() && nextRole === "user") {
+    throw new Error("This account has no platform authority to remove.");
+  }
+
+  const action =
+    !snapshot.exists()
+      ? "platform_role_assigned"
+      : nextRole === "user"
+        ? "platform_role_removed"
+        : "platform_role_changed";
+
+  const actionRef = doc(collection(db, "moderationActions"));
+  const now = new Date().toISOString();
+  const batch = writeBatch(db);
+
+  batch.set(roleRef, {
+    userId: uid,
+    role: nextRole,
+    assignedBy: actor.uid,
+    roleActionId: actionRef.id,
+    updatedAtISO: now,
+    updatedAt: serverTimestamp()
+  });
+
+  batch.set(actionRef, {
+    id: actionRef.id,
+    moderatorUserId: actor.uid,
+    action,
+    targetUserId: uid,
+    targetRole: nextRole,
+    previousRole: existingRole,
+    newRole: nextRole,
+    targetType: "profile",
+    targetId: uid,
+    reason: cleanReason,
+    details: `Platform role changed from ${existingRole} to ${nextRole}.`,
+    createdAtISO: now,
+    createdAt: serverTimestamp()
+  });
+
+  await batch.commit();
+
+  return {
+    userId: uid,
+    previousRole: existingRole,
+    role: nextRole
+  };
+}
+
+
+/* ============================================================
    GLOBAL REPORTING
 ============================================================ */
 
