@@ -911,24 +911,19 @@ match /groups/{groupId} {
       if signedIn()
       && (
         (
-          (
-            isGroupOwner(groupId)
-            || isGroupAdmin(groupId)
-          )
+          (isGroupOwner(groupId) || isGroupAdmin(groupId))
           && request.resource.data.ownerId == resource.data.ownerId
-     )
-     ||
-     (
+        )
+        ||
+        (
           isGroupOwner(groupId)
           && request.resource.data.ownerId is string
           && request.resource.data.ownerId != resource.data.ownerId
           && exists(
-
-/databases/$(database)/documents/groups/$(groupId)/members/$(request.resource.data.ownerI
-d)
-         )
-       )
-     );
+            /databases/$(database)/documents/groups/$(groupId)/members/$(request.resource.data.ownerId)
+          )
+        )
+      );
 
    allow update:
     if isGroupMember(groupId)
@@ -1720,6 +1715,7 @@ match /chainReports/{reportId} {
 * underlying canonical block remains immutable.
 */
 
+/*
 * Class moderation requires owner/admin.
 *
 *
