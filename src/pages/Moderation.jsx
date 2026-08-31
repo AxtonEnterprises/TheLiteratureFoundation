@@ -40,7 +40,7 @@ import {
   resolvePlatformModerationReport,
   reviewPlatformAppeal,
   searchPlatformRoleCandidates,
-  setPlatformRole
+  setPlatformRole as updatePlatformRole
 } from "../services/platformModeration.js";
 
 import SEO from "../components/SEO.jsx";
@@ -934,7 +934,7 @@ export default function Moderation() {
     try {
       setChangingRoleId(targetUserId);
       setQueueStatus("");
-      await setPlatformRole({
+      await updatePlatformRole({
         targetUserId,
         role: selectedPlatformRole,
         reason
