@@ -833,6 +833,145 @@ allow create:
 }
 
 
+
+/* ========================================================
+   PHASE 4.3C.3 MODERATION APPEALS
+   ======================================================== */
+
+/*
+ * Appeals are stored in moderationAppeals/{appealId}.
+ *
+ * A separate moderationAppealLocks/{userId} document
+ * guarantees that an account can have only one open
+ * appeal at a time while preserving all prior appeal
+ * documents as history.
+ */
+
+match /moderationAppeals/{appealId} {
+
+  allow read:
+    if signedIn()
+    && (
+      resource.data.appellantUserId == request.auth.uid
+      || isPlatformModerator()
+    );
+
+  /*
+   * Suspended/banned users are explicitly allowed to appeal
+   * even though normal platform writes are blocked.
+   */
+  allow create:
+    if signedIn()
+    && request.resource.data.id == appealId
+    && request.resource.data.appellantUserId == request.auth.uid
+    && request.resource.data.enforcementStatus in [
+      "suspended",
+      "banned"
+    ]
+    && request.resource.data.status == "open"
+    && request.resource.data.explanation is string
+    && request.resource.data.explanation.size() > 0
+    && exists(
+      /databases/$(database)/documents/platformEnforcement/$(request.auth.uid)
+    )
+    && get(
+      /databases/$(database)/documents/platformEnforcement/$(request.auth.uid)
+    ).data.status == request.resource.data.enforcementStatus
+    && !exists(
+      /databases/$(database)/documents/moderationAppealLocks/$(request.auth.uid)
+    )
+    && existsAfter(
+      /databases/$(database)/documents/moderationAppealLocks/$(request.auth.uid)
+    )
+    && getAfter(
+      /databases/$(database)/documents/moderationAppealLocks/$(request.auth.uid)
+    ).data.appealId == appealId;
+
+  /*
+   * Appeal decisions are an administrator power because
+   * approval may lift an account suspension or ban.
+   */
+  allow update:
+    if isPlatformAdmin()
+    && canPlatformDiscipline(resource.data.appellantUserId)
+    && resource.data.status == "open"
+    && request.resource.data.id == resource.data.id
+    && request.resource.data.appellantUserId == resource.data.appellantUserId
+    && request.resource.data.enforcementStatus == resource.data.enforcementStatus
+    && request.resource.data.explanation == resource.data.explanation
+    && request.resource.data.status in [
+      "approved",
+      "denied"
+    ]
+    && request.resource.data.reviewedBy == request.auth.uid
+    && request.resource.data.reviewReason is string
+    && request.resource.data.reviewReason.size() > 0
+    && (
+      request.resource.data.status == "denied"
+      ||
+      (
+        existsAfter(
+          /databases/$(database)/documents/platformEnforcement/$(resource.data.appellantUserId)
+        )
+        && getAfter(
+          /databases/$(database)/documents/platformEnforcement/$(resource.data.appellantUserId)
+        ).data.status == "cleared"
+      )
+    )
+    && !existsAfter(
+      /databases/$(database)/documents/moderationAppealLocks/$(resource.data.appellantUserId)
+    );
+
+  allow delete:
+    if false;
+}
+
+match /moderationAppealLocks/{userId} {
+
+  allow read:
+    if signedIn()
+    && (
+      request.auth.uid == userId
+      || isPlatformModerator()
+    );
+
+  allow create:
+    if signedIn()
+    && request.auth.uid == userId
+    && request.resource.data.userId == userId
+    && request.resource.data.appealId is string
+    && request.resource.data.appealId.size() > 0
+    && !exists(
+      /databases/$(database)/documents/moderationAppealLocks/$(userId)
+    )
+    && existsAfter(
+      /databases/$(database)/documents/moderationAppeals/$(request.resource.data.appealId)
+    )
+    && getAfter(
+      /databases/$(database)/documents/moderationAppeals/$(request.resource.data.appealId)
+    ).data.appellantUserId == userId
+    && getAfter(
+      /databases/$(database)/documents/moderationAppeals/$(request.resource.data.appealId)
+    ).data.status == "open";
+
+  allow update:
+    if false;
+
+  allow delete:
+    if isPlatformAdmin()
+    && canPlatformDiscipline(resource.data.userId)
+    && existsAfter(
+      /databases/$(database)/documents/moderationAppeals/$(resource.data.appealId)
+    )
+    && getAfter(
+      /databases/$(database)/documents/moderationAppeals/$(resource.data.appealId)
+    ).data.status in [
+      "approved",
+      "denied"
+    ];
+}
+
+
 /* ========================================================
    PHASE 4.3A GLOBAL MODERATION ACTIONS
    ======================================================== */
