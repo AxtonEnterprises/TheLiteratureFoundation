@@ -261,6 +261,40 @@ export async function requireFoundationAdmin() {
    PHASE 4.3C.4 PLATFORM ROLE GOVERNANCE
 ============================================================ */
 
+export async function searchPlatformRoleCandidates(searchText) {
+  await requireFoundationAdmin();
+  const term = String(searchText || "").trim().toLowerCase();
+  if (term.length < 2) return [];
+
+  const snapshot = await getDocs(collection(db, "publicProfiles"));
+  const matches = snapshot.docs
+    .map((item) => ({
+      id: item.id,
+      userId: item.data().userId || item.id,
+      ...item.data()
+    }))
+    .filter((profile) => {
+      const username = String(profile.username || "").toLowerCase();
+      const displayName = String(
+        profile.displayName || profile.name || ""
+      ).toLowerCase();
+      return username.includes(term) || displayName.includes(term);
+    })
+    .slice(0, 12);
+
+  const results = await Promise.all(
+    matches.map(async (profile) => {
+      const role = await getPlatformRole(profile.userId);
+      return { ...profile, platformRole: role.role || "user" };
+    })
+  );
+
+  return results.filter(
+    (profile) => profile.platformRole !== PLATFORM_ROLES.FOUNDATION_ADMIN
+  );
+}
+
+
 export async function getPlatformRoleRecords() {
   await requireFoundationAdmin();
 
