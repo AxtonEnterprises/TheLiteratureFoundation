@@ -198,6 +198,11 @@ export default function Moderation() {
     setReportFilter
   ] = useState("all");
 
+  const [
+    historyFilter,
+    setHistoryFilter
+  ] = useState("all");
+
 
   const filteredReports =
     reports.filter(
@@ -221,6 +226,34 @@ export default function Moderation() {
             "chain_reply"
           ].includes(
             report.targetType
+          );
+        }
+
+        return true;
+      }
+    );
+
+
+  const filteredActions =
+    actions.filter(
+      (action) => {
+        if (
+          historyFilter ===
+          "resolved"
+        ) {
+          return (
+            action.action ===
+            "report_resolved"
+          );
+        }
+
+        if (
+          historyFilter ===
+          "dismissed"
+        ) {
+          return (
+            action.action ===
+            "report_dismissed"
           );
         }
 
@@ -743,25 +776,48 @@ export default function Moderation() {
                       </p>
                     )}
 
-                    {report.targetPath && (
+                    {(report.targetPath ||
+                      report.targetProfilePath) && (
                       <div
                         className="button-row"
                         style={{
                           marginBottom:
-                            "0.75rem"
+                            "0.75rem",
+                          gap:
+                            "0.5rem",
+                          flexWrap:
+                            "wrap"
                         }}
                       >
-                        <Link
-                          to={
-                            report.targetPath
-                          }
-                          className="button secondary"
-                        >
-                          <ExternalLink
-                            size={16}
-                          />
-                          View Profile
-                        </Link>
+                        {report.targetProfilePath && (
+                          <Link
+                            to={
+                              report.targetProfilePath
+                            }
+                            className="button secondary"
+                          >
+                            <ExternalLink
+                              size={16}
+                            />
+                            View Profile
+                          </Link>
+                        )}
+
+                        {report.targetPath &&
+                          report.targetPath !==
+                            report.targetProfilePath && (
+                          <Link
+                            to={
+                              report.targetPath
+                            }
+                            className="button secondary"
+                          >
+                            <ExternalLink
+                              size={16}
+                            />
+                            View Chain Content
+                          </Link>
+                        )}
                       </div>
                     )}
 
@@ -853,68 +909,200 @@ export default function Moderation() {
             />
           }
         >
+          <div
+            className="button-row"
+            style={{
+              marginBottom:
+                "1rem",
+              gap:
+                "0.5rem",
+              flexWrap:
+                "wrap"
+            }}
+          >
+            {[
+              ["all", "All"],
+              ["resolved", "Resolved"],
+              ["dismissed", "Dismissed"]
+            ].map(
+              ([
+                value,
+                label
+              ]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={
+                    historyFilter === value
+                      ? "button primary"
+                      : "button secondary"
+                  }
+                  onClick={() =>
+                    setHistoryFilter(
+                      value
+                    )
+                  }
+                >
+                  {label}
+                </button>
+              )
+            )}
+          </div>
+
           {actions.length ===
           0 ? (
             <p className="muted">
               No platform moderation actions have been recorded yet.
             </p>
+          ) : filteredActions.length ===
+            0 ? (
+            <p className="muted">
+              No moderation actions match this filter.
+            </p>
           ) : (
             <div className="public-profile-entry-list">
-              {actions.map(
-                (action) => (
-                  <article
-                    key={
-                      action.id
-                    }
-                    className="public-profile-entry"
-                  >
-                    <p className="eyebrow">
-                      {action.action ===
-                      "report_dismissed"
-                        ? "Report Dismissed"
-                        : "Report Resolved"}
-                    </p>
+              {filteredActions.map(
+                (action) => {
+                  const profilePath =
+                    action.targetUserId
+                      ? `/read/public/${action.targetUserId}`
+                      : null;
 
-                    <strong className="public-entry-book-title">
-                      {targetTypeLabel(
-                        action.targetType
-                      )}
-                    </strong>
+                  const chainPath =
+                    [
+                      "chain_entry",
+                      "chain_reply"
+                    ].includes(
+                      action.targetType
+                    ) &&
+                    action.bookId
+                      ? `/read/reader/${action.bookId}`
+                      : null;
 
-                    <p className="muted">
-                      Moderator:{" "}
-                      {profileName(
-                        action.moderatorProfile,
-                        action.moderatorUserId
-                      )}
-                    </p>
+                  return (
+                    <article
+                      key={
+                        action.id
+                      }
+                      className="public-profile-entry"
+                    >
+                      <div className="section-heading-row">
+                        <div>
+                          <p className="eyebrow">
+                            {action.action ===
+                            "report_dismissed"
+                              ? "Report Dismissed"
+                              : "Report Resolved"}
+                          </p>
 
-                    <p className="muted">
-                      Target:{" "}
-                      {profileName(
-                        action.targetProfile,
-                        action.targetUserId
-                      )}
-                    </p>
+                          <strong className="public-entry-book-title">
+                            {targetTypeLabel(
+                              action.targetType
+                            )}
+                          </strong>
+                        </div>
 
-                    {action.reason && (
-                      <p>
-                        <strong>
-                          Original reason:
-                        </strong>{" "}
-                        {action.reason}
-                      </p>
-                    )}
+                        <span className="button secondary">
+                          Reviewed
+                        </span>
+                      </div>
 
-                    {action.createdAtISO && (
-                      <small className="muted">
-                        {formatDate(
-                          action.createdAtISO
+                      <p className="muted">
+                        Moderator:{" "}
+                        {profileName(
+                          action.moderatorProfile,
+                          action.moderatorUserId
                         )}
-                      </small>
-                    )}
-                  </article>
-                )
+                      </p>
+
+                      <p className="muted">
+                        Target:{" "}
+                        {profileName(
+                          action.targetProfile,
+                          action.targetUserId
+                        )}
+                      </p>
+
+                      {action.reason && (
+                        <p>
+                          <strong>
+                            Original reason:
+                          </strong>{" "}
+                          {action.reason}
+                        </p>
+                      )}
+
+                      {action.details && (
+                        <p className="muted">
+                          {action.details}
+                        </p>
+                      )}
+
+                      <p className="muted">
+                        Report ID:{" "}
+                        {action.reportId ||
+                          "Unavailable"}
+                      </p>
+
+                      <p className="muted">
+                        Target ID:{" "}
+                        {action.targetId ||
+                          "Unavailable"}
+                      </p>
+
+                      {(profilePath ||
+                        chainPath) && (
+                        <div
+                          className="button-row"
+                          style={{
+                            marginTop:
+                              "0.75rem",
+                            gap:
+                              "0.5rem",
+                            flexWrap:
+                              "wrap"
+                          }}
+                        >
+                          {profilePath && (
+                            <Link
+                              to={
+                                profilePath
+                              }
+                              className="button secondary"
+                            >
+                              <ExternalLink
+                                size={16}
+                              />
+                              View Profile
+                            </Link>
+                          )}
+
+                          {chainPath && (
+                            <Link
+                              to={
+                                chainPath
+                              }
+                              className="button secondary"
+                            >
+                              <ExternalLink
+                                size={16}
+                              />
+                              View Chain Content
+                            </Link>
+                          )}
+                        </div>
+                      )}
+
+                      {action.createdAtISO && (
+                        <small className="muted">
+                          {formatDate(
+                            action.createdAtISO
+                          )}
+                        </small>
+                      )}
+                    </article>
+                  );
+                }
               )}
             </div>
           )}
