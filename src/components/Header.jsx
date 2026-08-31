@@ -5,7 +5,10 @@ import { onAuthStateChanged } from "firebase/auth";
 
 import { auth } from "../firebase";
 import { subscribeToUnreadNotifications } from "../services/notifications.js";
-import { subscribeToMyPlatformEnforcement } from "../services/platformModeration.js";
+import {
+  submitPlatformAppeal,
+  subscribeToMyPlatformEnforcement
+} from "../services/platformModeration.js";
 
 function formatEnforcementDate(value) {
   if (!value) return "";
@@ -24,6 +27,8 @@ export default function Header() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [authLoading, setAuthLoading] = useState(true);
   const [enforcement, setEnforcement] = useState(null);
+  const [appealStatus, setAppealStatus] = useState("");
+  const [appealSubmitting, setAppealSubmitting] = useState(false);
 
   useEffect(() => {
     return onAuthStateChanged(auth, (firebaseUser) => {
@@ -52,6 +57,44 @@ export default function Header() {
 
   const navClass = ({ isActive }) =>
     isActive ? "nav-link active" : "nav-link";
+
+  async function handleAppeal() {
+    if (
+      !enforcement ||
+      !["suspended", "banned"].includes(enforcement.status)
+    ) {
+      return;
+    }
+
+    const explanation = window.prompt(
+      "Explain why you believe this suspension or ban should be reviewed:"
+    );
+
+    if (
+      explanation === null ||
+      !String(explanation).trim()
+    ) {
+      return;
+    }
+
+    try {
+      setAppealSubmitting(true);
+      setAppealStatus("");
+
+      await submitPlatformAppeal(explanation);
+
+      setAppealStatus(
+        "Appeal submitted. A platform administrator will review it."
+      );
+    } catch (error) {
+      setAppealStatus(
+        error?.message ||
+        "We couldn't submit your appeal."
+      );
+    } finally {
+      setAppealSubmitting(false);
+    }
+  }
 
   return (
     <>
@@ -167,6 +210,32 @@ export default function Header() {
                       Suspension ends: {formatEnforcementDate(enforcement.endsAtISO)}
                     </p>
                   )}
+
+                {["suspended", "banned"].includes(enforcement.status) && (
+                  <div
+                    className="button-row"
+                    style={{
+                      marginTop: "0.75rem",
+                      gap: "0.5rem",
+                      flexWrap: "wrap"
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="button secondary"
+                      disabled={appealSubmitting}
+                      onClick={handleAppeal}
+                    >
+                      {appealSubmitting ? "Submitting..." : "Appeal"}
+                    </button>
+                  </div>
+                )}
+
+                {appealStatus && (
+                  <p className="status" style={{ margin: "0.5rem 0 0" }}>
+                    {appealStatus}
+                  </p>
+                )}
               </div>
             </div>
           </div>
