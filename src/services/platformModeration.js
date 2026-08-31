@@ -1454,6 +1454,448 @@ export async function applyPlatformEnforcement({
 }
 
 
+
+/* ============================================================
+   PHASE 4.3C.3 APPEALS
+============================================================ */
+
+export async function submitPlatformAppeal(
+  explanation
+) {
+  const user =
+    requireUser();
+
+  const cleanExplanation =
+    String(
+      explanation || ""
+    ).trim();
+
+  if (!cleanExplanation) {
+    throw new Error(
+      "Explain why you believe this enforcement should be reviewed."
+    );
+  }
+
+  const enforcementRef =
+    doc(
+      db,
+      "platformEnforcement",
+      user.uid
+    );
+
+  const lockRef =
+    doc(
+      db,
+      "moderationAppealLocks",
+      user.uid
+    );
+
+  const [
+    enforcementSnapshot,
+    lockSnapshot
+  ] =
+    await Promise.all([
+      getDoc(enforcementRef),
+      getDoc(lockRef)
+    ]);
+
+  if (!enforcementSnapshot.exists()) {
+    throw new Error(
+      "There is no active suspension or ban to appeal."
+    );
+  }
+
+  const enforcement =
+    enforcementSnapshot.data();
+
+  if (
+    ![
+      "suspended",
+      "banned"
+    ].includes(
+      enforcement.status
+    )
+  ) {
+    throw new Error(
+      "Only an active suspension or ban can be appealed."
+    );
+  }
+
+  if (lockSnapshot.exists()) {
+    throw new Error(
+      "You already have an open appeal."
+    );
+  }
+
+  if (
+    enforcement.status === "suspended" &&
+    enforcement.endsAtISO
+  ) {
+    const end =
+      new Date(
+        enforcement.endsAtISO
+      ).getTime();
+
+    if (
+      Number.isFinite(end) &&
+      end <= Date.now()
+    ) {
+      throw new Error(
+        "This suspension has already expired."
+      );
+    }
+  }
+
+  const appealRef =
+    doc(
+      collection(
+        db,
+        "moderationAppeals"
+      )
+    );
+
+  const now =
+    new Date()
+      .toISOString();
+
+  const batch =
+    writeBatch(
+      db
+    );
+
+  batch.set(
+    appealRef,
+    {
+      id:
+        appealRef.id,
+      appellantUserId:
+        user.uid,
+      enforcementStatus:
+        enforcement.status,
+      enforcementReason:
+        String(
+          enforcement.reason ||
+          ""
+        ),
+      enforcementStartedAtISO:
+        enforcement.startedAtISO ||
+        null,
+      enforcementEndsAtISO:
+        enforcement.endsAtISO ||
+        null,
+      explanation:
+        cleanExplanation,
+      status:
+        "open",
+      createdAtISO:
+        now,
+      createdAt:
+        serverTimestamp()
+    }
+  );
+
+  batch.set(
+    lockRef,
+    {
+      userId:
+        user.uid,
+      appealId:
+        appealRef.id,
+      createdAtISO:
+        now,
+      createdAt:
+        serverTimestamp()
+    }
+  );
+
+  await batch.commit();
+
+  return {
+    id:
+      appealRef.id,
+    status:
+      "open"
+  };
+}
+
+
+export async function getPlatformAppeals() {
+  await requirePlatformModerator();
+
+  const snapshot =
+    await getDocs(
+      collection(
+        db,
+        "moderationAppeals"
+      )
+    );
+
+  const appeals =
+    snapshot.docs
+      .map(
+        (item) => ({
+          id:
+            item.id,
+          ...item.data()
+        })
+      )
+      .sort(
+        (a, b) =>
+          String(
+            b.createdAtISO ||
+            ""
+          ).localeCompare(
+            String(
+              a.createdAtISO ||
+              ""
+            )
+          )
+      );
+
+  return Promise.all(
+    appeals.map(
+      async (appeal) => ({
+        ...appeal,
+        appellantProfile:
+          await publicProfile(
+            appeal.appellantUserId
+          ),
+        appellantRole:
+          (
+            await getPlatformRole(
+              appeal.appellantUserId
+            )
+          ).role
+      })
+    )
+  );
+}
+
+
+export async function reviewPlatformAppeal({
+  appealId,
+  decision,
+  reviewReason
+}) {
+  const moderator =
+    requireUser();
+
+  const actorRole =
+    await requirePlatformAdmin();
+
+  const normalizedDecision =
+    decision === "approved"
+      ? "approved"
+      : decision === "denied"
+        ? "denied"
+        : "";
+
+  if (!normalizedDecision) {
+    throw new Error(
+      "Choose whether to approve or deny the appeal."
+    );
+  }
+
+  const cleanReviewReason =
+    String(
+      reviewReason || ""
+    ).trim();
+
+  if (!cleanReviewReason) {
+    throw new Error(
+      "A review reason is required."
+    );
+  }
+
+  const appealRef =
+    doc(
+      db,
+      "moderationAppeals",
+      String(
+        appealId
+      )
+    );
+
+  const appealSnapshot =
+    await getDoc(
+      appealRef
+    );
+
+  if (!appealSnapshot.exists()) {
+    throw new Error(
+      "This appeal is no longer available."
+    );
+  }
+
+  const appeal =
+    appealSnapshot.data();
+
+  if (
+    appeal.status !== "open"
+  ) {
+    throw new Error(
+      "This appeal has already been reviewed."
+    );
+  }
+
+  const targetRole =
+    await getPlatformRole(
+      appeal.appellantUserId
+    );
+
+  if (
+    !canPlatformDisciplineRole(
+      actorRole.role,
+      targetRole.role
+    )
+  ) {
+    throw new Error(
+      "You cannot review an appeal for an account with the same or a higher platform role."
+    );
+  }
+
+  const enforcementRef =
+    doc(
+      db,
+      "platformEnforcement",
+      appeal.appellantUserId
+    );
+
+  const enforcementSnapshot =
+    await getDoc(
+      enforcementRef
+    );
+
+  if (
+    normalizedDecision === "approved" &&
+    !enforcementSnapshot.exists()
+  ) {
+    throw new Error(
+      "The enforcement record is no longer available."
+    );
+  }
+
+  const now =
+    new Date()
+      .toISOString();
+
+  const lockRef =
+    doc(
+      db,
+      "moderationAppealLocks",
+      appeal.appellantUserId
+    );
+
+  const actionRef =
+    doc(
+      collection(
+        db,
+        "moderationActions"
+      )
+    );
+
+  const batch =
+    writeBatch(
+      db
+    );
+
+  batch.update(
+    appealRef,
+    {
+      status:
+        normalizedDecision,
+      reviewedBy:
+        moderator.uid,
+      reviewReason:
+        cleanReviewReason,
+      reviewedAtISO:
+        now,
+      reviewedAt:
+        serverTimestamp()
+    }
+  );
+
+  batch.delete(
+    lockRef
+  );
+
+  if (
+    normalizedDecision ===
+    "approved"
+  ) {
+    const enforcement =
+      enforcementSnapshot.data();
+
+    batch.update(
+      enforcementRef,
+      {
+        status:
+          "cleared",
+        enforcedBy:
+          moderator.uid,
+        clearedBy:
+          moderator.uid,
+        clearedAtISO:
+          now,
+        durationHours:
+          null,
+        endsAtISO:
+          null,
+        endsAt:
+          null,
+        updatedAtISO:
+          now,
+        updatedAt:
+          serverTimestamp(),
+        reason:
+          enforcement.reason ||
+          "Enforcement cleared after approved appeal."
+      }
+    );
+  }
+
+  batch.set(
+    actionRef,
+    {
+      id:
+        actionRef.id,
+      moderatorUserId:
+        moderator.uid,
+      action:
+        normalizedDecision ===
+        "approved"
+          ? "platform_appeal_approved"
+          : "platform_appeal_denied",
+      targetUserId:
+        appeal.appellantUserId,
+      targetRole:
+        targetRole.role,
+      targetType:
+        "profile",
+      targetId:
+        appeal.appellantUserId,
+      appealId:
+        String(
+          appealId
+        ),
+      reason:
+        cleanReviewReason,
+      details:
+        appeal.explanation ||
+        "",
+      createdAtISO:
+        now,
+      createdAt:
+        serverTimestamp()
+    }
+  );
+
+  await batch.commit();
+
+  return true;
+}
+
+
 export async function getPlatformModerationActions() {
   await requirePlatformModerator();
 
