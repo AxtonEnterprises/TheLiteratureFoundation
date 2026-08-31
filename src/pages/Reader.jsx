@@ -7,6 +7,8 @@ import {
   ChevronDown,
   ChevronUp,
   List,
+  Moon,
+  Sun,
   Globe2,
   Lock,
   NotebookPen,
@@ -67,6 +69,8 @@ export default function Reader() {
 
   const readingAnchorRef = useRef(0);
   const lastPaginationKeyRef = useRef("");
+  const swipeStartRef = useRef(null);
+  const suppressCanvasClickRef = useRef(false);
 
   const requestedParagraph = useMemo(() => {
     const raw = searchParams.get("paragraph");
@@ -96,6 +100,13 @@ export default function Reader() {
   const [pageIndex, setPageIndex] = useState(0);
 
   const [showToc, setShowToc] = useState(false);
+  const [readerTheme, setReaderTheme] = useState(() => {
+    try {
+      return window.localStorage.getItem("litChainReaderTheme") || "light";
+    } catch {
+      return "light";
+    }
+  });
   const [controlsVisible, setControlsVisible] = useState(true);
   const [showPageNotes, setShowPageNotes] = useState(false);
   const [showAddNote, setShowAddNote] = useState(false);
@@ -112,6 +123,14 @@ export default function Reader() {
     document.body.classList.add("reader-mode");
     return () => document.body.classList.remove("reader-mode");
   }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("litChainReaderTheme", readerTheme);
+    } catch {
+      // Reader theme persistence is optional.
+    }
+  }, [readerTheme]);
 
   useEffect(() => {
     let active = true;
@@ -520,7 +539,7 @@ export default function Reader() {
   }
 
   return (
-    <main className="reader-page reader-page-immersive">
+    <main className={`reader-page reader-page-immersive reader-theme-${readerTheme}`}>
       <SEO
         title={`${book?.title || "Reader"} | Lit Chain`}
         description={`Read ${book?.title || "this book"} on Lit Chain.`}
@@ -601,7 +620,43 @@ export default function Reader() {
         ref={readerRef}
         className="reader-window ereader-canvas"
         style={{ fontSize: `${fontSize}px` }}
+        onTouchStart={(event) => {
+          const touch = event.touches[0];
+          if (!touch) return;
+          swipeStartRef.current = {
+            x: touch.clientX,
+            y: touch.clientY,
+            time: Date.now()
+          };
+        }}
+        onTouchEnd={(event) => {
+          const start = swipeStartRef.current;
+          swipeStartRef.current = null;
+          const touch = event.changedTouches[0];
+          if (!start || !touch) return;
+
+          const deltaX = touch.clientX - start.x;
+          const deltaY = touch.clientY - start.y;
+          const elapsed = Date.now() - start.time;
+
+          if (
+            Math.abs(deltaX) >= 55 &&
+            Math.abs(deltaX) > Math.abs(deltaY) * 1.25 &&
+            elapsed < 900
+          ) {
+            suppressCanvasClickRef.current = true;
+            if (deltaX < 0) {
+              goToPage(pageIndex + 1);
+            } else {
+              goToPage(pageIndex - 1);
+            }
+            window.setTimeout(() => {
+              suppressCanvasClickRef.current = false;
+            }, 250);
+          }
+        }}
         onClick={(event) => {
+          if (suppressCanvasClickRef.current) return;
           if (event.target.closest("button")) return;
           const rect = event.currentTarget.getBoundingClientRect();
           const x = event.clientX - rect.left;
@@ -645,10 +700,25 @@ export default function Reader() {
                   setControlsVisible(true);
                 }}
               >
-                <span
-                  className={paragraphHasNote ? "paragraph-note-marker visible" : "paragraph-note-marker"}
-                  aria-hidden="true"
-                />
+                <button
+                  type="button"
+                  className={[
+                    "paragraph-number",
+                    "ereader-paragraph-number",
+                    paragraphHasNote ? "has-note" : ""
+                  ].filter(Boolean).join(" ")}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSelectedParagraphIndex(block.paragraphIndex);
+                    setShowPageNotes(true);
+                    setShowAddNote(false);
+                    setControlsVisible(true);
+                  }}
+                  aria-label={`Notes for paragraph ${block.paragraphIndex + 1}`}
+                  title={`Paragraph ${block.paragraphIndex + 1}`}
+                >
+                  {!block.isContinuation ? block.paragraphIndex + 1 : ""}
+                </button>
                 <p>{block.text}</p>
               </div>
             );
@@ -715,7 +785,11 @@ export default function Reader() {
             <div className="ereader-sheet-heading">
               <div>
                 <small>Notes</small>
-                <h2>Page {pageIndex + 1}</h2>
+                <h2>
+                  {selectedParagraphIndex !== null
+                    ? `Paragraph ${selectedParagraphIndex + 1}`
+                    : "Paragraph notes"}
+                </h2>
               </div>
               <button
                 type="button"
@@ -730,7 +804,7 @@ export default function Reader() {
               <>
                 {journalLoading && <p className="muted">Loading notes…</p>}
                 {!journalLoading && notesForCurrentPage.length === 0 && (
-                  <p className="muted">No notes on this page yet.</p>
+                  <p className="muted">No notes for the visible paragraphs yet.</p>
                 )}
                 <div className="ereader-note-list">
                   {notesForCurrentPage.map((entry) => (
