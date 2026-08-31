@@ -17,6 +17,8 @@ import {
   Flag,
   History,
   KeyRound,
+  ExternalLink,
+  RefreshCw,
   ShieldCheck,
   UserX,
   X
@@ -191,6 +193,42 @@ export default function Moderation() {
   ] = useState(null);
 
 
+  const [
+    reportFilter,
+    setReportFilter
+  ] = useState("all");
+
+
+  const filteredReports =
+    reports.filter(
+      (report) => {
+        if (
+          reportFilter ===
+          "profiles"
+        ) {
+          return (
+            report.targetType ===
+            "profile"
+          );
+        }
+
+        if (
+          reportFilter ===
+          "chain"
+        ) {
+          return [
+            "chain_entry",
+            "chain_reply"
+          ].includes(
+            report.targetType
+          );
+        }
+
+        return true;
+      }
+    );
+
+
   async function loadDashboard() {
     try {
       setQueueLoading(true);
@@ -343,7 +381,9 @@ export default function Moderation() {
 
     const confirmed =
       window.confirm(
-        `Are you sure you want to ${verb} this report?`
+        `Are you sure you want to ${verb} this ${targetTypeLabel(
+          report.targetType
+        ).toLowerCase()} report?\n\nReason: ${report.reason || "other"}`
       );
 
     if (!confirmed) {
@@ -570,6 +610,62 @@ export default function Moderation() {
             />
           }
         >
+          <div
+            className="button-row"
+            style={{
+              marginBottom:
+                "1rem",
+              gap:
+                "0.5rem",
+              flexWrap:
+                "wrap"
+            }}
+          >
+            {[
+              ["all", "All"],
+              ["profiles", "Profiles"],
+              ["chain", "Chain"]
+            ].map(
+              ([
+                value,
+                label
+              ]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={
+                    reportFilter === value
+                      ? "button primary"
+                      : "button secondary"
+                  }
+                  onClick={() =>
+                    setReportFilter(
+                      value
+                    )
+                  }
+                >
+                  {label}
+                </button>
+              )
+            )}
+
+            <button
+              type="button"
+              className="button secondary"
+              disabled={
+                queueLoading
+              }
+              onClick={
+                loadDashboard
+              }
+            >
+              <RefreshCw
+                size={16}
+              />
+              Refresh
+            </button>
+          </div>
+
           {queueLoading ? (
             <p className="muted">
               Loading reports...
@@ -579,9 +675,14 @@ export default function Moderation() {
             <p className="muted">
               There are no open platform reports.
             </p>
+          ) : filteredReports.length ===
+            0 ? (
+            <p className="muted">
+              No open reports match this filter.
+            </p>
           ) : (
             <div className="public-profile-entry-list">
-              {reports.map(
+              {filteredReports.map(
                 (report) => (
                   <article
                     key={
@@ -624,11 +725,43 @@ export default function Moderation() {
                       </p>
                     )}
 
-                    {report.body && (
+                    {(report.body ||
+                      report.targetPreview?.note ||
+                      report.targetPreview?.about) && (
                       <div className="public-entry-quote">
                         <p>
-                          {report.body}
+                          {report.body ||
+                            report.targetPreview?.note ||
+                            report.targetPreview?.about}
                         </p>
+                      </div>
+                    )}
+
+                    {report.targetExists === false && (
+                      <p className="status">
+                        This reported content is no longer available.
+                      </p>
+                    )}
+
+                    {report.targetPath && (
+                      <div
+                        className="button-row"
+                        style={{
+                          marginBottom:
+                            "0.75rem"
+                        }}
+                      >
+                        <Link
+                          to={
+                            report.targetPath
+                          }
+                          className="button secondary"
+                        >
+                          <ExternalLink
+                            size={16}
+                          />
+                          View Profile
+                        </Link>
                       </div>
                     )}
 
