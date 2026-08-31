@@ -4283,480 +4283,182 @@ p {
 }
 
 /* ============================================================
-   LIT CHAIN IMMERSIVE E-READER
+   LIT CHAIN READER — PARAGRAPH NUMBERS, SWIPE + DARK MODE
    ============================================================ */
-body.reader-mode {
-  overflow: hidden;
-  background: #fbf8f1;
+
+.reader-page-immersive .reader-paragraph-row {
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 0.7rem;
 }
 
-body.reader-mode .site-header,
-body.reader-mode .foundation-footer,
-body.reader-mode .foundation-footer-new {
-  display: none !important;
-}
-
-body.reader-mode .app-shell {
-  min-height: 100dvh;
-}
-
-.reader-page-immersive {
-  position: relative;
-  width: 100%;
-  height: 100dvh;
-  min-height: 100dvh;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  background: #fbf8f1;
-  color: var(--ink);
-}
-
-.ereader-topbar,
-.ereader-bottombar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  z-index: 60;
-  transition: transform 180ms ease, opacity 180ms ease;
-  background: rgba(251, 248, 241, 0.94);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-}
-
-.ereader-topbar {
-  top: 0;
-  min-height: 72px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 1rem;
-  padding: max(0.8rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) 0.8rem max(1rem, env(safe-area-inset-left));
-  border-bottom: 1px solid rgba(11, 45, 69, 0.08);
-}
-
-.ereader-topbar.hidden {
-  transform: translateY(-105%);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.ereader-bottombar {
-  bottom: 0;
-  padding: 0.65rem max(1rem, env(safe-area-inset-right)) max(0.8rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
-  border-top: 1px solid rgba(11, 45, 69, 0.08);
-}
-
-.ereader-bottombar.hidden {
-  transform: translateY(105%);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.ereader-book-heading {
-  min-width: 0;
-  text-align: center;
-  line-height: 1.2;
-}
-
-.ereader-book-heading strong,
-.ereader-book-heading small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ereader-book-heading strong {
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 0.95rem;
-}
-
-.ereader-book-heading small {
-  margin-top: 0.15rem;
-  color: var(--muted);
-  font-size: 0.72rem;
-}
-
-.ereader-top-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.2rem;
-}
-
-.ereader-icon-button {
-  min-width: 42px;
-  height: 42px;
-  padding: 0 0.55rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.25rem;
+.reader-page-immersive .ereader-paragraph-number {
+  width: 30px;
+  min-width: 30px;
+  padding: 0.15rem 0.25rem;
+  margin-top: 0.18em;
   border: 0;
-  border-radius: 999px;
+  border-radius: 8px;
   background: transparent;
-  color: var(--ink);
-}
-
-.ereader-icon-button:hover,
-.ereader-icon-button:focus-visible {
-  background: rgba(11, 45, 69, 0.07);
-}
-
-.ereader-back-button span {
+  color: rgba(97, 113, 124, 0.42);
+  font-size: 0.63em;
   font-weight: 700;
+  line-height: 1.2;
+  text-align: right;
+  opacity: 1;
 }
 
-.ereader-topbar .reader-controls {
-  margin: 0;
+.reader-page-immersive .ereader-paragraph-number:hover,
+.reader-page-immersive .ereader-paragraph-number:focus-visible {
+  background: rgba(47, 142, 156, 0.08);
+  color: var(--muted);
 }
 
-.ereader-topbar .reader-controls button {
-  min-width: 38px;
-  height: 38px;
-  padding: 0.2rem 0.35rem;
-  background: transparent;
-  border-radius: 999px;
-}
-
-.ereader-status {
-  position: fixed;
-  top: 78px;
-  left: 50%;
-  z-index: 65;
-  transform: translateX(-50%);
-  max-width: calc(100vw - 2rem);
-  margin: 0;
-  padding: 0.55rem 0.85rem;
-  border-radius: 999px;
-  background: rgba(11, 45, 69, 0.9);
-  color: white;
-  font-size: 0.82rem;
-  box-shadow: 0 8px 24px rgba(11, 45, 69, 0.15);
+.reader-page-immersive .ereader-paragraph-number.has-note {
+  color: var(--primary);
+  background: rgba(47, 142, 156, 0.08);
 }
 
 .reader-page-immersive .ereader-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100dvh !important;
-  min-height: 0 !important;
-  max-height: none !important;
-  margin: 0;
-  padding: clamp(84px, 11vh, 118px) clamp(28px, 8vw, 110px) clamp(118px, 15vh, 150px);
-  overflow: hidden;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: #fbf8f1;
-  box-shadow: none !important;
-  line-height: 1.72;
-  touch-action: manipulation;
-  user-select: text;
-  -webkit-user-select: text;
+  touch-action: pan-y pinch-zoom;
+  overscroll-behavior-x: contain;
 }
 
-.reader-page-immersive .reader-paragraph-row {
-  display: grid;
-  grid-template-columns: 8px minmax(0, 1fr);
-  gap: 0.65rem;
-  align-items: start;
+.reader-page-immersive.reader-theme-dark {
+  --reader-dark-bg: #111315;
+  --reader-dark-surface: #171a1d;
+  --reader-dark-surface-2: #1d2125;
+  --reader-dark-text: #d8d8d5;
+  --reader-dark-muted: #8e9498;
+  --reader-dark-line: rgba(255, 255, 255, 0.10);
+  --reader-dark-accent: #74c9c6;
+
+  background: var(--reader-dark-bg);
+  color: var(--reader-dark-text);
 }
 
-.reader-page-immersive .reader-paragraph-row p {
-  margin: 0 0 1.15em;
-  max-width: 74ch;
+.reader-theme-dark .ereader-canvas {
+  background: var(--reader-dark-bg);
+  color: var(--reader-dark-text);
+  border-color: transparent;
 }
 
-.paragraph-note-marker {
-  width: 4px;
-  height: 4px;
-  margin-top: 0.85em;
-  border-radius: 50%;
-  background: transparent;
+.reader-theme-dark .ereader-canvas p {
+  color: var(--reader-dark-text);
 }
 
-.paragraph-note-marker.visible {
-  background: var(--secondary);
-  box-shadow: 0 0 0 3px rgba(201, 150, 42, 0.14);
+.reader-theme-dark .ereader-topbar,
+.reader-theme-dark .ereader-bottombar {
+  background: rgba(17, 19, 21, 0.92);
+  border-color: var(--reader-dark-line);
+  color: var(--reader-dark-text);
 }
 
-.reader-paragraph-target p,
-.reader-paragraph-selected p {
-  background: rgba(201, 150, 42, 0.08);
-  border-radius: 5px;
+.reader-theme-dark .ereader-book-heading strong,
+.reader-theme-dark .ereader-back-button,
+.reader-theme-dark .ereader-icon-button,
+.reader-theme-dark .ereader-page-button {
+  color: var(--reader-dark-text);
 }
 
-.ereader-loading {
-  height: 100%;
-  display: grid;
-  place-content: center;
-  gap: 0.4rem;
-  text-align: center;
+.reader-theme-dark .ereader-book-heading small,
+.reader-theme-dark .ereader-progress-meta,
+.reader-theme-dark .muted {
+  color: var(--reader-dark-muted);
 }
 
-.ereader-loading strong {
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.25rem;
+.reader-theme-dark .ereader-icon-button:hover,
+.reader-theme-dark .ereader-icon-button:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
 }
 
-.ereader-loading span {
-  color: var(--muted);
+.reader-theme-dark .ereader-notes-button {
+  background: #e6e6e2;
+  color: #15181a;
 }
 
-.ereader-progress-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.35rem;
-  color: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 700;
+.reader-theme-dark .ereader-progress-slider {
+  accent-color: #d7d7d2;
 }
 
-.ereader-progress-slider {
-  width: 100%;
-  height: 22px;
-  margin: 0;
-  accent-color: var(--ink);
+.reader-theme-dark .ereader-sheet-backdrop {
+  background: rgba(0, 0, 0, 0.58);
 }
 
-.ereader-bottom-actions {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.2rem;
+.reader-theme-dark .ereader-sheet {
+  background: var(--reader-dark-surface);
+  color: var(--reader-dark-text);
+  border-color: var(--reader-dark-line);
 }
 
-.ereader-page-button,
-.ereader-notes-button {
-  min-height: 40px;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-  font-weight: 800;
+.reader-theme-dark .ereader-sheet-heading {
+  background: rgba(23, 26, 29, 0.96);
 }
 
-.ereader-page-button:first-child {
-  justify-self: start;
+.reader-theme-dark .ereader-sheet-heading h2,
+.reader-theme-dark .ereader-note-card p,
+.reader-theme-dark .paragraph-select-label {
+  color: var(--reader-dark-text);
 }
 
-.ereader-page-button:last-child {
-  justify-self: end;
+.reader-theme-dark .ereader-sheet-heading small {
+  color: var(--reader-dark-accent);
 }
 
-.ereader-page-button:disabled {
-  opacity: 0.3;
+.reader-theme-dark .ereader-note-card {
+  background: var(--reader-dark-surface-2);
+  border-color: var(--reader-dark-line);
 }
 
-.ereader-notes-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.85rem;
-  border-radius: 999px;
-  background: var(--ink);
-  color: white;
+.reader-theme-dark .ereader-note-card textarea,
+.reader-theme-dark .ereader-note-card select,
+.reader-theme-dark .ereader-add-note textarea,
+.reader-theme-dark .ereader-add-note select {
+  background: #111315;
+  color: var(--reader-dark-text);
+  border-color: var(--reader-dark-line);
 }
 
-.ereader-sheet-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: 1rem;
-  background: rgba(11, 45, 69, 0.3);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+.reader-theme-dark .ereader-paragraph-preview {
+  background: rgba(116, 201, 198, 0.07);
+  border-left-color: var(--reader-dark-accent);
+  color: #b5b9bb;
 }
 
-.ereader-sheet {
-  width: min(720px, 100%);
-  max-height: min(78dvh, 760px);
-  overflow-y: auto;
-  padding: 1.25rem;
-  border: 1px solid rgba(11, 45, 69, 0.1);
-  border-radius: 26px 26px 18px 18px;
-  background: #fffdf8;
-  box-shadow: 0 26px 80px rgba(11, 45, 69, 0.24);
+.reader-theme-dark .reader-paragraph-selected,
+.reader-theme-dark .reader-paragraph-target {
+  background: rgba(116, 201, 198, 0.06);
 }
 
-.ereader-sheet-heading {
-  position: sticky;
-  top: -1.25rem;
-  z-index: 2;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin: -1.25rem -1.25rem 1rem;
-  padding: 1.15rem 1.25rem 0.9rem;
-  background: rgba(255, 253, 248, 0.96);
-  backdrop-filter: blur(12px);
+.reader-theme-dark .ereader-paragraph-number {
+  color: rgba(216, 216, 213, 0.27);
 }
 
-.ereader-sheet-heading small {
-  color: var(--primary);
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+.reader-theme-dark .ereader-paragraph-number.has-note {
+  color: var(--reader-dark-accent);
+  background: rgba(116, 201, 198, 0.08);
 }
 
-.ereader-sheet-heading h2 {
-  margin: 0.2rem 0 0;
-  font-size: 1.35rem;
+.reader-theme-dark .margin-close-button,
+.reader-theme-dark .button.secondary {
+  background: #262a2e;
+  color: var(--reader-dark-text);
 }
 
-.ereader-toc-list,
-.ereader-note-list {
-  display: grid;
-  gap: 0.65rem;
-}
-
-.ereader-toc-list .toc-link {
-  width: 100%;
-  padding: 0.8rem 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.ereader-note-card {
-  padding: 1rem;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: white;
-}
-
-.ereader-note-card textarea,
-.ereader-note-card select,
-.ereader-add-note textarea,
-.ereader-add-note select {
-  width: 100%;
-  max-width: 100%;
-  padding: 0.8rem 0.9rem;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: white;
-  color: var(--ink);
-  font: inherit;
-}
-
-.ereader-add-note {
-  padding-top: 0;
-  border-top: 0;
-}
-
-.ereader-paragraph-preview {
-  margin: 0 0 1rem;
-  padding: 0.8rem 1rem;
-  border-left: 3px solid var(--primary);
-  background: rgba(47, 142, 156, 0.06);
-  color: var(--muted);
-  font-family: Georgia, "Times New Roman", serif;
-  line-height: 1.55;
-}
-
-.ereader-sheet-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem;
-  margin-top: 1rem;
-}
-
-@media (min-width: 900px) {
-  .reader-page-immersive .ereader-canvas {
-    padding-left: max(8vw, calc((100vw - 850px) / 2));
-    padding-right: max(8vw, calc((100vw - 850px) / 2));
-  }
+.reader-theme-dark .button.primary {
+  background: #e4e4df;
+  color: #15181a;
 }
 
 @media (max-width: 720px) {
-  .ereader-topbar {
-    min-height: 62px;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 0.25rem;
-    padding-inline: 0.55rem;
-  }
-
-  .ereader-back-button {
-    min-width: 40px;
-    padding-inline: 0.25rem;
-  }
-
-  .ereader-back-button span {
-    display: none;
-  }
-
-  .ereader-book-heading small {
-    display: none;
-  }
-
-  .ereader-top-actions {
-    gap: 0;
-  }
-
-  .ereader-top-actions .ereader-icon-button {
-    min-width: 38px;
-    width: 38px;
-    padding: 0;
-  }
-
-  .ereader-topbar .reader-controls {
-    display: flex;
-    width: auto;
-  }
-
-  .ereader-topbar .reader-controls button {
-    min-width: 34px;
-    width: 34px;
-    height: 36px;
-    padding: 0;
-  }
-
-  .reader-page-immersive .ereader-canvas {
-    padding: 74px 22px 126px 18px;
-    font-family: Georgia, "Times New Roman", serif;
-    line-height: 1.68;
-  }
-
   .reader-page-immersive .reader-paragraph-row {
-    grid-template-columns: 6px minmax(0, 1fr);
+    grid-template-columns: 28px minmax(0, 1fr);
     gap: 0.45rem;
   }
 
-  .reader-page-immersive .reader-paragraph-row p {
-    margin-bottom: 1.05em;
-  }
-
-  .ereader-bottombar {
-    padding-inline: 0.75rem;
-  }
-
-  .ereader-progress-meta {
-    font-size: 0.7rem;
-  }
-
-  .ereader-page-button {
-    font-size: 0.78rem;
-  }
-
-  .ereader-notes-button {
-    min-height: 38px;
-    padding: 0.45rem 0.75rem;
-  }
-
-  .ereader-sheet-backdrop {
-    padding: 0;
-  }
-
-  .ereader-sheet {
-    width: 100%;
-    max-height: 82dvh;
-    border-radius: 24px 24px 0 0;
-    border-bottom: 0;
-    padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+  .reader-page-immersive .ereader-paragraph-number {
+    width: 25px;
+    min-width: 25px;
+    padding-inline: 0.1rem;
+    font-size: 0.58em;
   }
 }
