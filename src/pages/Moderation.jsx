@@ -14,7 +14,6 @@ import {
 import {
   ArrowLeft,
   Check,
-  Flag,
   History,
   KeyRound,
   ExternalLink,
@@ -28,8 +27,10 @@ import { auth } from "../firebase";
 
 import {
   getMyPlatformRole,
+  getPlatformEnforcementSummary,
   getPlatformModerationActions,
   getPlatformModerationReports,
+  getPlatformRoleSummary,
   resolvePlatformModerationReport
 } from "../services/platformModeration.js";
 
@@ -151,6 +152,54 @@ function DashboardCard({
 }
 
 
+function SummaryCard({
+  label,
+  value,
+  href,
+  muted = false
+}) {
+  return (
+    <a
+      href={href}
+      className="panel profile-panel"
+      style={{
+        display:
+          "block",
+        textDecoration:
+          "none",
+        minWidth:
+          0
+      }}
+    >
+      <p className="eyebrow">
+        {label}
+      </p>
+
+      <strong
+        style={{
+          display:
+            "block",
+          fontSize:
+            "1.75rem",
+          lineHeight:
+            1.1,
+          marginTop:
+            "0.25rem"
+        }}
+      >
+        {value}
+      </strong>
+
+      {muted && (
+        <small className="muted">
+          Available in the next phase
+        </small>
+      )}
+    </a>
+  );
+}
+
+
 export default function Moderation() {
   const [
     authLoading,
@@ -176,6 +225,22 @@ export default function Moderation() {
     actions,
     setActions
   ] = useState([]);
+
+  const [
+    enforcementSummary,
+    setEnforcementSummary
+  ] = useState({
+    available: false,
+    count: null
+  });
+
+  const [
+    roleSummary,
+    setRoleSummary
+  ] = useState({
+    available: false,
+    count: null
+  });
 
   const [
     queueLoading,
@@ -269,11 +334,15 @@ export default function Moderation() {
 
       const [
         loadedReports,
-        loadedActions
+        loadedActions,
+        loadedEnforcement,
+        loadedRoles
       ] =
         await Promise.all([
           getPlatformModerationReports(),
-          getPlatformModerationActions()
+          getPlatformModerationActions(),
+          getPlatformEnforcementSummary(),
+          getPlatformRoleSummary()
         ]);
 
       setReports(
@@ -282,6 +351,14 @@ export default function Moderation() {
 
       setActions(
         loadedActions
+      );
+
+      setEnforcementSummary(
+        loadedEnforcement
+      );
+
+      setRoleSummary(
+        loadedRoles
       );
     } catch (loadError) {
       console.error(
@@ -346,11 +423,15 @@ export default function Moderation() {
             ) {
               const [
                 loadedReports,
-                loadedActions
+                loadedActions,
+                loadedEnforcement,
+                loadedRoles
               ] =
                 await Promise.all([
                   getPlatformModerationReports(),
-                  getPlatformModerationActions()
+                  getPlatformModerationActions(),
+                  getPlatformEnforcementSummary(),
+                  getPlatformRoleSummary()
                 ]);
 
               if (!active) {
@@ -363,6 +444,14 @@ export default function Moderation() {
 
               setActions(
                 loadedActions
+              );
+
+              setEnforcementSummary(
+                loadedEnforcement
+              );
+
+              setRoleSummary(
+                loadedRoles
               );
             }
           } catch (
@@ -627,6 +716,68 @@ export default function Moderation() {
         </section>
 
 
+        <section
+          aria-label="Moderation dashboard summary"
+        >
+          <div
+            style={{
+              display:
+                "grid",
+              gridTemplateColumns:
+                "repeat(auto-fit, minmax(145px, 1fr))",
+              gap:
+                "0.75rem"
+            }}
+          >
+            <SummaryCard
+              label="Open Reports"
+              value={
+                reports.length
+              }
+              href="#open-reports"
+            />
+
+            <SummaryCard
+              label="History"
+              value={
+                actions.length
+              }
+              href="#moderation-history"
+            />
+
+            {platformRole.isPlatformAdmin && (
+              <SummaryCard
+                label="Enforcement"
+                value={
+                  enforcementSummary.available
+                    ? enforcementSummary.count
+                    : "—"
+                }
+                href="#enforcement"
+                muted={
+                  !enforcementSummary.available
+                }
+              />
+            )}
+
+            {platformRole.isFoundationAdmin && (
+              <SummaryCard
+                label="Platform Roles"
+                value={
+                  roleSummary.available
+                    ? roleSummary.count
+                    : "—"
+                }
+                href="#platform-roles"
+                muted={
+                  !roleSummary.available
+                }
+              />
+            )}
+          </div>
+        </section>
+
+
         {queueStatus && (
           <p className="status">
             {queueStatus}
@@ -634,14 +785,10 @@ export default function Moderation() {
         )}
 
 
+        <div id="open-reports">
         <DashboardCard
           eyebrow="Report Queue"
           title={`Open Reports (${reports.length})`}
-          icon={
-            <Flag
-              size={22}
-            />
-          }
         >
           <div
             className="button-row"
@@ -898,8 +1045,10 @@ export default function Moderation() {
             </div>
           )}
         </DashboardCard>
+        </div>
 
 
+        <div id="moderation-history">
         <DashboardCard
           eyebrow="Audit Log"
           title={`Moderation History (${actions.length})`}
@@ -1107,8 +1256,10 @@ export default function Moderation() {
             </div>
           )}
         </DashboardCard>
+        </div>
 
 
+        <div id="enforcement">
         <DashboardCard
           eyebrow="Account Controls"
           title="Enforcement"
@@ -1118,14 +1269,23 @@ export default function Moderation() {
             />
           }
         >
-          <p className="muted">
-            Account warnings, suspensions, and platform bans will be connected
-            during the enforcement phase. Canonical Lit Chain blocks remain
-            immutable.
-          </p>
+          {platformRole.isPlatformAdmin ? (
+            <p className="muted">
+              Account warnings, suspensions, and platform bans will be connected
+              during the enforcement phase. Canonical Lit Chain blocks remain
+              immutable.
+            </p>
+          ) : (
+            <p className="muted">
+              Enforcement controls are restricted to Platform Administrators and
+              Foundation Administrators.
+            </p>
+          )}
         </DashboardCard>
+        </div>
 
 
+        <div id="platform-roles">
         <DashboardCard
           eyebrow="Platform Access"
           title="Platform Roles"
@@ -1146,6 +1306,7 @@ export default function Moderation() {
             </p>
           )}
         </DashboardCard>
+        </div>
       </div>
     </main>
   );
