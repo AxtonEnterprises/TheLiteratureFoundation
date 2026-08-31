@@ -1116,14 +1116,39 @@ export async function getPlatformEnforcements() {
         })
       )
       .filter(
-        (item) =>
-          [
-            "warning",
-            "suspended",
-            "banned"
-          ].includes(
-            item.status
-          )
+        (item) => {
+          if (
+            ![
+              "warning",
+              "suspended",
+              "banned"
+            ].includes(
+              item.status
+            )
+          ) {
+            return false;
+          }
+
+          if (
+            item.status ===
+              "suspended" &&
+            item.endsAtISO
+          ) {
+            const end =
+              new Date(
+                item.endsAtISO
+              ).getTime();
+
+            if (
+              Number.isFinite(end) &&
+              end <= Date.now()
+            ) {
+              return false;
+            }
+          }
+
+          return true;
+        }
       )
       .sort(
         (a, b) =>
@@ -1273,6 +1298,45 @@ export async function applyPlatformEnforcement({
     cleanTargetUserId
   );
 
+  const existingSnapshot = await getDoc(
+    enforcementRef
+  );
+
+  const existingEnforcement =
+    existingSnapshot.exists()
+      ? existingSnapshot.data()
+      : null;
+
+  const enforcementRank = {
+    cleared: 0,
+    warning: 1,
+    suspended: 2,
+    banned: 3
+  };
+
+  let existingStatus =
+    existingEnforcement?.status || "cleared";
+
+  if (
+    existingStatus === "suspended" &&
+    existingEnforcement?.endsAtISO
+  ) {
+    const existingEnd = new Date(
+      existingEnforcement.endsAtISO
+    ).getTime();
+
+    if (
+      Number.isFinite(existingEnd) &&
+      existingEnd <= Date.now()
+    ) {
+      existingStatus = "cleared";
+    }
+  }
+
+  const shouldReplaceActiveEnforcement =
+    (enforcementRank[normalizedStatus] || 0) >=
+    (enforcementRank[existingStatus] || 0);
+
   const actionRef = doc(
     collection(
       db,
@@ -1282,23 +1346,25 @@ export async function applyPlatformEnforcement({
 
   const batch = writeBatch(db);
 
-  batch.set(
-    enforcementRef,
-    {
-      userId: cleanTargetUserId,
-      status: normalizedStatus,
-      reason: cleanReason,
-      details: String(details || "").trim(),
-      enforcedBy: moderator.uid,
-      targetRole: targetRole.role,
-      durationHours: normalizedDurationHours,
-      startedAtISO: now,
-      endsAtISO,
-      reportId: reportId ? String(reportId) : null,
-      updatedAtISO: now,
-      updatedAt: serverTimestamp()
-    }
-  );
+  if (shouldReplaceActiveEnforcement) {
+    batch.set(
+      enforcementRef,
+      {
+        userId: cleanTargetUserId,
+        status: normalizedStatus,
+        reason: cleanReason,
+        details: String(details || "").trim(),
+        enforcedBy: moderator.uid,
+        targetRole: targetRole.role,
+        durationHours: normalizedDurationHours,
+        startedAtISO: now,
+        endsAtISO,
+        reportId: reportId ? String(reportId) : null,
+        updatedAtISO: now,
+        updatedAt: serverTimestamp()
+      }
+    );
+  }
 
   batch.set(
     actionRef,
@@ -1357,8 +1423,15 @@ export async function applyPlatformEnforcement({
 
   return {
     userId: cleanTargetUserId,
-    status: normalizedStatus,
-    endsAtISO
+    requestedStatus: normalizedStatus,
+    effectiveStatus:
+      shouldReplaceActiveEnforcement
+        ? normalizedStatus
+        : existingStatus,
+    endsAtISO:
+      shouldReplaceActiveEnforcement
+        ? endsAtISO
+        : existingEnforcement?.endsAtISO || null
   };
 }
 
