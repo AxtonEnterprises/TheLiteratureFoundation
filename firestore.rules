@@ -279,12 +279,49 @@ function isPlatformSuspendedOrBanned(userId) {
   return exists(
     /databases/$(database)/documents/platformEnforcement/$(userId)
   )
-  && get(
-    /databases/$(database)/documents/platformEnforcement/$(userId)
-  ).data.status in [
-    "suspended",
-    "banned"
-  ];
+  && (
+    get(
+      /databases/$(database)/documents/platformEnforcement/$(userId)
+    ).data.status == "banned"
+    ||
+    (
+      get(
+        /databases/$(database)/documents/platformEnforcement/$(userId)
+      ).data.status == "suspended"
+      &&
+      !(
+        get(
+          /databases/$(database)/documents/platformEnforcement/$(userId)
+        ).data.keys().hasAll(["endsAt"])
+        &&
+        get(
+          /databases/$(database)/documents/platformEnforcement/$(userId)
+        ).data.endsAt is timestamp
+        &&
+        request.time >= get(
+          /databases/$(database)/documents/platformEnforcement/$(userId)
+        ).data.endsAt
+      )
+    )
+  );
+}
+
+/*
+ * Central Phase 4.3C.2 platform write gate.
+ *
+ * - warning: writes remain allowed
+ * - cleared: writes remain allowed
+ * - active suspension: writes are blocked
+ * - expired suspension: writes resume automatically
+ * - ban: writes remain blocked until cleared
+ *
+ * Legacy suspension records without a Firestore Timestamp
+ * are treated as active (secure-by-default) until cleared
+ * or re-applied with the new schema.
+ */
+function platformWriteAllowed() {
+  return signedIn()
+    && !isPlatformSuspendedOrBanned(request.auth.uid);
 }
 
 
@@ -317,7 +354,8 @@ match /groups/{groupId}/assignments/{assignmentId} {
   if classMember(groupId);
 
     allow create, update, delete:
-     if classTeacher(groupId);
+     if platformWriteAllowed()
+     && classTeacher(groupId);
 }
 
 match /groups/{groupId}/studentProgress/{progressId} {
@@ -329,19 +367,24 @@ match /groups/{groupId}/studentProgress/{progressId} {
   );
 
     allow create:
-     if classMember(groupId)
+     if platformWriteAllowed()
+     && classMember(groupId)
      && request.resource.data.userId == request.auth.uid;
 
     allow update:
-     if classMember(groupId)
+     if platformWriteAllowed()
+     && classMember(groupId)
      && resource.data.userId == request.auth.uid
      && request.resource.data.userId == request.auth.uid;
 
     allow delete:
-     if classTeacher(groupId)
-     || (
+     if platformWriteAllowed()
+     && (
+       classTeacher(groupId)
+       || (
        request.auth != null
        && resource.data.userId == request.auth.uid
+       )
      );
 }
 
@@ -467,7 +510,8 @@ match /users/{userId} {
    );
 
   allow create:
-   if isOwner(userId)
+   if platformWriteAllowed()
+   && isOwner(userId)
    && request.resource.data.userId == userId
    && validVisibility(
      request.resource.data
@@ -477,7 +521,8 @@ match /users/{userId} {
    );
 
   allow update:
-   if isOwner(userId)
+   if platformWriteAllowed()
+   && isOwner(userId)
    && resource.data.userId == userId
          && request.resource.data.userId == userId
          && validVisibility(
@@ -497,13 +542,16 @@ match /users/{userId} {
          * moderators blanket access to private user paths.
          */
         allow delete:
-          if isOwner(userId)
-          || (
+          if platformWriteAllowed()
+          && (
+            isOwner(userId)
+            || (
             resource.data.visibility == "group"
             && resource.data.groupId is string
             && isGroupModerator(
               resource.data.groupId
             )
+          )
           );
     }
 }
@@ -535,7 +583,8 @@ match /usernames/{username} {
      if false;
 
     allow create:
-     if validUsernameReservation(
+     if platformWriteAllowed()
+     && validUsernameReservation(
        username,
        request.resource.data
      );
@@ -544,7 +593,7 @@ match /usernames/{username} {
      if false;
 
     allow delete:
-     if signedIn()
+     if platformWriteAllowed()
      && resource.data.userId == request.auth.uid;
 }
 
@@ -558,7 +607,8 @@ match /publicProfiles/{userId} {
   if true;
 
     allow create:
-     if isOwner(userId)
+     if platformWriteAllowed()
+     && isOwner(userId)
      && request.resource.data.userId == userId;
 
     /*
@@ -569,12 +619,14 @@ match /publicProfiles/{userId} {
     * impersonating a user or rewriting profile content.
     */
     allow update:
-     if isOwner(userId)
+     if platformWriteAllowed()
+     && isOwner(userId)
      && resource.data.userId == userId
      && request.resource.data.userId == userId;
 
     allow delete:
-     if isOwner(userId);
+     if platformWriteAllowed()
+     && isOwner(userId);
 }
 
 
@@ -600,14 +652,14 @@ match /friendships/{friendshipId} {
      );
 
     allow create:
-     if signedIn()
+     if platformWriteAllowed()
      && validFriendRequest(
        request.resource.data
      )
      && request.resource.data.requestedBy == request.auth.uid;
 
     allow update:
-     if signedIn()
+     if platformWriteAllowed()
      && currentUserInFriendship(
       resource.data
      )
@@ -619,7 +671,8 @@ match /friendships/{friendshipId} {
      && request.auth.uid == resource.data.requestedTo;
 
     allow delete:
-     if currentUserInFriendship(
+     if platformWriteAllowed()
+     && currentUserInFriendship(
        resource.data
      );
 }
@@ -849,6 +902,15 @@ allow create:
   && validPlatformEnforcementStatus(
     request.resource.data.status
   )
+  && (
+    request.resource.data.status != "suspended"
+    ||
+    (
+      request.resource.data.endsAt is timestamp
+      && request.resource.data.endsAt > request.time
+      && request.resource.data.durationHours in [24, 168, 720]
+    )
+  )
   && request.resource.data.enforcedBy == request.auth.uid
   && request.resource.data.reason is string
   && request.resource.data.reason.size() > 0;
@@ -865,6 +927,15 @@ allow update:
   && request.resource.data.status is string
   && validPlatformEnforcementStatus(
     request.resource.data.status
+  )
+  && (
+    request.resource.data.status != "suspended"
+    ||
+    (
+      request.resource.data.endsAt is timestamp
+      && request.resource.data.endsAt > request.time
+      && request.resource.data.durationHours in [24, 168, 720]
+    )
   )
   && request.resource.data.enforcedBy == request.auth.uid
   && request.resource.data.reason is string
@@ -896,7 +967,7 @@ match /groups/{groupId} {
      * Group creation.
      */
     allow create:
-      if signedIn()
+      if platformWriteAllowed()
       && request.resource.data.ownerId == request.auth.uid
       && (
         request.resource.data.type == "group"
@@ -908,7 +979,7 @@ match /groups/{groupId} {
      * Ownership transfer is handled separately below.
      */
     allow update:
-      if signedIn()
+      if platformWriteAllowed()
       && (
         (
           (isGroupOwner(groupId) || isGroupAdmin(groupId))
@@ -926,7 +997,8 @@ match /groups/{groupId} {
       );
 
    allow update:
-    if isGroupMember(groupId)
+    if platformWriteAllowed()
+    && isGroupMember(groupId)
     && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
       "lastActivityAtISO",
       "lastActivityAt"
@@ -938,7 +1010,8 @@ match /groups/{groupId} {
     * Platform moderators do not gain ownership powers.
     */
    allow delete:
-     if isGroupOwner(groupId);
+     if platformWriteAllowed()
+     && isGroupOwner(groupId);
 
 /* ======================================================
       GROUP MEMBERS
@@ -960,7 +1033,7 @@ match /groups/{groupId} {
 * 4. Owner/admin approving a join request.
 */
 allow create:
- if signedIn()
+ if platformWriteAllowed()
  && request.resource.data.userId == userId
  && request.resource.data.groupId == groupId
  && !isBanned(groupId, userId)
@@ -1024,7 +1097,7 @@ allow create:
  * Ownership-transfer transactions are also supported.
  */
 allow update:
-  if signedIn()
+  if platformWriteAllowed()
   && (
     (
        isGroupOwner(groupId)
@@ -1068,7 +1141,7 @@ allow update:
  * Non-class moderator may remove members.
  */
 allow delete:
-  if signedIn()
+  if platformWriteAllowed()
   && (
     (
        request.auth.uid == userId
@@ -1123,7 +1196,8 @@ allow delete:
      );
 
        allow create:
-        if isGroupAdmin(groupId)
+        if platformWriteAllowed()
+        && isGroupAdmin(groupId)
         && request.resource.data.userId == userId
         && request.resource.data.groupId == groupId
         && !isBanned(
@@ -1143,7 +1217,7 @@ allow delete:
      * testing and is intentionally preserved.
      */
     allow update:
-      if signedIn()
+      if platformWriteAllowed()
       && (
         (
            request.auth.uid == userId
@@ -1169,7 +1243,8 @@ allow delete:
       );
 
     allow delete:
-     if isGroupAdmin(groupId);
+     if platformWriteAllowed()
+     && isGroupAdmin(groupId);
 }
 
 
@@ -1186,7 +1261,7 @@ match /joinRequests/{userId} {
   );
 
  allow create:
-  if signedIn()
+  if platformWriteAllowed()
   && request.auth.uid == userId
   && request.resource.data.userId == userId
   && request.resource.data.groupId == groupId
@@ -1212,7 +1287,8 @@ match /joinRequests/{userId} {
   ).data.joinPolicy == "request_to_join";
 
  allow update:
-  if isGroupAdmin(groupId)
+  if platformWriteAllowed()
+  && isGroupAdmin(groupId)
   && resource.data.userId == userId
   && request.resource.data.userId == resource.data.userId
   && request.resource.data.groupId == resource.data.groupId
@@ -1223,7 +1299,7 @@ match /joinRequests/{userId} {
         );
 
        allow delete:
-        if signedIn()
+        if platformWriteAllowed()
         && (
           request.auth.uid == userId
           || isGroupAdmin(groupId)
@@ -1246,19 +1322,22 @@ match /joinRequests/{userId} {
      );
 
        allow create:
-        if isGroupMember(groupId)
+        if platformWriteAllowed()
+        && isGroupMember(groupId)
         && request.resource.data.reporterUserId == request.auth.uid
         && request.resource.data.groupId == groupId
         && request.resource.data.status == "open";
 
        allow update:
-        if canDiscipline(
+        if platformWriteAllowed()
+        && canDiscipline(
           groupId,
           resource.data.reportedUserId
         );
 
        allow delete:
-        if isGroupOwner(groupId)
+        if platformWriteAllowed()
+        && isGroupOwner(groupId)
         && !existsAfter(
           /databases/$(database)/documents/groups/$(groupId)
         );
@@ -1277,7 +1356,8 @@ match /moderationActions/{actionId} {
   );
 
     allow create:
-     if (
+     if platformWriteAllowed()
+     && (
        isGroupOwner(groupId)
        || isGroupAdmin(groupId)
        || (
@@ -1294,7 +1374,8 @@ match /moderationActions/{actionId} {
      if false;
 
     allow delete:
-     if isGroupOwner(groupId)
+     if platformWriteAllowed()
+     && isGroupOwner(groupId)
      && !existsAfter(
        /databases/$(database)/documents/groups/$(groupId)
      );
@@ -1317,7 +1398,8 @@ match /bans/{userId} {
      );
 
     allow create:
-     if canDiscipline(groupId, userId)
+     if platformWriteAllowed()
+     && canDiscipline(groupId, userId)
      && request.resource.data.userId == userId
      && request.resource.data.groupId == groupId
      && request.resource.data.bannedBy == request.auth.uid
@@ -1325,7 +1407,8 @@ match /bans/{userId} {
        moderationTargetRole(groupId, userId);
 
     allow delete:
-     if canDisciplineStoredRole(
+     if platformWriteAllowed()
+     && canDisciplineStoredRole(
        groupId,
        resource.data.targetRole
      );
@@ -1343,7 +1426,8 @@ match /forumPosts/{postId} {
   if isGroupMember(groupId);
 
     allow create:
-     if isGroupMember(groupId)
+     if platformWriteAllowed()
+     && isGroupMember(groupId)
      && request.resource.data.userId == request.auth.uid
      && request.resource.data.groupId == groupId
      && request.resource.data.title is string
@@ -1351,7 +1435,8 @@ match /forumPosts/{postId} {
      && request.resource.data.pinned == false
      && request.resource.data.locked == false;
 allow update:
- if isGroupMember(groupId)
+ if platformWriteAllowed()
+ && isGroupMember(groupId)
  && (
    (
       resource.data.userId == request.auth.uid
@@ -1375,7 +1460,8 @@ allow update:
  );
 
 allow delete:
- if isGroupMember(groupId)
+ if platformWriteAllowed()
+ && isGroupMember(groupId)
  && (
    resource.data.userId == request.auth.uid
    || canDiscipline(
@@ -1389,17 +1475,20 @@ match /replies/{replyId} {
   if isGroupMember(groupId);
 
  allow create:
-  if isGroupMember(groupId)
+  if platformWriteAllowed()
+  && isGroupMember(groupId)
   && request.resource.data.userId == request.auth.uid
   && request.resource.data.groupId == groupId
   && request.resource.data.postId == postId;
              allow update:
-              if isGroupMember(groupId)
+              if platformWriteAllowed()
+              && isGroupMember(groupId)
               && resource.data.userId == request.auth.uid
               && request.resource.data.userId == request.auth.uid;
 
              allow delete:
-              if isGroupMember(groupId)
+              if platformWriteAllowed()
+              && isGroupMember(groupId)
               && (
                 resource.data.userId == request.auth.uid
                 || canDiscipline(
@@ -1464,7 +1553,7 @@ match /chainReplies/{replyId} {
   );
 
  allow create:
-  if signedIn()
+  if platformWriteAllowed()
   && request.resource.data.userId == request.auth.uid
   && request.resource.data.parentUserId is string
   && request.resource.data.parentEntryId is string
@@ -1486,7 +1575,7 @@ match /chainReplies/{replyId} {
     * or user-owned Chain data remains protected.
     */
     allow delete:
-     if signedIn()
+     if platformWriteAllowed()
      && (
        resource.data.userId == request.auth.uid
        ||
