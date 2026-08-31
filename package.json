@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "firebase:rules": "npx firebase-tools deploy --only firestore:rules",
+    "firebase:indexes": "npx firebase-tools deploy --only firestore:indexes",
+    "firebase:firestore": "npx firebase-tools deploy --only firestore"
   },
   "dependencies": {
     "@vitejs/plugin-react": "6.0.4",
