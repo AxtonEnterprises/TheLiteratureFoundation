@@ -30,12 +30,14 @@ import {
   getMyPlatformRole,
   applyPlatformEnforcement,
   clearPlatformEnforcement,
+  getPlatformAppeals,
   getPlatformEnforcements,
   getPlatformEnforcementSummary,
   getPlatformModerationActions,
   getPlatformModerationReports,
   getPlatformRoleSummary,
-  resolvePlatformModerationReport
+  resolvePlatformModerationReport,
+  reviewPlatformAppeal
 } from "../services/platformModeration.js";
 
 import SEO from "../components/SEO.jsx";
@@ -132,7 +134,9 @@ function moderationActionLabel(
     platform_warning: "Platform Warning",
     platform_suspension: "Platform Suspension",
     platform_ban: "Platform Ban",
-    platform_enforcement_cleared: "Enforcement Cleared"
+    platform_enforcement_cleared: "Enforcement Cleared",
+    platform_appeal_approved: "Appeal Approved",
+    platform_appeal_denied: "Appeal Denied"
   };
 
   return labels[action] || action || "Moderation Action";
@@ -265,6 +269,16 @@ export default function Moderation() {
   ] = useState(null);
 
   const [
+    appeals,
+    setAppeals
+  ] = useState([]);
+
+  const [
+    reviewingAppealId,
+    setReviewingAppealId
+  ] = useState(null);
+
+  const [
     roleSummary,
     setRoleSummary
   ] = useState({
@@ -367,7 +381,8 @@ export default function Moderation() {
         loadedActions,
         loadedEnforcement,
         loadedRoles,
-        loadedEnforcementRecords
+        loadedEnforcementRecords,
+        loadedAppeals
       ] =
         await Promise.all([
           getPlatformModerationReports(),
@@ -376,7 +391,8 @@ export default function Moderation() {
           getPlatformRoleSummary(),
           platformRole?.isPlatformAdmin
             ? getPlatformEnforcements()
-            : Promise.resolve([])
+            : Promise.resolve([]),
+          getPlatformAppeals()
         ]);
 
       setReports(
@@ -397,6 +413,10 @@ export default function Moderation() {
 
       setEnforcements(
         loadedEnforcementRecords
+      );
+
+      setAppeals(
+        loadedAppeals
       );
     } catch (loadError) {
       console.error(
@@ -464,7 +484,8 @@ export default function Moderation() {
                 loadedActions,
                 loadedEnforcement,
                 loadedRoles,
-                loadedEnforcementRecords
+                loadedEnforcementRecords,
+                loadedAppeals
               ] =
                 await Promise.all([
                   getPlatformModerationReports(),
@@ -473,7 +494,8 @@ export default function Moderation() {
                   getPlatformRoleSummary(),
                   loadedRole.isPlatformAdmin
                     ? getPlatformEnforcements()
-                    : Promise.resolve([])
+                    : Promise.resolve([]),
+                  getPlatformAppeals()
                 ]);
 
               if (!active) {
@@ -498,6 +520,10 @@ export default function Moderation() {
 
               setEnforcements(
                 loadedEnforcementRecords
+              );
+
+              setAppeals(
+                loadedAppeals
               );
             }
           } catch (
@@ -754,6 +780,87 @@ export default function Moderation() {
   }
 
 
+
+  async function handleAppealReview(
+    appeal,
+    decision
+  ) {
+    if (!platformRole?.isPlatformAdmin) {
+      setQueueStatus(
+        "Platform Administrator access is required to decide appeals."
+      );
+      return;
+    }
+
+    const label =
+      decision === "approved"
+        ? "approve"
+        : "deny";
+
+    const reviewReason =
+      window.prompt(
+        `Reason to ${label} this appeal:`
+      );
+
+    if (
+      reviewReason === null ||
+      !String(
+        reviewReason
+      ).trim()
+    ) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        decision === "approved"
+          ? "Approve this appeal and clear the active suspension or ban?"
+          : "Deny this appeal and keep the current enforcement in place?"
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setReviewingAppealId(
+        appeal.id
+      );
+
+      setQueueStatus("");
+
+      await reviewPlatformAppeal({
+        appealId:
+          appeal.id,
+        decision,
+        reviewReason
+      });
+
+      await loadDashboard();
+
+      setQueueStatus(
+        decision === "approved"
+          ? "Appeal approved and enforcement cleared."
+          : "Appeal denied. Enforcement remains active."
+      );
+    } catch (reviewError) {
+      console.error(
+        "Could not review platform appeal:",
+        reviewError
+      );
+
+      setQueueStatus(
+        reviewError?.message ||
+        "We couldn't review this appeal."
+      );
+    } finally {
+      setReviewingAppealId(
+        null
+      );
+    }
+  }
+
+
   if (authLoading) {
     return (
       <main className="page-wrap">
@@ -945,6 +1052,17 @@ export default function Moderation() {
                 actions.length
               }
               href="#moderation-history"
+            />
+
+            <SummaryCard
+              label="Open Appeals"
+              value={
+                appeals.filter(
+                  (appeal) =>
+                    appeal.status === "open"
+                ).length
+              }
+              href="#appeals"
             />
 
             {platformRole.isPlatformAdmin && (
@@ -1297,6 +1415,154 @@ export default function Moderation() {
                         </button>
                       </div>
                     )}
+                  </article>
+                )
+              )}
+            </div>
+          )}
+        </DashboardCard>
+        </div>
+
+
+
+        <div id="appeals">
+        <DashboardCard
+          eyebrow="Account Appeals"
+          title={`Appeals (${appeals.filter((appeal) => appeal.status === "open").length} open)`}
+          icon={
+            <ShieldCheck
+              size={22}
+            />
+          }
+        >
+          {appeals.length === 0 ? (
+            <p className="muted">
+              No platform appeals have been submitted.
+            </p>
+          ) : (
+            <div className="public-profile-entry-list">
+              {appeals.map(
+                (appeal) => (
+                  <article
+                    key={appeal.id}
+                    className="public-profile-entry"
+                  >
+                    <div className="section-heading-row">
+                      <div>
+                        <p className="eyebrow">
+                          {appeal.enforcementStatus === "banned"
+                            ? "Ban Appeal"
+                            : "Suspension Appeal"}
+                        </p>
+
+                        <strong className="public-entry-book-title">
+                          {profileName(
+                            appeal.appellantProfile,
+                            appeal.appellantUserId
+                          )}
+                        </strong>
+                      </div>
+
+                      <span className="button secondary">
+                        {appeal.status === "open"
+                          ? "Open"
+                          : appeal.status === "approved"
+                            ? "Approved"
+                            : "Denied"}
+                      </span>
+                    </div>
+
+                    <p>
+                      <strong>Appeal:</strong>{" "}
+                      {appeal.explanation}
+                    </p>
+
+                    {appeal.enforcementReason && (
+                      <p className="muted">
+                        Original enforcement reason:{" "}
+                        {appeal.enforcementReason}
+                      </p>
+                    )}
+
+                    {appeal.createdAtISO && (
+                      <small className="muted">
+                        Submitted:{" "}
+                        {formatDate(
+                          appeal.createdAtISO
+                        )}
+                      </small>
+                    )}
+
+                    {appeal.status !== "open" &&
+                      appeal.reviewReason && (
+                        <p className="muted">
+                          Review:{" "}
+                          {appeal.reviewReason}
+                        </p>
+                      )}
+
+                    <div
+                      className="button-row"
+                      style={{
+                        marginTop: "0.75rem",
+                        gap: "0.5rem",
+                        flexWrap: "wrap"
+                      }}
+                    >
+                      <Link
+                        to={`/read/public/${appeal.appellantUserId}`}
+                        className="button secondary"
+                      >
+                        <ExternalLink size={16} />
+                        View Profile
+                      </Link>
+
+                      {appeal.status === "open" &&
+                        platformRole.isPlatformAdmin && (
+                          <>
+                            <button
+                              type="button"
+                              className="button primary"
+                              disabled={
+                                reviewingAppealId === appeal.id
+                              }
+                              onClick={() =>
+                                handleAppealReview(
+                                  appeal,
+                                  "approved"
+                                )
+                              }
+                            >
+                              <Check size={16} />
+                              Approve
+                            </button>
+
+                            <button
+                              type="button"
+                              className="button secondary"
+                              disabled={
+                                reviewingAppealId === appeal.id
+                              }
+                              onClick={() =>
+                                handleAppealReview(
+                                  appeal,
+                                  "denied"
+                                )
+                              }
+                            >
+                              <X size={16} />
+                              Deny
+                            </button>
+                          </>
+                        )}
+                    </div>
+
+                    {appeal.status === "open" &&
+                      !platformRole.isPlatformAdmin && (
+                        <p className="muted">
+                          Platform Administrators review appeal decisions.
+                        </p>
+                      )}
                   </article>
                 )
               )}
