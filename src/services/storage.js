@@ -35,6 +35,10 @@ import {
 
 import { createNotification } from "./notifications.js";
 
+import {
+  reportPlatformContent
+} from "./platformModeration.js";
+
 
 const LOCAL_SAVED_BOOKS_KEY =
   "randomReads.savedBooks";
@@ -2224,6 +2228,66 @@ export async function reportMarginEntry(
     );
   }
 
+  const visibility =
+    normalizeVisibility(
+      entry.visibility
+    );
+
+  /*
+   * Public Margins are platform content and belong in the
+   * global moderation queue.
+   *
+   * Group Margins remain in the existing Phase 4.2
+   * marginReports collection so group moderation continues
+   * to work exactly as before.
+   */
+  if (
+    visibility ===
+    "public"
+  ) {
+    return reportPlatformContent({
+      targetType:
+        "chain_entry",
+
+      targetId:
+        String(
+          entry.id
+        ),
+
+      targetUserId:
+        String(
+          entry.userId
+        ),
+
+      reason:
+        String(
+          reason ||
+          "other"
+        ),
+
+      details:
+        String(
+          details ||
+          ""
+        ).trim(),
+
+      title:
+        entry.title ||
+        "Untitled",
+
+      body:
+        entry.note ||
+        "",
+
+      bookId:
+        entry.bookId
+          ? String(
+              entry.bookId
+            )
+          : null
+    });
+  }
+
   const user =
     await requireUser();
 
@@ -2275,14 +2339,13 @@ export async function reportMarginEntry(
       status:
         "open",
 
-      visibility:
-        normalizeVisibility(
-          entry.visibility
-        ),
+      visibility,
 
       groupId:
-        entry.visibility === "group"
-          ? entry.groupId || null
+        visibility ===
+        "group"
+          ? entry.groupId ||
+            null
           : null,
 
       createdAtISO:
