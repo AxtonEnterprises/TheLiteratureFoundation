@@ -18,6 +18,7 @@ import {
   KeyRound,
   ExternalLink,
   RefreshCw,
+  ShieldAlert,
   ShieldCheck,
   UserX,
   X
@@ -27,6 +28,8 @@ import { auth } from "../firebase";
 
 import {
   getMyPlatformRole,
+  applyPlatformEnforcement,
+  getPlatformEnforcements,
   getPlatformEnforcementSummary,
   getPlatformModerationActions,
   getPlatformModerationReports,
@@ -116,6 +119,21 @@ function profileName(
         : fallback
     )
   );
+}
+
+
+function moderationActionLabel(
+  action
+) {
+  const labels = {
+    report_dismissed: "Report Dismissed",
+    report_resolved: "Report Resolved",
+    platform_warning: "Platform Warning",
+    platform_suspension: "Platform Suspension",
+    platform_ban: "Platform Ban"
+  };
+
+  return labels[action] || action || "Moderation Action";
 }
 
 
@@ -235,6 +253,16 @@ export default function Moderation() {
   });
 
   const [
+    enforcements,
+    setEnforcements
+  ] = useState([]);
+
+  const [
+    enforcingId,
+    setEnforcingId
+  ] = useState(null);
+
+  const [
     roleSummary,
     setRoleSummary
   ] = useState({
@@ -336,13 +364,17 @@ export default function Moderation() {
         loadedReports,
         loadedActions,
         loadedEnforcement,
-        loadedRoles
+        loadedRoles,
+        loadedEnforcementRecords
       ] =
         await Promise.all([
           getPlatformModerationReports(),
           getPlatformModerationActions(),
           getPlatformEnforcementSummary(),
-          getPlatformRoleSummary()
+          getPlatformRoleSummary(),
+          platformRole?.isPlatformAdmin
+            ? getPlatformEnforcements()
+            : Promise.resolve([])
         ]);
 
       setReports(
@@ -359,6 +391,10 @@ export default function Moderation() {
 
       setRoleSummary(
         loadedRoles
+      );
+
+      setEnforcements(
+        loadedEnforcementRecords
       );
     } catch (loadError) {
       console.error(
@@ -425,13 +461,17 @@ export default function Moderation() {
                 loadedReports,
                 loadedActions,
                 loadedEnforcement,
-                loadedRoles
+                loadedRoles,
+                loadedEnforcementRecords
               ] =
                 await Promise.all([
                   getPlatformModerationReports(),
                   getPlatformModerationActions(),
                   getPlatformEnforcementSummary(),
-                  getPlatformRoleSummary()
+                  getPlatformRoleSummary(),
+                  loadedRole.isPlatformAdmin
+                    ? getPlatformEnforcements()
+                    : Promise.resolve([])
                 ]);
 
               if (!active) {
@@ -452,6 +492,10 @@ export default function Moderation() {
 
               setRoleSummary(
                 loadedRoles
+              );
+
+              setEnforcements(
+                loadedEnforcementRecords
               );
             }
           } catch (
@@ -548,6 +592,94 @@ export default function Moderation() {
       setReviewingId(
         null
       );
+    }
+  }
+
+
+  async function handleEnforcement(
+    report,
+    status
+  ) {
+    if (!platformRole?.isPlatformAdmin) {
+      setQueueStatus(
+        "Platform Administrator access is required for enforcement."
+      );
+      return;
+    }
+
+    const labels = {
+      warning: "issue a warning",
+      suspended: "suspend this account",
+      banned: "permanently ban this account"
+    };
+
+    let durationHours = null;
+
+    if (status === "suspended") {
+      const duration = window.prompt(
+        "Suspension length:\n1 = 24 hours\n2 = 7 days\n3 = 30 days",
+        "2"
+      );
+
+      if (duration === null) return;
+
+      durationHours =
+        duration === "1" ? 24 : duration === "3" ? 720 : 168;
+    }
+
+    const reason = window.prompt(
+      `Reason to ${labels[status]}:`,
+      report.reason || ""
+    );
+
+    if (reason === null || !String(reason).trim()) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to ${labels[status]} for ${profileName(
+        report.targetProfile,
+        report.targetUserId
+      )}?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setEnforcingId(report.id);
+      setQueueStatus("");
+
+      await applyPlatformEnforcement({
+        targetUserId: report.targetUserId,
+        status,
+        reason,
+        details: report.details || "",
+        durationHours,
+        reportId: report.id,
+        targetType: report.targetType,
+        targetId: report.targetId,
+        bookId: report.bookId || null
+      });
+
+      await loadDashboard();
+
+      setQueueStatus(
+        status === "warning"
+          ? "Warning issued and report resolved."
+          : status === "suspended"
+            ? "Account suspended and report resolved."
+            : "Account banned and report resolved."
+      );
+    } catch (enforcementError) {
+      console.error(
+        "Could not apply platform enforcement:",
+        enforcementError
+      );
+
+      setQueueStatus(
+        enforcementError?.message ||
+        "We couldn't apply this enforcement action."
+      );
+    } finally {
+      setEnforcingId(null);
     }
   }
 
@@ -1039,6 +1171,62 @@ export default function Moderation() {
                         Dismiss
                       </button>
                     </div>
+
+                    {platformRole.isPlatformAdmin && (
+                      <div
+                        className="button-row"
+                        style={{
+                          marginTop: "0.5rem",
+                          gap: "0.5rem",
+                          flexWrap: "wrap"
+                        }}
+                      >
+                        <button
+                          type="button"
+                          className="button secondary"
+                          disabled={
+                            enforcingId === report.id ||
+                            reviewingId === report.id
+                          }
+                          onClick={() =>
+                            handleEnforcement(report, "warning")
+                          }
+                        >
+                          <ShieldAlert size={16} />
+                          Warn
+                        </button>
+
+                        <button
+                          type="button"
+                          className="button secondary"
+                          disabled={
+                            enforcingId === report.id ||
+                            reviewingId === report.id
+                          }
+                          onClick={() =>
+                            handleEnforcement(report, "suspended")
+                          }
+                        >
+                          <UserX size={16} />
+                          Suspend
+                        </button>
+
+                        <button
+                          type="button"
+                          className="button secondary"
+                          disabled={
+                            enforcingId === report.id ||
+                            reviewingId === report.id
+                          }
+                          onClick={() =>
+                            handleEnforcement(report, "banned")
+                          }
+                        >
+                          <X size={16} />
+                          Ban
+                        </button>
+                      </div>
+                    )}
                   </article>
                 )
               )}
@@ -1138,10 +1326,9 @@ export default function Moderation() {
                       <div className="section-heading-row">
                         <div>
                           <p className="eyebrow">
-                            {action.action ===
-                            "report_dismissed"
-                              ? "Report Dismissed"
-                              : "Report Resolved"}
+                            {moderationActionLabel(
+                              action.action
+                            )}
                           </p>
 
                           <strong className="public-entry-book-title">
@@ -1270,17 +1457,77 @@ export default function Moderation() {
           }
         >
           {platformRole.isPlatformAdmin ? (
-            <p className="muted">
-              Account warnings, suspensions, and platform bans will be connected
-              during the enforcement phase. Canonical Lit Chain blocks remain
-              immutable.
-            </p>
+            enforcements.length === 0 ? (
+              <p className="muted">
+                No current platform enforcement records.
+              </p>
+            ) : (
+              <div className="public-profile-entry-list">
+                {enforcements.map((record) => (
+                  <article
+                    key={record.id}
+                    className="public-profile-entry"
+                  >
+                    <p className="eyebrow">
+                      {record.status === "warning"
+                        ? "Warning"
+                        : record.status === "suspended"
+                          ? "Suspended"
+                          : "Banned"}
+                    </p>
+
+                    <strong className="public-entry-book-title">
+                      {profileName(
+                        record.targetProfile,
+                        record.userId || record.id
+                      )}
+                    </strong>
+
+                    <p>
+                      <strong>Reason:</strong>{" "}
+                      {record.reason || "Not provided"}
+                    </p>
+
+                    {record.details && (
+                      <p className="muted">
+                        {record.details}
+                      </p>
+                    )}
+
+                    {record.endsAtISO && (
+                      <p className="muted">
+                        Suspension ends:{" "}
+                        {formatDate(record.endsAtISO)}
+                      </p>
+                    )}
+
+                    <div
+                      className="button-row"
+                      style={{ marginTop: "0.75rem" }}
+                    >
+                      <Link
+                        to={`/read/public/${record.userId || record.id}`}
+                        className="button secondary"
+                      >
+                        <ExternalLink size={16} />
+                        View Profile
+                      </Link>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )
           ) : (
             <p className="muted">
               Enforcement controls are restricted to Platform Administrators and
               Foundation Administrators.
             </p>
           )}
+
+          <p className="muted">
+            Canonical Lit Chain blocks remain immutable. Enforcement applies to
+            accounts and platform participation, never to canonical block data.
+          </p>
         </DashboardCard>
         </div>
 
