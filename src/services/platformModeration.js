@@ -786,6 +786,87 @@ export async function resolvePlatformModerationReport(
 }
 
 
+export async function getPlatformEnforcementSummary() {
+  const role =
+    await requirePlatformModerator();
+
+  if (!role.isPlatformAdmin) {
+    return {
+      available: false,
+      count: null
+    };
+  }
+
+  try {
+    const snapshot =
+      await getDocs(
+        collection(
+          db,
+          "platformEnforcement"
+        )
+      );
+
+    return {
+      available: true,
+      count:
+        snapshot.docs.filter(
+          (item) => {
+            const status =
+              item.data()?.status;
+
+            return [
+              "warning",
+              "suspended",
+              "banned"
+            ].includes(
+              status
+            );
+          }
+        ).length
+    };
+  } catch {
+    return {
+      available: false,
+      count: null
+    };
+  }
+}
+
+
+export async function getPlatformRoleSummary() {
+  const role =
+    await requirePlatformModerator();
+
+  if (!role.isFoundationAdmin) {
+    return {
+      available: false,
+      count: null
+    };
+  }
+
+  try {
+    const snapshot =
+      await getDocs(
+        collection(
+          db,
+          "platformRoles"
+        )
+      );
+
+    return {
+      available: true,
+      count:
+        snapshot.docs.length
+    };
+  } catch {
+    return {
+      available: false,
+      count: null
+    };
+  }
+}
+
+
 export async function getPlatformModerationActions() {
   await requirePlatformModerator();
 
