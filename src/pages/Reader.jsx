@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
+  ArrowLeft,
+  Bookmark,
   Check,
   ChevronDown,
   ChevronUp,
+  List,
   Globe2,
   Lock,
   NotebookPen,
@@ -58,6 +61,7 @@ function VisibilityIcon({ visibility }) {
 export default function Reader() {
   const { id } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const readerRef = useRef(null);
 
@@ -92,6 +96,7 @@ export default function Reader() {
   const [pageIndex, setPageIndex] = useState(0);
 
   const [showToc, setShowToc] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
   const [showPageNotes, setShowPageNotes] = useState(false);
   const [showAddNote, setShowAddNote] = useState(false);
   const [readerSize, setReaderSize] = useState({ width: 0, height: 0 });
@@ -102,6 +107,11 @@ export default function Reader() {
   const [editGroupId, setEditGroupId] = useState("");
   const [savingEntry, setSavingEntry] = useState(false);
   const [deletingEntryId, setDeletingEntryId] = useState(null);
+
+  useEffect(() => {
+    document.body.classList.add("reader-mode");
+    return () => document.body.classList.remove("reader-mode");
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -510,110 +520,135 @@ export default function Reader() {
   }
 
   return (
-    <main className="page-wrap reader-page">
+    <main className="reader-page reader-page-immersive">
       <SEO
         title={`${book?.title || "Reader"} | Lit Chain`}
         description={`Read ${book?.title || "this book"} on Lit Chain.`}
         path={`/read/reader/${id}`}
       />
 
-      <div className="reader-topbar">
-        <div>
-          <p className="eyebrow">Reading</p>
-          <h1>{book?.title || "Loading..."}</h1>
-          {book?.author && <p className="muted">{book.author}</p>}
-        </div>
-
-        <div className="button-row">
-          <button className="button secondary" onClick={handleSave}>
-            <Check size={16} />
-            Save Book
-          </button>
-          <ReaderControls fontSize={fontSize} setFontSize={setFontSize} />
-        </div>
-      </div>
-
-      {status && <p className="status">{status}</p>}
-
-      <div className="button-row">
-        <button type="button" className="button secondary" onClick={() => setShowToc((current) => !current)}>
-          {showToc ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          Contents
+      <header className={`ereader-topbar ${controlsVisible ? "visible" : "hidden"}`}>
+        <button
+          type="button"
+          className="ereader-icon-button ereader-back-button"
+          onClick={() => navigate(-1)}
+          aria-label="Back"
+        >
+          <ArrowLeft size={24} />
+          <span>Back</span>
         </button>
 
-      </div>
+        <div className="ereader-book-heading">
+          <strong>{book?.title || "Loading…"}</strong>
+          {book?.author && <small>{book.author}</small>}
+        </div>
+
+        <div className="ereader-top-actions">
+          <ReaderControls fontSize={fontSize} setFontSize={setFontSize} />
+          <button
+            type="button"
+            className="ereader-icon-button"
+            onClick={() => setShowToc((current) => !current)}
+            aria-label="Table of contents"
+          >
+            <List size={23} />
+          </button>
+          <button
+            type="button"
+            className="ereader-icon-button"
+            onClick={handleSave}
+            aria-label="Save book"
+          >
+            <Bookmark size={23} />
+          </button>
+        </div>
+      </header>
+
+      {status && controlsVisible && <p className="ereader-status">{status}</p>}
 
       {showToc && (
-        <section className="reader-notes-panel">
-          <h2>Contents</h2>
-          {chapters.length ? (
-            chapters.map((chapter, index) => (
-              <button
-                key={`${chapter.title}-${index}`}
-                type="button"
-                className="toc-link"
-                onClick={() => goToParagraph(chapter.paragraphIndex)}
-              >
-                {chapter.title || `Section ${index + 1}`}
+        <div className="ereader-sheet-backdrop" onClick={() => setShowToc(false)}>
+          <section className="ereader-sheet ereader-toc-sheet" onClick={(event) => event.stopPropagation()}>
+            <div className="ereader-sheet-heading">
+              <div>
+                <small>Table of contents</small>
+                <h2>{book?.title}</h2>
+              </div>
+              <button type="button" className="margin-close-button" onClick={() => setShowToc(false)}>
+                <X size={18} />
               </button>
-            ))
-          ) : (
-            <p className="muted">No chapter list is available for this book.</p>
-          )}
-        </section>
+            </div>
+            <div className="ereader-toc-list">
+              {chapters.length ? chapters.map((chapter, index) => (
+                <button
+                  key={`${chapter.title}-${index}`}
+                  type="button"
+                  className="toc-link"
+                  onClick={() => {
+                    goToParagraph(chapter.paragraphIndex);
+                    setShowToc(false);
+                  }}
+                >
+                  {chapter.title || `Section ${index + 1}`}
+                </button>
+              )) : <p className="muted">No chapter list is available for this book.</p>}
+            </div>
+          </section>
+        </div>
       )}
-
-      <div className="reader-progress">
-        <span>
-          {loading
-            ? "Preparing your place..."
-            : `Page ${pageIndex + 1} of ${totalPages}`}
-        </span>
-        <span>{loading ? "" : `${progress}%`}</span>
-      </div>
 
       <section
         ref={readerRef}
-        className="reader-window"
+        className="reader-window ereader-canvas"
         style={{ fontSize: `${fontSize}px` }}
+        onClick={(event) => {
+          if (event.target.closest("button")) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          const x = event.clientX - rect.left;
+          if (x < rect.width * 0.22) {
+            goToPage(pageIndex - 1);
+            return;
+          }
+          if (x > rect.width * 0.78) {
+            goToPage(pageIndex + 1);
+            return;
+          }
+          setControlsVisible((current) => !current);
+        }}
       >
         {loading ? (
-          <p className="muted">Loading book...</p>
+          <div className="ereader-loading">
+            <strong>{book?.title || "Opening book…"}</strong>
+            <span>Preparing your place…</span>
+          </div>
         ) : (
           currentPage.map((block, index) => {
-            const showNumber = !block.isContinuation;
             const paragraphHasNote = journalEntries.some(
               (entry) => Number(entry.paragraphIndex) === block.paragraphIndex
             );
             const isTarget = requestedParagraph === block.paragraphIndex;
+            const isSelected = selectedParagraphIndex === block.paragraphIndex;
 
             return (
               <div
                 key={`${block.paragraphIndex}-${index}`}
-                className={
-                  isTarget
-                    ? "reader-paragraph-row reader-paragraph-target"
-                    : "reader-paragraph-row"
-                }
+                className={[
+                  "reader-paragraph-row",
+                  isTarget ? "reader-paragraph-target" : "",
+                  isSelected ? "reader-paragraph-selected" : ""
+                ].filter(Boolean).join(" ")}
+                onDoubleClick={(event) => {
+                  event.stopPropagation();
+                  setSelectedParagraphIndex(block.paragraphIndex);
+                  setShowPageNotes(true);
+                  setShowAddNote(true);
+                  setControlsVisible(true);
+                }}
               >
-                <button
-                  type="button"
-                  className={
-                    paragraphHasNote
-                      ? "paragraph-number has-note"
-                      : "paragraph-number"
-                  }
-                  onClick={() => {
-                    setSelectedParagraphIndex(block.paragraphIndex);
-                    setShowPageNotes(true);
-                    setShowAddNote(true);
-                  }}
-                  aria-label={`Add a note to paragraph ${block.paragraphIndex + 1}`}
-                  title={`Add a note to paragraph ${block.paragraphIndex + 1}`}
-                >
-                  {showNumber ? block.paragraphIndex + 1 : ""}
-                </button>
-
+                <span
+                  className={paragraphHasNote ? "paragraph-note-marker visible" : "paragraph-note-marker"}
+                  aria-hidden="true"
+                />
                 <p>{block.text}</p>
               </div>
             );
@@ -621,244 +656,189 @@ export default function Reader() {
         )}
       </section>
 
-      <div className="reader-nav reader-bottom-toolbar">
-        <button
-          type="button"
-          className="reader-nav-button"
-          disabled={pageIndex <= 0}
-          onClick={() => goToPage(pageIndex - 1)}
-        >
-          Previous
-        </button>
+      <footer className={`ereader-bottombar ${controlsVisible ? "visible" : "hidden"}`}>
+        <div className="ereader-progress-meta">
+          <span>{loading ? "" : `Page ${pageIndex + 1} of ${totalPages}`}</span>
+          <span>{loading ? "" : `${progress}%`}</span>
+        </div>
 
-        <span className="reader-page-position">
-          {loading ? "Loading…" : `${pageIndex + 1} / ${totalPages}`}
-        </span>
+        <input
+          className="ereader-progress-slider"
+          type="range"
+          min="0"
+          max={Math.max(totalPages - 1, 0)}
+          value={Math.min(pageIndex, Math.max(totalPages - 1, 0))}
+          disabled={loading || totalPages <= 1}
+          aria-label="Reading position"
+          onChange={(event) => goToPage(Number(event.target.value))}
+        />
 
-        <button
-          type="button"
-          className="reader-notes-button"
-          onClick={() => {
-            setSelectedParagraphIndex(
-              selectedParagraphIndex ?? currentParagraphIndexes[0] ?? readingAnchorRef.current
-            );
-            setShowPageNotes((current) => !current);
-          }}
-        >
-          <NotebookPen size={18} />
-          Notes{notesForCurrentPage.length ? ` (${notesForCurrentPage.length})` : ""}
-        </button>
-
-        <button
-          type="button"
-          className="reader-nav-button"
-          disabled={pageIndex >= totalPages - 1}
-          onClick={() => goToPage(pageIndex + 1)}
-        >
-          Next
-        </button>
-      </div>
-
-      {showAddNote && (
-        <aside className="reader-notes-panel">
-          <div className="add-paragraph-note">
-          <div className="margin-reply-heading">
-            <strong>
-              Add note
-              {selectedParagraphIndex !== null
-                ? ` · Paragraph ${selectedParagraphIndex + 1}`
-                : ""}
-            </strong>
-            <button
-              type="button"
-              className="margin-close-button"
-              onClick={() => setShowAddNote(false)}
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          <label className="paragraph-select-label">
-            Paragraph
-            <select
-              value={selectedParagraphIndex ?? ""}
-              style={{ width: "100%" }}
-              onChange={(event) =>
-                setSelectedParagraphIndex(Number(event.target.value))
-              }
-            >
-              {currentParagraphIndexes.map((paragraphIndex) => (
-                <option key={paragraphIndex} value={paragraphIndex}>
-                  Paragraph {paragraphIndex + 1}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <textarea
-            rows={5}
-            maxLength={3000}
-            style={{ width: "100%", boxSizing: "border-box" }}
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            placeholder="Write your note..."
-          />
-
-          <label className="paragraph-select-label">
-            Visibility
-            <select
-              value={noteVisibility}
-              style={{ width: "100%" }}
-              onChange={(event) => setNoteVisibility(event.target.value)}
-            >
-              <option value="private">Private</option>
-              <option value="public">Public</option>
-              <option value="group">Group / Class</option>
-            </select>
-          </label>
-
-          {noteVisibility === "group" && (
-            <label className="paragraph-select-label">
-              Group or class
-              <select
-                value={noteGroupId}
-                style={{ width: "100%" }}
-                onChange={(event) => setNoteGroupId(event.target.value)}
-              >
-                <option value="">Choose...</option>
-                {myGroups.map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          <button className="button primary" onClick={handleJournal}>
-            Save Note
+        <div className="ereader-bottom-actions">
+          <button
+            type="button"
+            className="ereader-page-button"
+            disabled={pageIndex <= 0}
+            onClick={() => goToPage(pageIndex - 1)}
+          >
+            Previous
           </button>
-          </div>
-        </aside>
-      )}
 
-      {showPageNotes && (
-        <aside className="reader-notes-panel">
-          <div className="margin-reply-heading">
-            <h2>Notes on this page</h2>
-            <div className="button-row">
+          <button
+            type="button"
+            className="ereader-notes-button"
+            onClick={() => {
+              setSelectedParagraphIndex(
+                selectedParagraphIndex ?? currentParagraphIndexes[0] ?? readingAnchorRef.current
+              );
+              setShowPageNotes(true);
+              setControlsVisible(true);
+            }}
+          >
+            <NotebookPen size={19} />
+            Notes{notesForCurrentPage.length ? ` ${notesForCurrentPage.length}` : ""}
+          </button>
+
+          <button
+            type="button"
+            className="ereader-page-button"
+            disabled={pageIndex >= totalPages - 1}
+            onClick={() => goToPage(pageIndex + 1)}
+          >
+            Next
+          </button>
+        </div>
+      </footer>
+
+      {(showAddNote || showPageNotes) && (
+        <div className="ereader-sheet-backdrop ereader-notes-backdrop" onClick={() => { setShowAddNote(false); setShowPageNotes(false); }}>
+          <aside className="ereader-sheet ereader-notes-sheet" onClick={(event) => event.stopPropagation()}>
+            <div className="ereader-sheet-heading">
+              <div>
+                <small>Notes</small>
+                <h2>Page {pageIndex + 1}</h2>
+              </div>
               <button
                 type="button"
-                className="button primary"
-                onClick={() => {
-                  setSelectedParagraphIndex(
-                    selectedParagraphIndex ?? currentParagraphIndexes[0] ?? readingAnchorRef.current
-                  );
-                  setShowAddNote(true);
-                }}
+                className="margin-close-button"
+                onClick={() => { setShowAddNote(false); setShowPageNotes(false); }}
               >
-                <Pencil size={15} />
-                Add Note
+                <X size={18} />
               </button>
-              <Link to="/read/journal" className="button secondary">
-                Full Journal
-              </Link>
             </div>
-          </div>
 
-          {journalLoading && <p className="muted">Loading notes...</p>}
+            {!showAddNote && (
+              <>
+                {journalLoading && <p className="muted">Loading notes…</p>}
+                {!journalLoading && notesForCurrentPage.length === 0 && (
+                  <p className="muted">No notes on this page yet.</p>
+                )}
+                <div className="ereader-note-list">
+                  {notesForCurrentPage.map((entry) => (
+                    <article key={entry.id} className="ereader-note-card">
+                      <div className="public-entry-meta">
+                        <span>Paragraph {Number(entry.paragraphIndex) + 1}</span>
+                        <span><VisibilityIcon visibility={entry.visibility} /> {getVisibilityLabel(entry.visibility)}</span>
+                        <span>{formatNoteDate(entry.createdAtISO || entry.createdAt)}</span>
+                      </div>
+                      {editingEntryId === entry.id ? (
+                        <>
+                          <textarea rows={4} value={editNote} onChange={(event) => setEditNote(event.target.value)} />
+                          <select value={editVisibility} onChange={(event) => setEditVisibility(event.target.value)}>
+                            <option value="private">Private</option>
+                            <option value="public">Public</option>
+                            <option value="group">Group / Class</option>
+                          </select>
+                          {editVisibility === "group" && (
+                            <select value={editGroupId} onChange={(event) => setEditGroupId(event.target.value)}>
+                              <option value="">Choose...</option>
+                              {myGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+                            </select>
+                          )}
+                          <div className="button-row">
+                            <button className="button primary" disabled={savingEntry} onClick={() => saveEdit(entry)}>{savingEntry ? "Saving..." : "Save"}</button>
+                            <button className="button secondary" onClick={() => setEditingEntryId(null)}>Cancel</button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <p>{entry.note}</p>
+                          <div className="button-row">
+                            <button className="button secondary" onClick={() => { setEditingEntryId(entry.id); setEditNote(entry.note || ""); setEditVisibility(entry.visibility || "private"); setEditGroupId(entry.groupId || ""); }}>
+                              <Pencil size={15} /> Edit
+                            </button>
+                            <button className="button secondary" disabled={deletingEntryId === entry.id} onClick={() => removeEntry(entry)}>
+                              <Trash2 size={15} /> Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </article>
+                  ))}
+                </div>
+                <div className="ereader-sheet-actions">
+                  <button className="button primary" onClick={() => setShowAddNote(true)}>
+                    <Pencil size={16} /> Add Note
+                  </button>
+                  <Link to="/read/journal" className="button secondary">Full Journal</Link>
+                </div>
+              </>
+            )}
 
-          {!journalLoading && notesForCurrentPage.length === 0 && (
-            <p className="muted">No notes on this page yet.</p>
-          )}
-
-          {notesForCurrentPage.map((entry) => (
-            <article key={entry.id} className="public-journal-entry">
-              <div className="public-entry-meta">
-                <span>Paragraph {Number(entry.paragraphIndex) + 1}</span>
-                <span>
-                  <VisibilityIcon visibility={entry.visibility} />
-                  {getVisibilityLabel(entry.visibility)}
-                </span>
-                <span>{formatNoteDate(entry.createdAtISO || entry.createdAt)}</span>
-              </div>
-
-              {editingEntryId === entry.id ? (
-                <>
-                  <textarea
-                    rows={4}
-                    value={editNote}
-                    onChange={(event) => setEditNote(event.target.value)}
-                  />
+            {showAddNote && (
+              <div className="add-paragraph-note ereader-add-note">
+                <label className="paragraph-select-label">
+                  Paragraph
                   <select
-                    value={editVisibility}
-                    onChange={(event) => setEditVisibility(event.target.value)}
+                    value={selectedParagraphIndex ?? ""}
+                    onChange={(event) => setSelectedParagraphIndex(Number(event.target.value))}
                   >
+                    {currentParagraphIndexes.map((paragraphIndex) => (
+                      <option key={paragraphIndex} value={paragraphIndex}>Paragraph {paragraphIndex + 1}</option>
+                    ))}
+                  </select>
+                </label>
+
+                {selectedParagraphIndex !== null && (
+                  <blockquote className="ereader-paragraph-preview">
+                    {(paragraphs[selectedParagraphIndex] || "").slice(0, 320)}
+                  </blockquote>
+                )}
+
+                <textarea
+                  rows={5}
+                  maxLength={3000}
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="Write your note…"
+                />
+
+                <label className="paragraph-select-label">
+                  Visibility
+                  <select value={noteVisibility} onChange={(event) => setNoteVisibility(event.target.value)}>
                     <option value="private">Private</option>
                     <option value="public">Public</option>
                     <option value="group">Group / Class</option>
                   </select>
+                </label>
 
-                  {editVisibility === "group" && (
-                    <select
-                      value={editGroupId}
-                      onChange={(event) => setEditGroupId(event.target.value)}
-                    >
+                {noteVisibility === "group" && (
+                  <label className="paragraph-select-label">
+                    Group or class
+                    <select value={noteGroupId} onChange={(event) => setNoteGroupId(event.target.value)}>
                       <option value="">Choose...</option>
-                      {myGroups.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.name}
-                        </option>
-                      ))}
+                      {myGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
                     </select>
-                  )}
+                  </label>
+                )}
 
-                  <div className="button-row">
-                    <button
-                      className="button primary"
-                      disabled={savingEntry}
-                      onClick={() => saveEdit(entry)}
-                    >
-                      {savingEntry ? "Saving..." : "Save"}
-                    </button>
-                    <button
-                      className="button secondary"
-                      onClick={() => setEditingEntryId(null)}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p>{entry.note}</p>
-                  <div className="button-row">
-                    <button
-                      className="button secondary"
-                      onClick={() => {
-                        setEditingEntryId(entry.id);
-                        setEditNote(entry.note || "");
-                        setEditVisibility(entry.visibility || "private");
-                        setEditGroupId(entry.groupId || "");
-                      }}
-                    >
-                      <Pencil size={15} />
-                      Edit
-                    </button>
-                    <button
-                      className="button secondary"
-                      disabled={deletingEntryId === entry.id}
-                      onClick={() => removeEntry(entry)}
-                    >
-                      <Trash2 size={15} />
-                      Delete
-                    </button>
-                  </div>
-                </>
-              )}
-            </article>
-          ))}
-        </aside>
+                <div className="ereader-sheet-actions">
+                  <button className="button primary" onClick={handleJournal}>Save Note</button>
+                  <button className="button secondary" onClick={() => setShowAddNote(false)}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </aside>
+        </div>
       )}
     </main>
   );
