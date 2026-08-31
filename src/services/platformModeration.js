@@ -1061,7 +1061,7 @@ export async function applyPlatformEnforcement({
       status: normalizedStatus,
       reason: cleanReason,
       details: String(details || "").trim(),
-      actionedBy: moderator.uid,
+      enforcedBy: moderator.uid,
       targetRole: targetRole.role,
       durationHours: normalizedDurationHours,
       startedAtISO: now,
