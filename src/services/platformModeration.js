@@ -16,11 +16,6 @@ import {
   db
 } from "../firebase";
 
-import {
-  getPublicProfile
-} from "./storage.js";
-
-
 export const PLATFORM_ROLES = {
   MODERATOR: "platform_moderator",
   ADMIN: "platform_admin",
@@ -56,9 +51,24 @@ async function publicProfile(
   }
 
   try {
-    return await getPublicProfile(
-      String(userId)
-    );
+    const snapshot =
+      await getDoc(
+        doc(
+          db,
+          "publicProfiles",
+          String(userId)
+        )
+      );
+
+    if (!snapshot.exists()) {
+      return null;
+    }
+
+    return {
+      id:
+        snapshot.id,
+      ...snapshot.data()
+    };
   } catch {
     return null;
   }
@@ -386,6 +396,130 @@ export async function reportPlatformContent({
 }
 
 
+async function hydrateReportTarget(
+  report
+) {
+  if (!report) {
+    return {
+      targetExists: false,
+      targetPath: null,
+      targetPreview: null
+    };
+  }
+
+  try {
+    if (
+      report.targetType ===
+      "profile"
+    ) {
+      const snapshot =
+        await getDoc(
+          doc(
+            db,
+            "publicProfiles",
+            String(
+              report.targetUserId
+            )
+          )
+        );
+
+      return {
+        targetExists:
+          snapshot.exists(),
+        targetPath:
+          snapshot.exists()
+            ? `/read/profile/${report.targetUserId}`
+            : null,
+        targetPreview:
+          snapshot.exists()
+            ? {
+                id:
+                  snapshot.id,
+                ...snapshot.data()
+              }
+            : null
+      };
+    }
+
+    if (
+      report.targetType ===
+      "chain_entry"
+    ) {
+      const snapshot =
+        await getDoc(
+          doc(
+            db,
+            "users",
+            String(
+              report.targetUserId
+            ),
+            "journal",
+            String(
+              report.targetId
+            )
+          )
+        );
+
+      return {
+        targetExists:
+          snapshot.exists(),
+        targetPath: null,
+        targetPreview:
+          snapshot.exists()
+            ? {
+                id:
+                  snapshot.id,
+                ...snapshot.data()
+              }
+            : null
+      };
+    }
+
+    if (
+      report.targetType ===
+      "chain_reply"
+    ) {
+      const snapshot =
+        await getDoc(
+          doc(
+            db,
+            "marginReplies",
+            String(
+              report.targetId
+            )
+          )
+        );
+
+      return {
+        targetExists:
+          snapshot.exists(),
+        targetPath: null,
+        targetPreview:
+          snapshot.exists()
+            ? {
+                id:
+                  snapshot.id,
+                ...snapshot.data()
+              }
+            : null
+      };
+    }
+
+    return {
+      targetExists: true,
+      targetPath: null,
+      targetPreview: null
+    };
+  } catch {
+    return {
+      targetExists: null,
+      targetPath: null,
+      targetPreview: null
+    };
+  }
+}
+
+
 export async function getPlatformModerationReports() {
   await requirePlatformModerator();
 
@@ -449,17 +583,31 @@ export async function getPlatformModerationReports() {
 
   return Promise.all(
     reports.map(
-      async (report) => ({
-        ...report,
-        reporterProfile:
-          await publicProfile(
-            report.reporterUserId
-          ),
-        targetProfile:
-          await publicProfile(
-            report.targetUserId
-          )
-      })
+      async (report) => {
+        const [
+          reporterProfile,
+          targetProfile,
+          targetState
+        ] =
+          await Promise.all([
+            publicProfile(
+              report.reporterUserId
+            ),
+            publicProfile(
+              report.targetUserId
+            ),
+            hydrateReportTarget(
+              report
+            )
+          ]);
+
+        return {
+          ...report,
+          reporterProfile,
+          targetProfile,
+          ...targetState
+        };
+      }
     )
   );
 }
