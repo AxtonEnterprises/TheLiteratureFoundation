@@ -428,7 +428,11 @@ async function hydrateReportTarget(
           snapshot.exists(),
         targetPath:
           snapshot.exists()
-            ? `/read/profile/${report.targetUserId}`
+            ? `/read/public/${report.targetUserId}`
+            : null,
+        targetProfilePath:
+          snapshot.exists()
+            ? `/read/public/${report.targetUserId}`
             : null,
         targetPreview:
           snapshot.exists()
@@ -460,16 +464,33 @@ async function hydrateReportTarget(
           )
         );
 
+      const data =
+        snapshot.exists()
+          ? snapshot.data()
+          : null;
+
+      const bookId =
+        report.bookId ||
+        data?.bookId ||
+        null;
+
       return {
         targetExists:
           snapshot.exists(),
-        targetPath: null,
+        targetPath:
+          bookId
+            ? `/read/reader/${bookId}`
+            : null,
+        targetProfilePath:
+          report.targetUserId
+            ? `/read/public/${report.targetUserId}`
+            : null,
         targetPreview:
           snapshot.exists()
             ? {
                 id:
                   snapshot.id,
-                ...snapshot.data()
+                ...data
               }
             : null
       };
@@ -493,7 +514,14 @@ async function hydrateReportTarget(
       return {
         targetExists:
           snapshot.exists(),
-        targetPath: null,
+        targetPath:
+          report.bookId
+            ? `/read/reader/${report.bookId}`
+            : null,
+        targetProfilePath:
+          report.targetUserId
+            ? `/read/public/${report.targetUserId}`
+            : null,
         targetPreview:
           snapshot.exists()
             ? {
@@ -508,12 +536,20 @@ async function hydrateReportTarget(
     return {
       targetExists: true,
       targetPath: null,
+      targetProfilePath:
+        report.targetUserId
+          ? `/read/public/${report.targetUserId}`
+          : null,
       targetPreview: null
     };
   } catch {
     return {
       targetExists: null,
       targetPath: null,
+      targetProfilePath:
+        report.targetUserId
+          ? `/read/public/${report.targetUserId}`
+          : null,
       targetPreview: null
     };
   }
@@ -719,6 +755,12 @@ export async function resolvePlatformModerationReport(
           report.targetId ||
           ""
         ),
+      bookId:
+        report.bookId
+          ? String(
+              report.bookId
+            )
+          : null,
       reportId:
         String(
           reportId
