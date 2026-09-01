@@ -281,6 +281,17 @@ export default function Journal() {
 
                 <Link
                   to={`/read/reader/${selectedBookId}`}
+                  state={
+                    selectedBook
+                      ? {
+                          book: {
+                            ...selectedBook,
+                            id: selectedBookId,
+                            bookId: selectedBookId
+                          }
+                        }
+                      : undefined
+                  }
                   className="button primary"
                 >
                   <BookOpen size={16} />
@@ -472,7 +483,24 @@ export default function Journal() {
                       </div>
                     ) : (
                       <>
-                        <p>{entry.note}</p>
+                        {entry.bookId !== undefined &&
+                        entry.bookId !== null ? (
+                          <Link
+                            to={`/read/reader/${entry.bookId}?paragraph=${Math.max(
+                              Number(entry.paragraphIndex) || 0,
+                              0
+                            )}&note=${encodeURIComponent(entry.id)}`}
+                            className="journal-note-deep-link"
+                            title={`Open paragraph ${Math.max(
+                              Number(entry.paragraphIndex) || 0,
+                              0
+                            ) + 1} in the Reader`}
+                          >
+                            <p>{entry.note}</p>
+                          </Link>
+                        ) : (
+                          <p>{entry.note}</p>
+                        )}
 
                         {visibility === "group" && entry.groupId && (
                           <small className="journal-group-label">

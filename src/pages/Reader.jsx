@@ -518,8 +518,12 @@ export default function Reader() {
   }
 
   function linksForEntry(entryId) {
+    const targetId = String(entryId);
+
     return noteLinks.filter(
-      (link) => link.sourceNoteId === entryId || link.targetNoteId === entryId
+      (link) =>
+        String(link.sourceNoteId) === targetId ||
+        String(link.targetNoteId) === targetId
     );
   }
 
@@ -674,10 +678,41 @@ export default function Reader() {
 
     try {
       setDeletingEntryId(entry.id);
+      const connectedLinks =
+        linksForEntry(entry.id);
+
       await deleteJournalEntry(entry.id);
+
       setJournalEntries((current) =>
         current.filter((item) => item.id !== entry.id)
       );
+
+      if (connectedLinks.length) {
+        const removedIds =
+          new Set(
+            connectedLinks.map(
+              (link) => String(link.id)
+            )
+          );
+
+        setNoteLinks((current) =>
+          current.filter(
+            (link) =>
+              !removedIds.has(
+                String(link.id)
+              )
+          )
+        );
+
+        void Promise.allSettled(
+          connectedLinks.map(
+            (link) =>
+              deleteNoteLink(
+                link.id
+              )
+          )
+        );
+      }
     } finally {
       setDeletingEntryId(null);
     }
@@ -1027,8 +1062,13 @@ export default function Reader() {
                                           setShowPageNotes(true);
                                           setControlsVisible(true);
                                         } else {
+                                          const noteQuery =
+                                            targetNoteId
+                                              ? `&note=${encodeURIComponent(targetNoteId)}`
+                                              : "";
+
                                           navigate(
-                                            `/read/reader/${connected.bookId}?paragraph=${targetParagraph}&note=${encodeURIComponent(targetNoteId)}`
+                                            `/read/reader/${connected.bookId}?paragraph=${targetParagraph}${noteQuery}`
                                           );
                                         }
                                       }}

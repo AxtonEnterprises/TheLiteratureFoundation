@@ -2693,7 +2693,17 @@ export default function Profile() {
 
                             {bookId ? (
                               <Link
-                                to={`/read/reader/${bookId}`}
+                                to={`/read/reader/${bookId}?paragraph=${Math.max(
+                                  Number(entry.paragraphIndex) || 0,
+                                  0
+                                )}&note=${encodeURIComponent(entry.id)}`}
+                                state={{
+                                  book: {
+                                    ...entry,
+                                    id: bookId,
+                                    bookId
+                                  }
+                                }}
                                 className="public-entry-book-title"
                               >
                                 {entry.title ||
@@ -2746,9 +2756,32 @@ export default function Profile() {
                           </div>
                         )}
 
-                        <p className="public-journal-note">
-                          {entry.note}
-                        </p>
+                        {bookId ? (
+                          <Link
+                            to={`/read/reader/${bookId}?paragraph=${Math.max(
+                              Number(entry.paragraphIndex) || 0,
+                              0
+                            )}&note=${encodeURIComponent(entry.id)}`}
+                            state={{
+                              book: {
+                                ...entry,
+                                id: bookId,
+                                bookId
+                              }
+                            }}
+                            className="public-journal-note"
+                            title={`Open paragraph ${Math.max(
+                              Number(entry.paragraphIndex) || 0,
+                              0
+                            ) + 1} in the Reader`}
+                          >
+                            {entry.note}
+                          </Link>
+                        ) : (
+                          <p className="public-journal-note">
+                            {entry.note}
+                          </p>
+                        )}
                       </article>
                     );
                   }
