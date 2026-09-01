@@ -51,9 +51,11 @@ async function requireMembership(groupId) {
 
 async function publicProfile(userId) {
   if (!userId) return null;
+
   const snapshot = await getDoc(
     doc(db, "publicProfiles", String(userId))
   );
+
   return snapshot.exists()
     ? { id: snapshot.id, ...snapshot.data() }
     : null;
@@ -101,23 +103,29 @@ export async function updateGroupProfile(
   }
 
   const cleanName = String(name || "").trim();
+
   if (cleanName.length < 2) {
     throw new Error("Group name must be at least 2 characters.");
   }
 
-  const cleanType = type === "class" ? "class" : "group";
-  const cleanVisibility = ["private", "discoverable", "public"].includes(
-    visibility
-  )
-    ? visibility
-    : "private";
-  const cleanJoinPolicy = [
-    "invite_only",
-    "request_to_join",
-    "open"
-  ].includes(joinPolicy)
-    ? joinPolicy
-    : "invite_only";
+  const cleanType =
+    type === "class"
+      ? "class"
+      : "group";
+
+  const cleanVisibility =
+    ["private", "discoverable", "public"].includes(visibility)
+      ? visibility
+      : "private";
+
+  const cleanJoinPolicy =
+    [
+      "invite_only",
+      "request_to_join",
+      "open"
+    ].includes(joinPolicy)
+      ? joinPolicy
+      : "invite_only";
 
   const now = new Date().toISOString();
 
@@ -160,9 +168,13 @@ export async function getGroupForumPosts(groupId) {
   );
 
   let snapshot;
+
   try {
     snapshot = await getDocs(
-      query(postsRef, orderBy("createdAtISO", "desc"))
+      query(
+        postsRef,
+        orderBy("createdAtISO", "desc")
+      )
     );
   } catch {
     snapshot = await getDocs(postsRef);
@@ -171,6 +183,7 @@ export async function getGroupForumPosts(groupId) {
   const posts = await Promise.all(
     snapshot.docs.map(async (postDoc) => {
       const data = postDoc.data();
+
       return {
         id: postDoc.id,
         ...data,
@@ -183,6 +196,7 @@ export async function getGroupForumPosts(groupId) {
     if (Boolean(a.pinned) !== Boolean(b.pinned)) {
       return a.pinned ? -1 : 1;
     }
+
     return String(b.createdAtISO || "").localeCompare(
       String(a.createdAtISO || "")
     );
@@ -191,7 +205,11 @@ export async function getGroupForumPosts(groupId) {
 
 export async function createGroupForumPost(
   groupId,
-  { title, body, sourceChainEntry = null }
+  {
+    title,
+    body,
+    sourceChainEntry = null
+  }
 ) {
   const { user } = await requireMembership(groupId);
 
@@ -201,6 +219,7 @@ export async function createGroupForumPost(
   if (cleanTitle.length < 2) {
     throw new Error("Add a topic title.");
   }
+
   if (!cleanBody) {
     throw new Error("Write something for the group.");
   }
@@ -213,6 +232,7 @@ export async function createGroupForumPost(
       "forumPosts"
     )
   );
+
   const now = new Date().toISOString();
 
   const post = {
@@ -223,40 +243,76 @@ export async function createGroupForumPost(
     body: cleanBody,
     pinned: false,
     locked: false,
-    sourceChainEntryId: sourceChainEntry?.id ? String(sourceChainEntry.id) : null,
-    sourceUserId: sourceChainEntry?.userId ? String(sourceChainEntry.userId) : null,
-    sourceBookId: sourceChainEntry?.bookId ? String(sourceChainEntry.bookId) : null,
+
+    /*
+     * Optional provenance for discussions created
+     * from a Lit Chain post.
+     */
+    sourceChainEntryId:
+      sourceChainEntry?.id
+        ? String(sourceChainEntry.id)
+        : null,
+
+    sourceUserId:
+      sourceChainEntry?.userId
+        ? String(sourceChainEntry.userId)
+        : null,
+
+    sourceBookId:
+      sourceChainEntry?.bookId
+        ? String(sourceChainEntry.bookId)
+        : null,
+
     sourceParagraphIndex:
       sourceChainEntry?.paragraphIndex !== undefined &&
       sourceChainEntry?.paragraphIndex !== null
-        ? Math.max(Number(sourceChainEntry.paragraphIndex) || 0, 0)
+        ? Math.max(
+            Number(sourceChainEntry.paragraphIndex) || 0,
+            0
+          )
         : null,
+
     sourceParagraphNumber:
       sourceChainEntry?.paragraphNumber !== undefined &&
       sourceChainEntry?.paragraphNumber !== null
-        ? Math.max(Number(sourceChainEntry.paragraphNumber) || 1, 1)
+        ? Math.max(
+            Number(sourceChainEntry.paragraphNumber) || 1,
+            1
+          )
         : null,
-    sourceTitle: sourceChainEntry?.title
-      ? String(sourceChainEntry.title).slice(0, 300)
-      : null,
-    sourceAuthor: sourceChainEntry?.author
-      ? String(sourceChainEntry.author).slice(0, 300)
-      : null,
-    sourceNotePreview: sourceChainEntry?.note
-      ? String(sourceChainEntry.note).slice(0, 1000)
-      : null,
-    sourceParagraphPreview: sourceChainEntry?.paragraphPreview
-      ? String(sourceChainEntry.paragraphPreview).slice(0, 1000)
-      : null,
+
+    sourceTitle:
+      sourceChainEntry?.title
+        ? String(sourceChainEntry.title).slice(0, 300)
+        : null,
+
+    sourceAuthor:
+      sourceChainEntry?.author
+        ? String(sourceChainEntry.author).slice(0, 300)
+        : null,
+
+    sourceNotePreview:
+      sourceChainEntry?.note
+        ? String(sourceChainEntry.note).slice(0, 1000)
+        : null,
+
+    sourceParagraphPreview:
+      sourceChainEntry?.paragraphPreview
+        ? String(sourceChainEntry.paragraphPreview).slice(0, 1000)
+        : null,
+
     createdAtISO: now,
     updatedAtISO: now
   };
 
-  await setDoc(postRef, {
-    ...post,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  });
+  await setDoc(
+    postRef,
+    {
+      ...post,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }
+  );
 
   await setDoc(
     doc(db, "groups", String(groupId)),
@@ -275,7 +331,11 @@ export async function updateGroupForumPost(
   postId,
   updates
 ) {
-  const { user, membership } = await requireMembership(groupId);
+  const {
+    user,
+    membership
+  } = await requireMembership(groupId);
+
   const postRef = doc(
     db,
     "groups",
@@ -283,6 +343,7 @@ export async function updateGroupForumPost(
     "forumPosts",
     String(postId)
   );
+
   const snapshot = await getDoc(postRef);
 
   if (!snapshot.exists()) {
@@ -290,11 +351,15 @@ export async function updateGroupForumPost(
   }
 
   const post = snapshot.data();
-  const canModerate = await canModerateForum(
-    groupId,
-    membership
-  );
-  const isAuthor = post.userId === user.uid;
+
+  const canModerate =
+    await canModerateForum(
+      groupId,
+      membership
+    );
+
+  const isAuthor =
+    post.userId === user.uid;
 
   if (!canModerate && !isAuthor) {
     throw new Error("You cannot edit this topic.");
@@ -305,32 +370,70 @@ export async function updateGroupForumPost(
     updatedAt: serverTimestamp()
   };
 
-  if (updates.title !== undefined && isAuthor) {
-    const title = String(updates.title || "").trim();
-    if (title.length < 2) throw new Error("Add a topic title.");
+  if (
+    updates.title !== undefined &&
+    isAuthor
+  ) {
+    const title =
+      String(updates.title || "").trim();
+
+    if (title.length < 2) {
+      throw new Error("Add a topic title.");
+    }
+
     next.title = title;
   }
 
-  if (updates.body !== undefined && isAuthor) {
-    const body = String(updates.body || "").trim();
-    if (!body) throw new Error("A topic cannot be empty.");
+  if (
+    updates.body !== undefined &&
+    isAuthor
+  ) {
+    const body =
+      String(updates.body || "").trim();
+
+    if (!body) {
+      throw new Error("A topic cannot be empty.");
+    }
+
     next.body = body;
   }
 
-  if (updates.pinned !== undefined && canModerate) {
-    next.pinned = Boolean(updates.pinned);
+  if (
+    updates.pinned !== undefined &&
+    canModerate
+  ) {
+    next.pinned =
+      Boolean(updates.pinned);
   }
 
-  if (updates.locked !== undefined && canModerate) {
-    next.locked = Boolean(updates.locked);
+  if (
+    updates.locked !== undefined &&
+    canModerate
+  ) {
+    next.locked =
+      Boolean(updates.locked);
   }
 
-  await updateDoc(postRef, next);
-  return { id: String(postId), ...next };
+  await updateDoc(
+    postRef,
+    next
+  );
+
+  return {
+    id: String(postId),
+    ...next
+  };
 }
 
-export async function deleteGroupForumPost(groupId, postId) {
-  const { user, membership } = await requireMembership(groupId);
+export async function deleteGroupForumPost(
+  groupId,
+  postId
+) {
+  const {
+    user,
+    membership
+  } = await requireMembership(groupId);
+
   const postRef = doc(
     db,
     "groups",
@@ -338,34 +441,48 @@ export async function deleteGroupForumPost(groupId, postId) {
     "forumPosts",
     String(postId)
   );
-  const snapshot = await getDoc(postRef);
 
-  if (!snapshot.exists()) return;
+  const snapshot =
+    await getDoc(postRef);
 
-  const post = snapshot.data();
-  const canModerate = await canModerateForum(
-    groupId,
-    membership
-  );
-
-  if (!canModerate && post.userId !== user.uid) {
-    throw new Error("You cannot remove this topic.");
+  if (!snapshot.exists()) {
+    return;
   }
 
-  const repliesSnapshot = await getDocs(
-    collection(
-      db,
-      "groups",
-      String(groupId),
-      "forumPosts",
-      String(postId),
-      "replies"
-    )
-  );
+  const post =
+    snapshot.data();
+
+  const canModerate =
+    await canModerateForum(
+      groupId,
+      membership
+    );
+
+  if (
+    !canModerate &&
+    post.userId !== user.uid
+  ) {
+    throw new Error(
+      "You cannot remove this topic."
+    );
+  }
+
+  const repliesSnapshot =
+    await getDocs(
+      collection(
+        db,
+        "groups",
+        String(groupId),
+        "forumPosts",
+        String(postId),
+        "replies"
+      )
+    );
 
   await Promise.all(
-    repliesSnapshot.docs.map((replyDoc) =>
-      deleteDoc(replyDoc.ref)
+    repliesSnapshot.docs.map(
+      (replyDoc) =>
+        deleteDoc(replyDoc.ref)
     )
   );
 
@@ -377,7 +494,10 @@ export async function deleteGroupForumReply(
   postId,
   replyId
 ) {
-  const { user, membership } = await requireMembership(groupId);
+  const {
+    user,
+    membership
+  } = await requireMembership(groupId);
 
   const replyRef = doc(
     db,
@@ -389,26 +509,38 @@ export async function deleteGroupForumReply(
     String(replyId)
   );
 
-  const snapshot = await getDoc(replyRef);
+  const snapshot =
+    await getDoc(replyRef);
 
   if (!snapshot.exists()) {
     return;
   }
 
-  const reply = snapshot.data();
-  const canModerate = await canModerateForum(
-    groupId,
-    membership
-  );
+  const reply =
+    snapshot.data();
 
-  if (!canModerate && reply.userId !== user.uid) {
-    throw new Error("You cannot remove this reply.");
+  const canModerate =
+    await canModerateForum(
+      groupId,
+      membership
+    );
+
+  if (
+    !canModerate &&
+    reply.userId !== user.uid
+  ) {
+    throw new Error(
+      "You cannot remove this reply."
+    );
   }
 
   await deleteDoc(replyRef);
 }
 
-export async function getGroupForumReplies(groupId, postId) {
+export async function getGroupForumReplies(
+  groupId,
+  postId
+) {
   await requireMembership(groupId);
 
   const repliesRef = collection(
@@ -421,23 +553,35 @@ export async function getGroupForumReplies(groupId, postId) {
   );
 
   let snapshot;
+
   try {
     snapshot = await getDocs(
-      query(repliesRef, orderBy("createdAtISO", "asc"))
+      query(
+        repliesRef,
+        orderBy("createdAtISO", "asc")
+      )
     );
   } catch {
-    snapshot = await getDocs(repliesRef);
+    snapshot =
+      await getDocs(repliesRef);
   }
 
   return Promise.all(
-    snapshot.docs.map(async (replyDoc) => {
-      const data = replyDoc.data();
-      return {
-        id: replyDoc.id,
-        ...data,
-        authorProfile: await publicProfile(data.userId)
-      };
-    })
+    snapshot.docs.map(
+      async (replyDoc) => {
+        const data =
+          replyDoc.data();
+
+        return {
+          id: replyDoc.id,
+          ...data,
+          authorProfile:
+            await publicProfile(
+              data.userId
+            )
+        };
+      }
+    )
   );
 }
 
@@ -446,7 +590,8 @@ export async function replyToGroupForumPost(
   postId,
   body
 ) {
-  const { user } = await requireMembership(groupId);
+  const { user } =
+    await requireMembership(groupId);
 
   const postRef = doc(
     db,
@@ -456,20 +601,30 @@ export async function replyToGroupForumPost(
     String(postId)
   );
 
-  const postSnapshot = await getDoc(postRef);
+  const postSnapshot =
+    await getDoc(postRef);
 
   if (!postSnapshot.exists()) {
-    throw new Error("Forum topic not found.");
+    throw new Error(
+      "Forum topic not found."
+    );
   }
 
-  if (postSnapshot.data()?.locked) {
-    throw new Error("This topic is locked.");
+  if (
+    postSnapshot.data()?.locked
+  ) {
+    throw new Error(
+      "This topic is locked."
+    );
   }
 
-  const cleanBody = String(body || "").trim();
+  const cleanBody =
+    String(body || "").trim();
 
   if (!cleanBody) {
-    throw new Error("Write a reply first.");
+    throw new Error(
+      "Write a reply first."
+    );
   }
 
   const replyRef = doc(
@@ -483,7 +638,8 @@ export async function replyToGroupForumPost(
     )
   );
 
-  const now = new Date().toISOString();
+  const now =
+    new Date().toISOString();
 
   const reply = {
     id: replyRef.id,
@@ -495,15 +651,22 @@ export async function replyToGroupForumPost(
     updatedAtISO: now
   };
 
-  // The reply itself is the only required write.
-  await setDoc(replyRef, {
-    ...reply,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  });
+  /*
+   * The reply itself is the only required write.
+   */
+  await setDoc(
+    replyRef,
+    {
+      ...reply,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }
+  );
 
-  // Activity metadata is useful but must not turn a successful
-  // reply into a false error message for the student.
+  /*
+   * Activity metadata is useful but must not
+   * turn a successful reply into a false error.
+   */
   Promise.allSettled([
     setDoc(
       postRef,
@@ -515,8 +678,13 @@ export async function replyToGroupForumPost(
       },
       { merge: true }
     ),
+
     setDoc(
-      doc(db, "groups", String(groupId)),
+      doc(
+        db,
+        "groups",
+        String(groupId)
+      ),
       {
         lastActivityAtISO: now,
         lastActivityAt: serverTimestamp()
@@ -524,37 +692,68 @@ export async function replyToGroupForumPost(
       { merge: true }
     )
   ]).then((results) => {
-    results.forEach((result) => {
-      if (result.status === "rejected") {
-        console.warn(
-          "Forum reply metadata update failed:",
-          result.reason
-        );
+    results.forEach(
+      (result) => {
+        if (
+          result.status ===
+          "rejected"
+        ) {
+          console.warn(
+            "Forum reply metadata update failed:",
+            result.reason
+          );
+        }
       }
-    });
+    );
   });
 
-  // Notifications are also best-effort. Notification permissions
-  // should never make a successfully-posted reply appear to fail.
-  const postData = postSnapshot.data();
+  /*
+   * Notifications are best-effort.
+   * Notification permissions must not make a
+   * successfully posted reply appear to fail.
+   */
+  const postData =
+    postSnapshot.data();
 
-  if (postData?.userId && postData.userId !== user.uid) {
+  if (
+    postData?.userId &&
+    postData.userId !== user.uid
+  ) {
     (async () => {
       try {
-        const groupSnapshot = await getDoc(
-          doc(db, "groups", String(groupId))
-        );
+        const groupSnapshot =
+          await getDoc(
+            doc(
+              db,
+              "groups",
+              String(groupId)
+            )
+          );
 
         await createNotification({
-          recipientUserId: postData.userId,
-          type: "forum_reply",
-          actorUserId: user.uid,
-          groupId: String(groupId),
-          groupName: groupSnapshot.exists()
-            ? groupSnapshot.data()?.name || ""
-            : "",
-          postId: String(postId),
-          targetPath: `/read/groups/${groupId}`
+          recipientUserId:
+            postData.userId,
+
+          type:
+            "forum_reply",
+
+          actorUserId:
+            user.uid,
+
+          groupId:
+            String(groupId),
+
+          groupName:
+            groupSnapshot.exists()
+              ? groupSnapshot.data()
+                  ?.name || ""
+              : "",
+
+          postId:
+            String(postId),
+
+          targetPath:
+            `/read/groups/${groupId}`
         });
       } catch (error) {
         console.warn(
