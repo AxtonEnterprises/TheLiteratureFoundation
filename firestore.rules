@@ -1866,6 +1866,55 @@ match /notifications/{notificationId} {
 }
 
 /* ========================================================
+   PHASE 5A NOTE LINKS
+   ======================================================== */
+
+/*
+ * Phase 5A deliberately starts with connections between a
+ * reader's own journal notes. This gives us safe cross-book
+ * chains without allowing a link document to reveal another
+ * reader's private note. Group/public note linking can extend
+ * this model in Phase 5B.
+ */
+match /noteLinks/{linkId} {
+  allow read:
+    if signedIn()
+    && resource.data.createdBy == request.auth.uid;
+
+  allow create:
+    if platformWriteAllowed()
+    && request.resource.data.id == linkId
+    && request.resource.data.createdBy == request.auth.uid
+    && request.resource.data.sourceUserId == request.auth.uid
+    && request.resource.data.targetUserId == request.auth.uid
+    && request.resource.data.sourceNoteId is string
+    && request.resource.data.sourceNoteId.size() > 0
+    && request.resource.data.targetNoteId is string
+    && request.resource.data.targetNoteId.size() > 0
+    && request.resource.data.sourceNoteId != request.resource.data.targetNoteId
+    && request.resource.data.relationship is string
+    && request.resource.data.relationship.size() <= 500
+    && request.resource.data.createdAtISO is string
+    && request.resource.data.createdAtISO.size() <= 64
+    && request.resource.data.source is map
+    && request.resource.data.target is map
+    && exists(
+      /databases/$(database)/documents/users/$(request.auth.uid)/journal/$(request.resource.data.sourceNoteId)
+    )
+    && exists(
+      /databases/$(database)/documents/users/$(request.auth.uid)/journal/$(request.resource.data.targetNoteId)
+    );
+
+  allow update:
+    if false;
+
+  allow delete:
+    if platformWriteAllowed()
+    && resource.data.createdBy == request.auth.uid;
+}
+
+
+/* ========================================================
    CHAIN REPLIES
    ======================================================== */
 
