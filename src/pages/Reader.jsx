@@ -539,7 +539,11 @@ export default function Reader() {
         visibility: noteVisibility,
         groupId: noteVisibility === "group" ? noteGroupId : null,
         sourceChainEntryId: sourceChainEntry?.id || null,
-        sourceNoteId: sourceChainEntry?.id || null,
+        sourceNoteId:
+          sourceChainEntry?.sourceNoteId ||
+          sourceChainEntry?.id ||
+          null,
+        sourceRelation: sourceChainEntry ? "inspired_by" : null,
         sourceUserId: sourceChainEntry?.userId || null,
         sourceBookId: sourceChainEntry?.bookId || null,
         sourceParagraphIndex:
