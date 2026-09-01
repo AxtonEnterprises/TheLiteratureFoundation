@@ -5247,3 +5247,65 @@ body.reader-mode.reader-dark-mode {
     padding-right: 0.7rem;
   }
 }
+/* ========================================================
+   PHASE 5B — CHAIN SHARE MENU + GROUP DISCUSSIONS
+   ======================================================== */
+
+.chain-share-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.chain-share-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  min-width: 190px;
+  padding: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card, #fff);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+}
+
+.chain-share-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0.7rem 0.8rem;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.chain-share-menu-item:hover,
+.chain-share-menu-item:focus-visible {
+  background: var(--soft, #eef4f3);
+}
+
+.chain-discussion-source {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.8rem 0 1rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--soft, #f6f8f8);
+}
+
+.chain-discussion-source p {
+  margin: 0.25rem 0;
+}
+
+@media (max-width: 640px) {
+  .chain-share-menu {
+    right: auto;
+    left: 0;
+  }
+}
