@@ -191,7 +191,7 @@ export async function getGroupForumPosts(groupId) {
 
 export async function createGroupForumPost(
   groupId,
-  { title, body }
+  { title, body, sourceChainEntry = null }
 ) {
   const { user } = await requireMembership(groupId);
 
@@ -223,6 +223,31 @@ export async function createGroupForumPost(
     body: cleanBody,
     pinned: false,
     locked: false,
+    sourceChainEntryId: sourceChainEntry?.id ? String(sourceChainEntry.id) : null,
+    sourceUserId: sourceChainEntry?.userId ? String(sourceChainEntry.userId) : null,
+    sourceBookId: sourceChainEntry?.bookId ? String(sourceChainEntry.bookId) : null,
+    sourceParagraphIndex:
+      sourceChainEntry?.paragraphIndex !== undefined &&
+      sourceChainEntry?.paragraphIndex !== null
+        ? Math.max(Number(sourceChainEntry.paragraphIndex) || 0, 0)
+        : null,
+    sourceParagraphNumber:
+      sourceChainEntry?.paragraphNumber !== undefined &&
+      sourceChainEntry?.paragraphNumber !== null
+        ? Math.max(Number(sourceChainEntry.paragraphNumber) || 1, 1)
+        : null,
+    sourceTitle: sourceChainEntry?.title
+      ? String(sourceChainEntry.title).slice(0, 300)
+      : null,
+    sourceAuthor: sourceChainEntry?.author
+      ? String(sourceChainEntry.author).slice(0, 300)
+      : null,
+    sourceNotePreview: sourceChainEntry?.note
+      ? String(sourceChainEntry.note).slice(0, 1000)
+      : null,
+    sourceParagraphPreview: sourceChainEntry?.paragraphPreview
+      ? String(sourceChainEntry.paragraphPreview).slice(0, 1000)
+      : null,
     createdAtISO: now,
     updatedAtISO: now
   };
