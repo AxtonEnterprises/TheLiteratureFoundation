@@ -29,6 +29,7 @@ import {
   X,
   Flag,
   Ban,
+  BookOpen,
   AlertTriangle,
   History,
   RotateCcw
@@ -2193,6 +2194,43 @@ export default function Group() {
                           <p>
                             {post.body}
                           </p>
+
+                          {post.sourceChainEntryId && (
+                            <div className="chain-discussion-source">
+                              <small>From The Chain</small>
+                              <strong>{post.sourceTitle || "Reading note"}</strong>
+                              {post.sourceAuthor && <span>{post.sourceAuthor}</span>}
+                              {post.sourceParagraphNumber && (
+                                <span>Paragraph {post.sourceParagraphNumber}</span>
+                              )}
+                              {post.sourceParagraphPreview && (
+                                <p>“{post.sourceParagraphPreview}”</p>
+                              )}
+                              {post.sourceNotePreview && (
+                                <p>{post.sourceNotePreview}</p>
+                              )}
+                              {post.sourceBookId && (
+                                <Link
+                                  to={`/read/reader/${post.sourceBookId}?paragraph=${Math.max(
+                                    Number(post.sourceParagraphIndex) || 0,
+                                    0
+                                  )}&note=${encodeURIComponent(post.sourceChainEntryId)}`}
+                                  state={{
+                                    book: {
+                                      id: post.sourceBookId,
+                                      bookId: post.sourceBookId,
+                                      title: post.sourceTitle,
+                                      author: post.sourceAuthor
+                                    }
+                                  }}
+                                  className="button secondary"
+                                >
+                                  <BookOpen size={15} />
+                                  Read Context
+                                </Link>
+                              )}
+                            </div>
+                          )}
 
                           <button
                             type="button"

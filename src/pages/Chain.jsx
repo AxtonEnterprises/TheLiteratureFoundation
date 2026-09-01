@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Bookmark,
+  ChevronDown,
   BookOpen,
   Flag,
   MessageCircle,
@@ -14,6 +15,12 @@ import { Link } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 
 import { auth } from "../firebase";
+import {
+  createGroupForumPost
+} from "../services/groupsPhase3A.js";
+import {
+  getMyGroups
+} from "../services/storage.js";
 import {
   getChainFeed,
   getFriendsChainFeed,
@@ -83,6 +90,14 @@ export default function Chain() {
   const [reportReason, setReportReason] = useState("harassment");
   const [reportDetails, setReportDetails] = useState("");
   const [reporting, setReporting] = useState(false);
+  const [shareMenuId, setShareMenuId] = useState(null);
+  const [discussEntry, setDiscussEntry] = useState(null);
+  const [myGroups, setMyGroups] = useState([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [discussionGroupId, setDiscussionGroupId] = useState("");
+  const [discussionTitle, setDiscussionTitle] = useState("");
+  const [discussionBody, setDiscussionBody] = useState("");
+  const [discussionPosting, setDiscussionPosting] = useState(false);
 
   useEffect(() => onAuthStateChanged(auth, setUser), []);
 
@@ -305,6 +320,75 @@ export default function Chain() {
     }
   }
 
+  async function openDiscussInGroup(entry) {
+    if (!requireLogin()) return;
+
+    setShareMenuId(null);
+    setDiscussEntry(entry);
+    setDiscussionTitle(
+      entry.title ? `Discussion: ${entry.title}` : "Discussion from The Chain"
+    );
+    setDiscussionBody("");
+    setDiscussionGroupId("");
+
+    try {
+      setGroupsLoading(true);
+      const groups = await getMyGroups();
+      setMyGroups(groups || []);
+
+      if (groups?.length === 1) {
+        setDiscussionGroupId(String(groups[0].id || groups[0].groupId || ""));
+      }
+    } catch (error) {
+      console.error("Could not load groups:", error);
+      setStatus("We couldn't load your groups.");
+    } finally {
+      setGroupsLoading(false);
+    }
+  }
+
+  async function handleCreateGroupDiscussion(event) {
+    event.preventDefault();
+    if (!discussEntry) return;
+
+    if (!discussionGroupId) {
+      setStatus("Choose a group first.");
+      return;
+    }
+
+    if (!discussionTitle.trim()) {
+      setStatus("Add a discussion title.");
+      return;
+    }
+
+    if (!discussionBody.trim()) {
+      setStatus("Add an opening comment for the group.");
+      return;
+    }
+
+    try {
+      setDiscussionPosting(true);
+      setStatus("");
+
+      await createGroupForumPost(discussionGroupId, {
+        title: discussionTitle,
+        body: discussionBody,
+        sourceChainEntry: discussEntry
+      });
+
+      setDiscussEntry(null);
+      setDiscussionGroupId("");
+      setDiscussionTitle("");
+      setDiscussionBody("");
+      setStatus("Group discussion created.");
+    } catch (error) {
+      console.error("Could not create group discussion:", error);
+      setStatus(error?.message || "We couldn't create that group discussion.");
+    } finally {
+      setDiscussionPosting(false);
+    }
+  }
+
   async function handleReport(event) {
     event.preventDefault();
     if (!reportEntry) return;
@@ -515,30 +599,6 @@ export default function Chain() {
                       Read Context
                     </Link>
 
-                    <Link
-                      to={link}
-                      state={{
-                        book: {
-                          id: entry.bookId,
-                          bookId: entry.bookId,
-                          title: entry.title,
-                          author: entry.author
-                        },
-                        addFromChain: true,
-                        sourceChainEntry: entry
-                      }}
-                      className="margin-action"
-                      onClick={(event) => {
-                        if (!user) {
-                          event.preventDefault();
-                          requireLogin();
-                        }
-                      }}
-                    >
-                      <MessageCircle size={17} />
-                      Add to My Notes
-                    </Link>
-
                     <button
                       type="button"
                       className={replyOpen ? "margin-action active" : "margin-action"}
@@ -557,14 +617,70 @@ export default function Chain() {
                       {isSaved ? "Saved" : "Save"}
                     </button>
 
-                    <button
-                      type="button"
-                      className="margin-action"
-                      onClick={() => handleShare(entry)}
-                    >
-                      <Share2 size={17} />
-                      Share
-                    </button>
+                    <div className="chain-share-menu-wrap">
+                      <button
+                        type="button"
+                        className={shareMenuId === entry.id ? "margin-action active" : "margin-action"}
+                        onClick={() =>
+                          setShareMenuId((current) =>
+                            current === entry.id ? null : entry.id
+                          )
+                        }
+                        aria-expanded={shareMenuId === entry.id}
+                      >
+                        <Share2 size={17} />
+                        Share
+                        <ChevronDown size={14} />
+                      </button>
+
+                      {shareMenuId === entry.id && (
+                        <div className="chain-share-menu">
+                          <Link
+                            to={link}
+                            state={{
+                              book: {
+                                id: entry.bookId,
+                                bookId: entry.bookId,
+                                title: entry.title,
+                                author: entry.author
+                              },
+                              addFromChain: true,
+                              sourceChainEntry: entry
+                            }}
+                            className="chain-share-menu-item"
+                            onClick={(event) => {
+                              if (!user) {
+                                event.preventDefault();
+                                requireLogin();
+                                return;
+                              }
+                              setShareMenuId(null);
+                            }}
+                          >
+                            Add to My Notes
+                          </Link>
+
+                          <button
+                            type="button"
+                            className="chain-share-menu-item"
+                            onClick={() => openDiscussInGroup(entry)}
+                          >
+                            Discuss in Group
+                          </button>
+
+                          <button
+                            type="button"
+                            className="chain-share-menu-item"
+                            onClick={() => {
+                              setShareMenuId(null);
+                              handleShare(entry);
+                            }}
+                          >
+                            Share Link
+                          </button>
+                        </div>
+                      )}
+                    </div>
 
                     <button
                       type="button"
@@ -661,6 +777,88 @@ export default function Chain() {
           </div>
         )}
       </div>
+
+      {discussEntry && (
+        <div className="modal-backdrop" role="presentation">
+          <form className="modal-card" onSubmit={handleCreateGroupDiscussion}>
+            <div className="margin-reply-heading">
+              <strong>Discuss in Group</strong>
+              <button
+                type="button"
+                className="margin-close-button"
+                onClick={() => setDiscussEntry(null)}
+                aria-label="Close group discussion"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="chain-discussion-source">
+              <small>From The Chain</small>
+              <strong>{discussEntry.title || "Untitled"}</strong>
+              {discussEntry.author && <span>{discussEntry.author}</span>}
+              {discussEntry.paragraphNumber && (
+                <span>Paragraph {discussEntry.paragraphNumber}</span>
+              )}
+              {discussEntry.note && <p>“{discussEntry.note}”</p>}
+            </div>
+
+            <label>
+              Group
+              <select
+                value={discussionGroupId}
+                onChange={(event) => setDiscussionGroupId(event.target.value)}
+                disabled={groupsLoading}
+              >
+                <option value="">
+                  {groupsLoading ? "Loading groups..." : "Choose a group..."}
+                </option>
+                {myGroups.map((item) => (
+                  <option
+                    key={item.id || item.groupId}
+                    value={item.id || item.groupId}
+                  >
+                    {item.name || "Reading Group"}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {!groupsLoading && myGroups.length === 0 && (
+              <p className="muted">
+                Join or create a group before starting a group discussion.
+              </p>
+            )}
+
+            <label>
+              Discussion title
+              <input
+                value={discussionTitle}
+                onChange={(event) => setDiscussionTitle(event.target.value)}
+                maxLength={200}
+              />
+            </label>
+
+            <label>
+              Your comment
+              <textarea
+                rows={4}
+                value={discussionBody}
+                onChange={(event) => setDiscussionBody(event.target.value)}
+                maxLength={2000}
+                placeholder="What would you like the group to discuss?"
+              />
+            </label>
+
+            <button
+              className="button primary"
+              disabled={discussionPosting || groupsLoading || !myGroups.length}
+            >
+              {discussionPosting ? "Posting..." : "Start Discussion"}
+            </button>
+          </form>
+        </div>
+      )}
 
       {reportEntry && (
         <div className="modal-backdrop" role="presentation">
