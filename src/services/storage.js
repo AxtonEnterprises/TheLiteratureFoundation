@@ -46,6 +46,54 @@ const LOCAL_SAVED_BOOKS_KEY =
 const LOCAL_JOURNAL_KEY =
   "randomReads.journal";
 
+const LOCAL_READING_PROGRESS_PREFIX =
+  "litChain.readingProgress.";
+
+function localReadingProgressKey(bookId) {
+  return `${LOCAL_READING_PROGRESS_PREFIX}${String(bookId)}`;
+}
+
+function readLocalReadingProgress(bookId) {
+  if (
+    bookId === undefined ||
+    bookId === null
+  ) {
+    return null;
+  }
+
+  try {
+    const raw = localStorage.getItem(
+      localReadingProgressKey(bookId)
+    );
+
+    return raw
+      ? JSON.parse(raw)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalReadingProgress(bookId, progress) {
+  if (
+    bookId === undefined ||
+    bookId === null
+  ) {
+    return;
+  }
+
+  try {
+    localStorage.setItem(
+      localReadingProgressKey(bookId),
+      JSON.stringify(progress)
+    );
+  } catch {
+    /*
+     * Local cache failure must never prevent Firestore sync.
+     */
+  }
+}
+
 const JOURNAL_VISIBILITIES = [
   "private",
   "public",
@@ -819,6 +867,16 @@ export async function saveReadingProgress(
         : {})
     });
 
+  /*
+   * Reading position is local-first. The reader can restore this
+   * immediately on the next open while Firestore remains the
+   * cross-device source of truth.
+   */
+  writeLocalReadingProgress(
+    book.id,
+    progressData
+  );
+
   await setDoc(
     progressRef,
     {
@@ -838,14 +896,73 @@ export async function getReadingProgress(
   bookId
 ) {
   if (
-    bookId ===
-      undefined ||
-    bookId ===
-      null
+    bookId === undefined ||
+    bookId === null
   ) {
     return null;
   }
 
+  /*
+   * Never make book rendering wait for Firestore when this device
+   * already knows the reader's last paragraph.
+   */
+  const cached =
+    readLocalReadingProgress(
+      bookId
+    );
+
+  if (cached) {
+    /*
+     * Refresh the cache asynchronously for cross-device progress.
+     * Nothing awaiting getReadingProgress() is held up by this read.
+     */
+    void (async () => {
+      try {
+        const user =
+          await getCurrentUser();
+
+        if (!user) {
+          return;
+        }
+
+        const progressRef =
+          doc(
+            db,
+            "users",
+            user.uid,
+            "readingProgress",
+            String(bookId)
+          );
+
+        const snapshot =
+          await getDoc(
+            progressRef
+          );
+
+        if (
+          snapshot.exists()
+        ) {
+          writeLocalReadingProgress(
+            bookId,
+            snapshot.data()
+          );
+        }
+      } catch (error) {
+        console.warn(
+          `Could not refresh reading progress for book ${bookId}:`,
+          error
+        );
+      }
+    })();
+
+    return cached;
+  }
+
+  /*
+   * First open on this device still checks Firestore so an existing
+   * cross-device position can be restored. Once found it is cached,
+   * making subsequent opens local-first.
+   */
   const user =
     await getCurrentUser();
 
@@ -853,22 +970,13 @@ export async function getReadingProgress(
     return null;
   }
 
-  const {
-    getDoc
-  } =
-    await import(
-      "firebase/firestore"
-    );
-
   const progressRef =
     doc(
       db,
       "users",
       user.uid,
       "readingProgress",
-      String(
-        bookId
-      )
+      String(bookId)
     );
 
   const snapshot =
@@ -882,9 +990,16 @@ export async function getReadingProgress(
     return null;
   }
 
-  return snapshot.data();
-}
+  const progress =
+    snapshot.data();
 
+  writeLocalReadingProgress(
+    bookId,
+    progress
+  );
+
+  return progress;
+}
 
 export async function getReadingTimeline() {
   const user =
@@ -917,30 +1032,47 @@ export async function getReadingTimeline() {
       })
     );
 
+  records.sort(
+    (a, b) => {
+      const aDate =
+        a.updatedAtISO ||
+        "";
+
+      const bDate =
+        b.updatedAtISO ||
+        "";
+
+      return bDate.localeCompare(
+        aDate
+      );
+    }
+  );
 
   /*
-   * Repair older reading-progress records that
-   * were saved before Random Reads stored complete
-   * book metadata.
+   * Return the timeline immediately. Legacy metadata repair is
+   * maintenance work and must never block the profile UI.
    */
-  const repairedRecords =
-    await Promise.all(
-      records.map(
-        async (record) => {
-          const needsRepair =
+  const recordsNeedingRepair =
+    records.filter(
+      (record) =>
+        Boolean(
+          record.bookId &&
+          (
             !record.title ||
             !record.author ||
             record.author ===
               "Unknown author" ||
-            !record.image;
+            !record.image
+          )
+        )
+    );
 
-          if (
-            !needsRepair ||
-            !record.bookId
-          ) {
-            return record;
-          }
-
+  if (
+    recordsNeedingRepair.length
+  ) {
+    void Promise.allSettled(
+      recordsNeedingRepair.map(
+        async (record) => {
           try {
             const book =
               await getBookById(
@@ -948,12 +1080,10 @@ export async function getReadingTimeline() {
               );
 
             if (!book) {
-              return record;
+              return;
             }
 
-            const repairedRecord = {
-              ...record,
-
+            const repaired = {
               title:
                 book.title ||
                 record.title ||
@@ -971,34 +1101,16 @@ export async function getReadingTimeline() {
                 null
             };
 
-
-            /*
-             * Save the repaired metadata back to
-             * Firestore so we don't have to repair
-             * this record every time.
-             */
-            const recordRef =
+            await setDoc(
               doc(
                 db,
                 "users",
                 user.uid,
                 "readingProgress",
-                String(
-                  record.bookId
-                )
-              );
-
-            await setDoc(
-              recordRef,
+                String(record.bookId)
+              ),
               {
-                title:
-                  repairedRecord.title,
-
-                author:
-                  repairedRecord.author,
-
-                image:
-                  repairedRecord.image,
+                ...repaired,
 
                 metadataUpdatedAt:
                   serverTimestamp()
@@ -1007,45 +1119,19 @@ export async function getReadingTimeline() {
                 merge: true
               }
             );
-
-            return repairedRecord;
           } catch (error) {
-            /*
-             * A Gutendex/network failure should not
-             * prevent the reading timeline from loading.
-             */
             console.warn(
               `Could not repair metadata for book ${record.bookId}:`,
               error
             );
-
-            return record;
           }
         }
       )
     );
+  }
 
-
-  repairedRecords.sort(
-    (a, b) => {
-      const aDate =
-        a.updatedAtISO ||
-        "";
-
-      const bDate =
-        b.updatedAtISO ||
-        "";
-
-      return bDate.localeCompare(
-        aDate
-      );
-    }
-  );
-
-
-  return repairedRecords;
+  return records;
 }
-
 
 /* ============================================================
    USERNAMES
