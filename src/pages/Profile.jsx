@@ -2458,6 +2458,13 @@ export default function Profile() {
                           >
                             <Link
                               to={`/read/reader/${bookId}`}
+                              state={{
+                                book: {
+                                  ...item,
+                                  id: bookId,
+                                  bookId
+                                }
+                              }}
                               className="timeline-cover"
                             >
                               {item.image ||
@@ -2539,6 +2546,13 @@ export default function Profile() {
 
                               <Link
                                 to={`/read/reader/${bookId}`}
+                                state={{
+                                  book: {
+                                    ...item,
+                                    id: bookId,
+                                    bookId
+                                  }
+                                }}
                                 className="timeline-book-title"
                               >
                                 {item.title ||
