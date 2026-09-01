@@ -26,6 +26,7 @@ import {
   getFriendsChainFeed,
   getGroupsChainFeed,
   getSavedChainEntries,
+  getChainProvenance,
   reportChainEntry,
   saveChainEntry,
   unsaveChainEntry
@@ -98,6 +99,9 @@ export default function Chain() {
   const [discussionTitle, setDiscussionTitle] = useState("");
   const [discussionBody, setDiscussionBody] = useState("");
   const [discussionPosting, setDiscussionPosting] = useState(false);
+  const [provenanceByEntry, setProvenanceByEntry] = useState({});
+  const [provenanceLoading, setProvenanceLoading] = useState({});
+  const [openChainId, setOpenChainId] = useState(null);
 
   useEffect(() => onAuthStateChanged(auth, setUser), []);
 
@@ -396,6 +400,26 @@ export default function Chain() {
     }
   }
 
+  async function toggleIdeaChain(entry) {
+    const key = savedChainKey(entry);
+    if (openChainId === key) {
+      setOpenChainId(null);
+      return;
+    }
+    setOpenChainId(key);
+    if (provenanceByEntry[key]) return;
+    try {
+      setProvenanceLoading((current) => ({ ...current, [key]: true }));
+      const provenance = await getChainProvenance(entry);
+      setProvenanceByEntry((current) => ({ ...current, [key]: provenance }));
+    } catch (error) {
+      console.error("Could not load idea chain:", error);
+      setStatus("We couldn't load this idea chain.");
+    } finally {
+      setProvenanceLoading((current) => ({ ...current, [key]: false }));
+    }
+  }
+
   async function handleReport(event) {
     event.preventDefault();
     if (!reportEntry) return;
@@ -471,6 +495,12 @@ export default function Chain() {
               const replyOpen = openReplyId === entry.id;
               const replies = repliesByEntry[entry.id] || [];
               const link = readingLink(entry);
+              const provenanceKey = savedChainKey(entry);
+              const provenance = provenanceByEntry[provenanceKey] || null;
+              const chainOpen = openChainId === provenanceKey;
+              const branchCount =
+                (provenance?.branches?.noteCount || 0) +
+                (provenance?.branches?.groupDiscussionCount || 0);
 
               return (
                 <article
@@ -642,6 +672,80 @@ export default function Chain() {
                   )}
 
                   <p className="public-journal-note">{entry.note}</p>
+
+                  {entry.sourceChainEntryId && (
+                    <button type="button" className="chain-provenance-source" onClick={() => toggleIdeaChain(entry)}>
+                      <span>Inspired by a Chain note</span>
+                      <strong>
+                        {entry.sourceTitle || entry.title || "Reading note"}
+                        {entry.sourceParagraphIndex !== undefined && entry.sourceParagraphIndex !== null
+                          ? ` · Paragraph ${Number(entry.sourceParagraphIndex) + 1}` : ""}
+                      </strong>
+                    </button>
+                  )}
+
+                  <button type="button" className="chain-continue-button" onClick={() => toggleIdeaChain(entry)} aria-expanded={chainOpen}>
+                    <span>{branchCount > 0 ? `${branchCount} continuation${branchCount === 1 ? "" : "s"}` : "Continue Chain"}</span>
+                    <ChevronDown size={16} className={chainOpen ? "chain-chevron-open" : ""} />
+                  </button>
+
+                  {chainOpen && (
+                    <div className="chain-provenance-panel">
+                      {provenanceLoading[provenanceKey] && <p className="muted">Following the chain…</p>}
+                      {!provenanceLoading[provenanceKey] && provenance && (
+                        <>
+                          {provenance.source && (
+                            <section className="chain-provenance-section">
+                              <small>Inspired by</small>
+                              <Link
+                                to={`${readingLink(provenance.source)}&note=${encodeURIComponent(provenance.source.id)}`}
+                                state={{ book: { id: provenance.source.bookId, bookId: provenance.source.bookId, title: provenance.source.title, author: provenance.source.author } }}
+                                className="chain-provenance-card"
+                              >
+                                <strong>{provenance.source.reader?.displayName || "Reader"}</strong>
+                                <span>{provenance.source.title || "Untitled"}{provenance.source.paragraphNumber ? ` · Paragraph ${provenance.source.paragraphNumber}` : ""}</span>
+                                {provenance.source.note && <p>“{String(provenance.source.note).slice(0, 220)}”</p>}
+                              </Link>
+                            </section>
+                          )}
+
+                          {provenance.branches?.notes?.length > 0 && (
+                            <section className="chain-provenance-section">
+                              <small>Continued by {provenance.branches.noteCount} reader{provenance.branches.noteCount === 1 ? "" : "s"}</small>
+                              {provenance.branches.notes.map((branch) => (
+                                <Link
+                                  key={`${branch.userId}-${branch.id}`}
+                                  to={`${readingLink(branch)}&note=${encodeURIComponent(branch.id)}`}
+                                  state={{ book: { id: branch.bookId, bookId: branch.bookId, title: branch.title, author: branch.author } }}
+                                  className="chain-provenance-card"
+                                >
+                                  <strong>{branch.reader?.displayName || "Reader"}</strong>
+                                  <span>{branch.title || "Untitled"}{branch.paragraphNumber ? ` · Paragraph ${branch.paragraphNumber}` : ""}</span>
+                                  {branch.note && <p>“{String(branch.note).slice(0, 220)}”</p>}
+                                </Link>
+                              ))}
+                            </section>
+                          )}
+
+                          {provenance.branches?.groupDiscussions?.length > 0 && (
+                            <section className="chain-provenance-section">
+                              <small>{provenance.branches.groupDiscussionCount} group discussion{provenance.branches.groupDiscussionCount === 1 ? "" : "s"}</small>
+                              {provenance.branches.groupDiscussions.map((discussion) => (
+                                <Link key={`${discussion.groupId}-${discussion.id}`} to={`/read/groups/${discussion.groupId}`} className="chain-provenance-card">
+                                  <strong>{discussion.title || "Group discussion"}</strong>
+                                  {discussion.body && <p>{String(discussion.body).slice(0, 220)}</p>}
+                                </Link>
+                              ))}
+                            </section>
+                          )}
+
+                          {!provenance.source && !provenance.branches?.noteCount && !provenance.branches?.groupDiscussionCount && (
+                            <p className="muted">No one has continued this idea yet.</p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   <div className="margins-actions">
                     <Link
