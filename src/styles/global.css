@@ -5321,3 +5321,25 @@ body.reader-mode.reader-dark-mode {
   left: auto;
   transform-origin: top right;
 }
+/* ========================================================
+   PHASE 5B — DISCUSS IN GROUP INLINE COMPOSER
+   ======================================================== */
+
+.chain-discussion-composer {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.chain-discussion-composer label {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.chain-discussion-composer select,
+.chain-discussion-composer input,
+.chain-discussion-composer textarea {
+  width: 100%;
+}
