@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
   Bookmark,
-  ChevronDown,
   BookOpen,
   Flag,
   MessageCircle,
@@ -55,6 +58,39 @@ function savedChainKey(entry) {
   return [entry?.userId || "", entry?.id || ""].filter(Boolean).join("_");
 }
 
+
+function ideaNodeKey(node) {
+  if (!node) return "";
+  if (node.nodeType === "group") {
+    return `group_${node.groupId || ""}_${node.id || ""}`;
+  }
+  return `note_${node.userId || ""}_${node.id || ""}`;
+}
+
+function toIdeaNode(entry, nodeType = "note") {
+  if (!entry) return null;
+
+  if (nodeType === "group") {
+    return {
+      ...entry,
+      nodeType: "group",
+      userId: entry.userId || null,
+      title: entry.title || "Group discussion"
+    };
+  }
+
+  return {
+    ...entry,
+    nodeType: "note"
+  };
+}
+
+function ideaNodeLabel(node) {
+  if (!node) return "Idea";
+  if (node.nodeType === "group") return "Group discussion";
+  return node.reader?.displayName || "Reader note";
+}
+
 function readingLink(entry) {
   const base = `/read/reader/${entry.bookId}`;
 
@@ -99,9 +135,13 @@ export default function Chain() {
   const [discussionTitle, setDiscussionTitle] = useState("");
   const [discussionBody, setDiscussionBody] = useState("");
   const [discussionPosting, setDiscussionPosting] = useState(false);
-  const [provenanceByEntry, setProvenanceByEntry] = useState({});
-  const [provenanceLoading, setProvenanceLoading] = useState({});
-  const [openChainId, setOpenChainId] = useState(null);
+  const [ideaWindowRootId, setIdeaWindowRootId] = useState(null);
+  const [ideaCurrentByRoot, setIdeaCurrentByRoot] = useState({});
+  const [ideaDataByNode, setIdeaDataByNode] = useState({});
+  const [ideaLoadingByNode, setIdeaLoadingByNode] = useState({});
+  const [ideaBranchIndexByNode, setIdeaBranchIndexByNode] = useState({});
+  const ideaSwipeStartRef = useRef(null);
+
 
   useEffect(() => onAuthStateChanged(auth, setUser), []);
 
@@ -400,23 +440,163 @@ export default function Chain() {
     }
   }
 
-  async function toggleIdeaChain(entry) {
-    const key = savedChainKey(entry);
-    if (openChainId === key) {
-      setOpenChainId(null);
-      return;
-    }
-    setOpenChainId(key);
-    if (provenanceByEntry[key]) return;
+  async function loadIdeaNode(node) {
+    if (!node || node.nodeType === "group") return null;
+
+    const key = ideaNodeKey(node);
+    if (ideaDataByNode[key]) return ideaDataByNode[key];
+
     try {
-      setProvenanceLoading((current) => ({ ...current, [key]: true }));
-      const provenance = await getChainProvenance(entry);
-      setProvenanceByEntry((current) => ({ ...current, [key]: provenance }));
+      setIdeaLoadingByNode((current) => ({ ...current, [key]: true }));
+
+      const provenance = await getChainProvenance(node);
+      const branches = [
+        ...(provenance?.branches?.notes || []).map((item) =>
+          toIdeaNode(item, "note")
+        ),
+        ...(provenance?.branches?.groupDiscussions || []).map((item) =>
+          toIdeaNode(item, "group")
+        )
+      ];
+
+      const data = {
+        source: provenance?.source
+          ? toIdeaNode(provenance.source, "note")
+          : null,
+        branches
+      };
+
+      setIdeaDataByNode((current) => ({
+        ...current,
+        [key]: data
+      }));
+
+      return data;
     } catch (error) {
       console.error("Could not load idea chain:", error);
       setStatus("We couldn't load this idea chain.");
+      return null;
     } finally {
-      setProvenanceLoading((current) => ({ ...current, [key]: false }));
+      setIdeaLoadingByNode((current) => ({ ...current, [key]: false }));
+    }
+  }
+
+  async function openIdeaWindow(entry) {
+    const rootKey = savedChainKey(entry);
+
+    if (ideaWindowRootId === rootKey) {
+      setIdeaWindowRootId(null);
+      return;
+    }
+
+    const rootNode = toIdeaNode(entry, "note");
+    setIdeaWindowRootId(rootKey);
+    setIdeaCurrentByRoot((current) => ({
+      ...current,
+      [rootKey]: rootNode
+    }));
+
+    await loadIdeaNode(rootNode);
+  }
+
+  async function moveIdea(rootKey, direction) {
+    const currentNode = ideaCurrentByRoot[rootKey];
+    if (!currentNode) return;
+
+    if (currentNode.nodeType === "group") {
+      if (direction === "left" && currentNode.sourceChainEntryId && currentNode.sourceUserId) {
+        const sourceNode = toIdeaNode({
+          id: currentNode.sourceChainEntryId,
+          userId: currentNode.sourceUserId,
+          bookId: currentNode.sourceBookId,
+          title: currentNode.sourceTitle,
+          author: currentNode.sourceAuthor,
+          paragraphIndex: currentNode.sourceParagraphIndex,
+          paragraphNumber: currentNode.sourceParagraphNumber,
+          note: currentNode.sourceNotePreview,
+          paragraphPreview: currentNode.sourceParagraphPreview
+        }, "note");
+
+        setIdeaCurrentByRoot((current) => ({
+          ...current,
+          [rootKey]: sourceNode
+        }));
+        await loadIdeaNode(sourceNode);
+      }
+      return;
+    }
+
+    const currentKey = ideaNodeKey(currentNode);
+    const data = ideaDataByNode[currentKey] || await loadIdeaNode(currentNode);
+    if (!data) return;
+
+    const branches = data.branches || [];
+    const branchIndex = Math.min(
+      ideaBranchIndexByNode[currentKey] || 0,
+      Math.max(branches.length - 1, 0)
+    );
+
+    if (direction === "left" && data.source) {
+      setIdeaCurrentByRoot((current) => ({
+        ...current,
+        [rootKey]: data.source
+      }));
+      await loadIdeaNode(data.source);
+      return;
+    }
+
+    if (direction === "right" && branches.length) {
+      const next = branches[branchIndex];
+      setIdeaCurrentByRoot((current) => ({
+        ...current,
+        [rootKey]: next
+      }));
+      if (next.nodeType !== "group") await loadIdeaNode(next);
+      return;
+    }
+
+    if ((direction === "up" || direction === "down") && branches.length > 1) {
+      const delta = direction === "down" ? 1 : -1;
+      const nextIndex = (branchIndex + delta + branches.length) % branches.length;
+
+      setIdeaBranchIndexByNode((current) => ({
+        ...current,
+        [currentKey]: nextIndex
+      }));
+    }
+  }
+
+  function handleIdeaTouchStart(event) {
+    const touch = event.touches?.[0];
+    if (!touch) return;
+
+    ideaSwipeStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: Date.now()
+    };
+  }
+
+  function handleIdeaTouchEnd(event, rootKey) {
+    const start = ideaSwipeStartRef.current;
+    ideaSwipeStartRef.current = null;
+
+    const touch = event.changedTouches?.[0];
+    if (!start || !touch) return;
+
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    const elapsed = Date.now() - start.time;
+
+    if (elapsed > 900) return;
+
+    if (Math.abs(deltaX) >= 48 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+      moveIdea(rootKey, deltaX > 0 ? "left" : "right");
+      return;
+    }
+
+    if (Math.abs(deltaY) >= 48 && Math.abs(deltaY) > Math.abs(deltaX) * 1.2) {
+      moveIdea(rootKey, deltaY > 0 ? "up" : "down");
     }
   }
 
@@ -495,12 +675,17 @@ export default function Chain() {
               const replyOpen = openReplyId === entry.id;
               const replies = repliesByEntry[entry.id] || [];
               const link = readingLink(entry);
-              const provenanceKey = savedChainKey(entry);
-              const provenance = provenanceByEntry[provenanceKey] || null;
-              const chainOpen = openChainId === provenanceKey;
-              const branchCount =
-                (provenance?.branches?.noteCount || 0) +
-                (provenance?.branches?.groupDiscussionCount || 0);
+              const ideaRootKey = savedChainKey(entry);
+              const ideaOpen = ideaWindowRootId === ideaRootKey;
+              const ideaCurrent = ideaCurrentByRoot[ideaRootKey] || toIdeaNode(entry, "note");
+              const ideaCurrentKey = ideaNodeKey(ideaCurrent);
+              const ideaData = ideaDataByNode[ideaCurrentKey] || null;
+              const ideaBranches = ideaData?.branches || [];
+              const ideaBranchIndex = Math.min(
+                ideaBranchIndexByNode[ideaCurrentKey] || 0,
+                Math.max(ideaBranches.length - 1, 0)
+              );
+              const ideaSelectedBranch = ideaBranches[ideaBranchIndex] || null;
 
               return (
                 <article
@@ -673,78 +858,148 @@ export default function Chain() {
 
                   <p className="public-journal-note">{entry.note}</p>
 
-                  {entry.sourceChainEntryId && (
-                    <button type="button" className="chain-provenance-source" onClick={() => toggleIdeaChain(entry)}>
-                      <span>Inspired by a Chain note</span>
-                      <strong>
-                        {entry.sourceTitle || entry.title || "Reading note"}
-                        {entry.sourceParagraphIndex !== undefined && entry.sourceParagraphIndex !== null
-                          ? ` · Paragraph ${Number(entry.sourceParagraphIndex) + 1}` : ""}
-                      </strong>
-                    </button>
-                  )}
-
-                  <button type="button" className="chain-continue-button" onClick={() => toggleIdeaChain(entry)} aria-expanded={chainOpen}>
-                    <span>{branchCount > 0 ? `${branchCount} continuation${branchCount === 1 ? "" : "s"}` : "Continue Chain"}</span>
-                    <ChevronDown size={16} className={chainOpen ? "chain-chevron-open" : ""} />
+                  <button
+                    type="button"
+                    className={ideaOpen ? "chain-thought-toggle active" : "chain-thought-toggle"}
+                    onClick={() => openIdeaWindow(entry)}
+                    aria-expanded={ideaOpen}
+                  >
+                    <span>Continue Chain</span>
+                    <span className="chain-thought-toggle-hint">
+                      Follow the thought
+                    </span>
                   </button>
 
-                  {chainOpen && (
-                    <div className="chain-provenance-panel">
-                      {provenanceLoading[provenanceKey] && <p className="muted">Following the chain…</p>}
-                      {!provenanceLoading[provenanceKey] && provenance && (
-                        <>
-                          {provenance.source && (
-                            <section className="chain-provenance-section">
-                              <small>Inspired by</small>
+                  {ideaOpen && (
+                    <section
+                      className="chain-thought-window"
+                      aria-label="Idea chain navigator"
+                      onTouchStart={handleIdeaTouchStart}
+                      onTouchEnd={(event) => handleIdeaTouchEnd(event, ideaRootKey)}
+                    >
+                      <div className="chain-thought-breadcrumb">
+                        <span>{ideaCurrent.nodeType === "group" ? "Discussion" : "Note"}</span>
+                        <span>•</span>
+                        <span>
+                          {ideaCurrent.paragraphNumber
+                            ? `Paragraph ${ideaCurrent.paragraphNumber}`
+                            : ideaCurrent.title || "Linked idea"}
+                        </span>
+                      </div>
+
+                      {ideaLoadingByNode[ideaCurrentKey] ? (
+                        <div className="chain-thought-loading">
+                          <p className="muted">Following the chain…</p>
+                        </div>
+                      ) : (
+                        <div className="chain-thought-stage">
+                          <button
+                            type="button"
+                            className="chain-thought-direction chain-thought-up"
+                            disabled={ideaBranches.length < 2}
+                            onClick={() => moveIdea(ideaRootKey, "up")}
+                            aria-label="Previous linked idea"
+                          >
+                            <ArrowUp size={18} />
+                            <span>
+                              {ideaBranches.length > 1
+                                ? `Idea ${ideaBranchIndex + 1} of ${ideaBranches.length}`
+                                : "Other ideas"}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="chain-thought-direction chain-thought-left"
+                            disabled={!ideaData?.source && ideaCurrent.nodeType !== "group"}
+                            onClick={() => moveIdea(ideaRootKey, "left")}
+                            aria-label="Go back to source"
+                          >
+                            <ArrowLeft size={18} />
+                            <span>Source</span>
+                          </button>
+
+                          <article className="chain-thought-current">
+                            <small>{ideaNodeLabel(ideaCurrent)}</small>
+                            <strong>{ideaCurrent.title || "Linked idea"}</strong>
+
+                            {ideaCurrent.author && (
+                              <span>{ideaCurrent.author}</span>
+                            )}
+
+                            {ideaCurrent.paragraphNumber && (
+                              <span>Paragraph {ideaCurrent.paragraphNumber}</span>
+                            )}
+
+                            {ideaCurrent.note && (
+                              <p>“{String(ideaCurrent.note).slice(0, 320)}”</p>
+                            )}
+
+                            {ideaCurrent.nodeType === "group" ? (
                               <Link
-                                to={`${readingLink(provenance.source)}&note=${encodeURIComponent(provenance.source.id)}`}
-                                state={{ book: { id: provenance.source.bookId, bookId: provenance.source.bookId, title: provenance.source.title, author: provenance.source.author } }}
-                                className="chain-provenance-card"
+                                className="button secondary"
+                                to={`/read/groups/${ideaCurrent.groupId}`}
                               >
-                                <strong>{provenance.source.reader?.displayName || "Reader"}</strong>
-                                <span>{provenance.source.title || "Untitled"}{provenance.source.paragraphNumber ? ` · Paragraph ${provenance.source.paragraphNumber}` : ""}</span>
-                                {provenance.source.note && <p>“{String(provenance.source.note).slice(0, 220)}”</p>}
+                                Open Discussion
                               </Link>
-                            </section>
-                          )}
-
-                          {provenance.branches?.notes?.length > 0 && (
-                            <section className="chain-provenance-section">
-                              <small>Continued by {provenance.branches.noteCount} reader{provenance.branches.noteCount === 1 ? "" : "s"}</small>
-                              {provenance.branches.notes.map((branch) => (
+                            ) : (
+                              ideaCurrent.bookId && (
                                 <Link
-                                  key={`${branch.userId}-${branch.id}`}
-                                  to={`${readingLink(branch)}&note=${encodeURIComponent(branch.id)}`}
-                                  state={{ book: { id: branch.bookId, bookId: branch.bookId, title: branch.title, author: branch.author } }}
-                                  className="chain-provenance-card"
+                                  className="button secondary"
+                                  to={`${readingLink(ideaCurrent)}&note=${encodeURIComponent(ideaCurrent.id)}`}
+                                  state={{
+                                    book: {
+                                      id: ideaCurrent.bookId,
+                                      bookId: ideaCurrent.bookId,
+                                      title: ideaCurrent.title,
+                                      author: ideaCurrent.author
+                                    }
+                                  }}
                                 >
-                                  <strong>{branch.reader?.displayName || "Reader"}</strong>
-                                  <span>{branch.title || "Untitled"}{branch.paragraphNumber ? ` · Paragraph ${branch.paragraphNumber}` : ""}</span>
-                                  {branch.note && <p>“{String(branch.note).slice(0, 220)}”</p>}
+                                  Read Context
                                 </Link>
-                              ))}
-                            </section>
-                          )}
+                              )
+                            )}
+                          </article>
 
-                          {provenance.branches?.groupDiscussions?.length > 0 && (
-                            <section className="chain-provenance-section">
-                              <small>{provenance.branches.groupDiscussionCount} group discussion{provenance.branches.groupDiscussionCount === 1 ? "" : "s"}</small>
-                              {provenance.branches.groupDiscussions.map((discussion) => (
-                                <Link key={`${discussion.groupId}-${discussion.id}`} to={`/read/groups/${discussion.groupId}`} className="chain-provenance-card">
-                                  <strong>{discussion.title || "Group discussion"}</strong>
-                                  {discussion.body && <p>{String(discussion.body).slice(0, 220)}</p>}
-                                </Link>
-                              ))}
-                            </section>
-                          )}
+                          <button
+                            type="button"
+                            className="chain-thought-direction chain-thought-right"
+                            disabled={!ideaSelectedBranch}
+                            onClick={() => moveIdea(ideaRootKey, "right")}
+                            aria-label="Follow linked idea"
+                          >
+                            <ArrowRight size={18} />
+                            <span>
+                              {ideaSelectedBranch
+                                ? ideaNodeLabel(ideaSelectedBranch)
+                                : "Next idea"}
+                            </span>
+                          </button>
 
-                          {!provenance.source && !provenance.branches?.noteCount && !provenance.branches?.groupDiscussionCount && (
-                            <p className="muted">No one has continued this idea yet.</p>
-                          )}
-                        </>
+                          <button
+                            type="button"
+                            className="chain-thought-direction chain-thought-down"
+                            disabled={ideaBranches.length < 2}
+                            onClick={() => moveIdea(ideaRootKey, "down")}
+                            aria-label="Next linked idea"
+                          >
+                            <ArrowDown size={18} />
+                            <span>
+                              {ideaBranches.length > 1
+                                ? `${ideaBranches.length} linked ideas`
+                                : "Other ideas"}
+                            </span>
+                          </button>
+                        </div>
                       )}
-                    </div>
+
+                      <div className="chain-thought-legend">
+                        <span>← source</span>
+                        <span>↑↓ other ideas</span>
+                        <span>linked idea →</span>
+                      </div>
+                    </section>
                   )}
 
                   <div className="margins-actions">
