@@ -7,7 +7,6 @@ import {
   ChevronDown,
   ChevronUp,
   List,
-  Link2,
   Moon,
   Sun,
   Globe2,
@@ -25,7 +24,6 @@ import {
   addJournalEntry,
   clearReadingPresence,
   deleteJournalEntry,
-  getJournal,
   getJournalForBook,
   getMyGroups,
   getReadingProgress,
@@ -38,7 +36,6 @@ import { paginateParagraphs } from "../utils/paginateText.js";
 import { auth } from "../firebase";
 import SEO from "../components/SEO.jsx";
 import { syncClassReadingProgress } from "../services/classStorage.js";
-import { createNoteLink, deleteNoteLink, getMyNoteLinks } from "../services/noteLinks.js";
 
 function formatNoteDate(value) {
   if (!value) return "";
@@ -87,6 +84,9 @@ export default function Reader() {
     return raw ? String(raw) : null;
   }, [searchParams]);
 
+  const sourceChainEntry = location.state?.sourceChainEntry || null;
+  const addFromChain = Boolean(location.state?.addFromChain && sourceChainEntry);
+
   const [book, setBook] = useState(location.state?.book || null);
   const [paragraphs, setParagraphs] = useState([]);
   const [chapters, setChapters] = useState([]);
@@ -127,16 +127,7 @@ export default function Reader() {
   const [savingEntry, setSavingEntry] = useState(false);
   const [deletingEntryId, setDeletingEntryId] = useState(null);
 
-  // Phase 5A — note-to-note chains.
-  const [allMyNotes, setAllMyNotes] = useState([]);
-  const [allMyNotesLoaded, setAllMyNotesLoaded] = useState(false);
-  const [noteLinks, setNoteLinks] = useState([]);
-  const [noteLinksLoaded, setNoteLinksLoaded] = useState(false);
   const [focusedNoteId, setFocusedNoteId] = useState(requestedNoteId);
-  const [linkingEntryId, setLinkingEntryId] = useState(null);
-  const [linkTargetId, setLinkTargetId] = useState("");
-  const [linkRelationship, setLinkRelationship] = useState("");
-  const [linkSaving, setLinkSaving] = useState(false);
 
   useEffect(() => {
     document.body.classList.add("reader-mode");
@@ -270,23 +261,14 @@ export default function Reader() {
     return () => { active = false; };
   }, [book?.id, progressLoaded]);
 
+
   useEffect(() => {
-    if (!showPageNotes || !auth.currentUser || noteLinksLoaded) return;
-
-    let active = true;
-
-    getMyNoteLinks()
-      .then((links) => {
-        if (!active) return;
-        setNoteLinks(links || []);
-        setNoteLinksLoaded(true);
-      })
-      .catch((error) => {
-        console.error("Could not load note connections:", error);
-      });
-
-    return () => { active = false; };
-  }, [showPageNotes, noteLinksLoaded]);
+    if (!addFromChain || requestedParagraph === null || !progressLoaded) return;
+    setSelectedParagraphIndex(requestedParagraph);
+    setShowPageNotes(true);
+    setShowAddNote(true);
+    setControlsVisible(true);
+  }, [addFromChain, requestedParagraph, progressLoaded]);
 
   useEffect(() => {
     if (!requestedNoteId || !journalEntries.length) return;
@@ -517,88 +499,6 @@ export default function Reader() {
     }
   }
 
-  function linksForEntry(entryId) {
-    const targetId = String(entryId);
-
-    return noteLinks.filter(
-      (link) =>
-        String(link.sourceNoteId) === targetId ||
-        String(link.targetNoteId) === targetId
-    );
-  }
-
-  function linkedEntryFor(link, entryId) {
-    return String(link.sourceNoteId) === String(entryId)
-      ? (link.target || null)
-      : (link.source || null);
-  }
-
-  async function openLinkPicker(entryId) {
-    setLinkingEntryId(entryId);
-    setLinkTargetId("");
-    setLinkRelationship("");
-
-    if (allMyNotesLoaded) return;
-
-    try {
-      const notes = await getJournal();
-      setAllMyNotes(notes || []);
-      setAllMyNotesLoaded(true);
-    } catch (error) {
-      console.error("Could not load journal for linking:", error);
-      setStatus("We couldn't load your notes to create a connection.");
-    }
-  }
-
-  async function handleCreateLink(sourceEntry) {
-    if (!sourceEntry?.id || !linkTargetId || sourceEntry.id === linkTargetId) return;
-
-    const duplicate = noteLinks.some((link) =>
-      (link.sourceNoteId === sourceEntry.id && link.targetNoteId === linkTargetId) ||
-      (link.targetNoteId === sourceEntry.id && link.sourceNoteId === linkTargetId)
-    );
-    if (duplicate) {
-      setStatus("Those notes are already connected.");
-      return;
-    }
-
-    const targetEntry = allMyNotes.find((entry) => entry.id === linkTargetId);
-    if (!targetEntry) {
-      setStatus("Choose a note to connect.");
-      return;
-    }
-
-    try {
-      setLinkSaving(true);
-      const created = await createNoteLink({
-        sourceEntry,
-        targetEntry,
-        relationship: linkRelationship
-      });
-      setNoteLinks((current) => [created, ...current]);
-      setLinkingEntryId(null);
-      setLinkTargetId("");
-      setLinkRelationship("");
-      setStatus("Notes connected.");
-    } catch (error) {
-      console.error("Could not connect notes:", error);
-      setStatus(error?.message || "We couldn't connect those notes.");
-    } finally {
-      setLinkSaving(false);
-    }
-  }
-
-  async function handleDeleteLink(linkId) {
-    try {
-      await deleteNoteLink(linkId);
-      setNoteLinks((current) => current.filter((link) => link.id !== linkId));
-      setStatus("Connection removed.");
-    } catch (error) {
-      console.error("Could not remove note connection:", error);
-      setStatus("We couldn't remove that connection.");
-    }
-  }
-
   async function handleSave() {
     if (!book || !auth.currentUser) {
       setStatus("Log in to save this book to your account.");
@@ -637,7 +537,21 @@ export default function Reader() {
         paragraphPreview: (paragraphs[targetParagraphIndex] || "").slice(0, 240),
         note: note.trim(),
         visibility: noteVisibility,
-        groupId: noteVisibility === "group" ? noteGroupId : null
+        groupId: noteVisibility === "group" ? noteGroupId : null,
+        sourceChainEntryId: sourceChainEntry?.id || null,
+        sourceNoteId: sourceChainEntry?.id || null,
+        sourceUserId: sourceChainEntry?.userId || null,
+        sourceBookId: sourceChainEntry?.bookId || null,
+        sourceParagraphIndex:
+          sourceChainEntry?.paragraphIndex !== undefined &&
+          sourceChainEntry?.paragraphIndex !== null
+            ? Number(sourceChainEntry.paragraphIndex)
+            : null,
+        sourceTitle: sourceChainEntry?.title || null,
+        sourceAuthor: sourceChainEntry?.author || null,
+        sourceNotePreview: sourceChainEntry?.note
+          ? String(sourceChainEntry.note).slice(0, 240)
+          : null
       });
 
       setJournalEntries((current) => [entry, ...current]);
@@ -645,7 +559,19 @@ export default function Reader() {
       setNoteVisibility("private");
       setNoteGroupId("");
       setShowAddNote(false);
-      setStatus(`Note saved to paragraph ${targetParagraphIndex + 1}.`);
+
+      if (addFromChain) {
+        navigate(
+          `/read/reader/${book.id}?paragraph=${targetParagraphIndex}&note=${encodeURIComponent(entry.id)}`,
+          { replace: true, state: { book } }
+        );
+      }
+
+      setStatus(
+        addFromChain
+          ? `Note added from The Chain at paragraph ${targetParagraphIndex + 1}.`
+          : `Note saved to paragraph ${targetParagraphIndex + 1}.`
+      );
     } catch (error) {
       setStatus("We couldn't save your journal entry.");
     }
@@ -678,41 +604,10 @@ export default function Reader() {
 
     try {
       setDeletingEntryId(entry.id);
-      const connectedLinks =
-        linksForEntry(entry.id);
-
       await deleteJournalEntry(entry.id);
-
       setJournalEntries((current) =>
         current.filter((item) => item.id !== entry.id)
       );
-
-      if (connectedLinks.length) {
-        const removedIds =
-          new Set(
-            connectedLinks.map(
-              (link) => String(link.id)
-            )
-          );
-
-        setNoteLinks((current) =>
-          current.filter(
-            (link) =>
-              !removedIds.has(
-                String(link.id)
-              )
-          )
-        );
-
-        void Promise.allSettled(
-          connectedLinks.map(
-            (link) =>
-              deleteNoteLink(
-                link.id
-              )
-          )
-        );
-      }
     } finally {
       setDeletingEntryId(null);
     }
@@ -1040,94 +935,32 @@ export default function Reader() {
                         <>
                           <p>{entry.note}</p>
 
-                          {linksForEntry(entry.id).length > 0 && (
-                            <div className="ereader-note-connections">
-                              <strong><Link2 size={15} /> {linksForEntry(entry.id).length} connection{linksForEntry(entry.id).length === 1 ? "" : "s"}</strong>
-                              {linksForEntry(entry.id).map((link) => {
-                                const connected = linkedEntryFor(link, entry.id);
-                                return (
-                                  <div key={link.id} className="ereader-note-connection">
-                                    <button
-                                      type="button"
-                                      className="button secondary"
-                                      onClick={() => {
-                                        if (!connected?.bookId || connected.paragraphIndex === undefined) return;
-                                        const targetParagraph = Number(connected.paragraphIndex);
-                                        const targetNoteId = String(connected.noteId || "");
-                                        if (String(connected.bookId) === String(book?.id)) {
-                                          goToParagraph(targetParagraph);
-                                          setSelectedParagraphIndex(targetParagraph);
-                                          setFocusedNoteId(targetNoteId || null);
-                                          setShowAddNote(false);
-                                          setShowPageNotes(true);
-                                          setControlsVisible(true);
-                                        } else {
-                                          const noteQuery =
-                                            targetNoteId
-                                              ? `&note=${encodeURIComponent(targetNoteId)}`
-                                              : "";
-
-                                          navigate(
-                                            `/read/reader/${connected.bookId}?paragraph=${targetParagraph}${noteQuery}`
-                                          );
-                                        }
-                                      }}
-                                    >
-                                      {connected
-                                        ? `${connected.title || "Untitled"} · Paragraph ${Number(connected.paragraphIndex) + 1}`
-                                        : "Connected note"}
-                                    </button>
-                                    {link.relationship && <small>{link.relationship}</small>}
-                                    <button
-                                      type="button"
-                                      className="ereader-icon-button"
-                                      aria-label="Remove connection"
-                                      title="Remove connection"
-                                      onClick={() => handleDeleteLink(link.id)}
-                                    >
-                                      <X size={14} />
-                                    </button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-
-                          {linkingEntryId === entry.id && (
-                            <div className="ereader-link-note-panel">
-                              <label className="paragraph-select-label">
-                                Connect to one of my notes
-                                <select value={linkTargetId} onChange={(event) => setLinkTargetId(event.target.value)}>
-                                  <option value="">Choose a note...</option>
-                                  {allMyNotes
-                                    .filter((candidate) => candidate.id !== entry.id)
-                                    .map((candidate) => (
-                                      <option key={candidate.id} value={candidate.id}>
-                                        {(candidate.title || "Untitled").slice(0, 55)} · ¶{Number(candidate.paragraphIndex) + 1} — {(candidate.note || "").slice(0, 75)}
-                                      </option>
-                                    ))}
-                                </select>
-                              </label>
-                              <textarea
-                                rows={2}
-                                maxLength={500}
-                                value={linkRelationship}
-                                onChange={(event) => setLinkRelationship(event.target.value)}
-                                placeholder="Why are these notes connected? (optional)"
-                              />
-                              <div className="button-row">
-                                <button className="button primary" disabled={linkSaving || !linkTargetId} onClick={() => handleCreateLink(entry)}>
-                                  <Link2 size={15} /> {linkSaving ? "Connecting..." : "Connect Notes"}
-                                </button>
-                                <button className="button secondary" onClick={() => { setLinkingEntryId(null); setLinkTargetId(""); setLinkRelationship(""); }}>Cancel</button>
-                              </div>
+                          {entry.sourceChainEntryId && (
+                            <div className="ereader-note-source">
+                              <small>Inspired by a Chain note</small>
+                              <strong>
+                                {entry.sourceTitle || entry.title || "Reading note"}
+                                {entry.sourceParagraphIndex !== undefined &&
+                                entry.sourceParagraphIndex !== null
+                                  ? ` · Paragraph ${Number(entry.sourceParagraphIndex) + 1}`
+                                  : ""}
+                              </strong>
+                              {entry.sourceNotePreview && <p>“{entry.sourceNotePreview}”</p>}
+                              {entry.sourceBookId && (
+                                <Link
+                                  className="button secondary"
+                                  to={`/read/reader/${entry.sourceBookId}?paragraph=${Math.max(
+                                    Number(entry.sourceParagraphIndex) || 0,
+                                    0
+                                  )}&note=${encodeURIComponent(entry.sourceNoteId || entry.sourceChainEntryId)}`}
+                                >
+                                  View source
+                                </Link>
+                              )}
                             </div>
                           )}
 
                           <div className="button-row">
-                            <button className="button secondary" onClick={() => openLinkPicker(entry.id)}>
-                              <Link2 size={15} /> Link
-                            </button>
                             <button className="button secondary" onClick={() => { setEditingEntryId(entry.id); setEditNote(entry.note || ""); setEditVisibility(entry.visibility || "private"); setEditGroupId(entry.groupId || ""); }}>
                               <Pencil size={15} /> Edit
                             </button>
@@ -1151,6 +984,19 @@ export default function Reader() {
 
             {showAddNote && (
               <div className="add-paragraph-note ereader-add-note">
+                {addFromChain && sourceChainEntry && (
+                  <div className="ereader-note-source">
+                    <small>Adding a note from The Chain</small>
+                    <strong>
+                      {sourceChainEntry.reader?.displayName || "Reader"}
+                      {" · "}
+                      {sourceChainEntry.title || book?.title || "Reading note"}
+                    </strong>
+                    {sourceChainEntry.note && (
+                      <p>“{String(sourceChainEntry.note).slice(0, 240)}”</p>
+                    )}
+                  </div>
+                )}
                 <label className="paragraph-select-label">
                   Paragraph
                   <select

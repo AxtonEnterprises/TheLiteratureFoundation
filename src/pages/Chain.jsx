@@ -446,7 +446,18 @@ export default function Chain() {
                   <div className="public-entry-heading">
                     <div>
                       <p className="eyebrow">Reading</p>
-                      <Link to={link} className="public-entry-book-title">
+                      <Link
+                        to={`${link}${link.includes("?") ? "&" : "?"}note=${encodeURIComponent(entry.id)}`}
+                        state={{
+                          book: {
+                            id: entry.bookId,
+                            bookId: entry.bookId,
+                            title: entry.title,
+                            author: entry.author
+                          }
+                        }}
+                        className="public-entry-book-title"
+                      >
                         {entry.title || "Untitled"}
                       </Link>
                       {entry.author && (
@@ -455,7 +466,15 @@ export default function Chain() {
                     </div>
 
                     <Link
-                      to={link}
+                      to={`${link}${link.includes("?") ? "&" : "?"}note=${encodeURIComponent(entry.id)}`}
+                      state={{
+                        book: {
+                          id: entry.bookId,
+                          bookId: entry.bookId,
+                          title: entry.title,
+                          author: entry.author
+                        }
+                      }}
                       className="public-entry-book-icon"
                       aria-label={`Open ${entry.title || "book"} at this note`}
                       title="Open where this note was written"
@@ -480,6 +499,46 @@ export default function Chain() {
                   <p className="public-journal-note">{entry.note}</p>
 
                   <div className="margins-actions">
+                    <Link
+                      to={`${link}${link.includes("?") ? "&" : "?"}note=${encodeURIComponent(entry.id)}`}
+                      state={{
+                        book: {
+                          id: entry.bookId,
+                          bookId: entry.bookId,
+                          title: entry.title,
+                          author: entry.author
+                        }
+                      }}
+                      className="margin-action"
+                    >
+                      <BookOpen size={17} />
+                      Read Context
+                    </Link>
+
+                    <Link
+                      to={link}
+                      state={{
+                        book: {
+                          id: entry.bookId,
+                          bookId: entry.bookId,
+                          title: entry.title,
+                          author: entry.author
+                        },
+                        addFromChain: true,
+                        sourceChainEntry: entry
+                      }}
+                      className="margin-action"
+                      onClick={(event) => {
+                        if (!user) {
+                          event.preventDefault();
+                          requireLogin();
+                        }
+                      }}
+                    >
+                      <MessageCircle size={17} />
+                      Add to My Notes
+                    </Link>
+
                     <button
                       type="button"
                       className={replyOpen ? "margin-action active" : "margin-action"}
