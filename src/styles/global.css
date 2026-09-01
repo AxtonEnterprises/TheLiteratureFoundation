@@ -5343,3 +5343,78 @@ body.reader-mode.reader-dark-mode {
 .chain-discussion-composer textarea {
   width: 100%;
 }
+/* ========================================================
+   PHASE 5C — IDEA CHAIN / PROVENANCE
+   ======================================================== */
+
+.chain-provenance-source {
+  width: 100%;
+  display: grid;
+  gap: .2rem;
+  margin: .75rem 0 .35rem;
+  padding: .7rem .8rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--soft, #f6f8f8);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chain-provenance-source span,
+.chain-provenance-section > small {
+  font-size: .78rem;
+  opacity: .68;
+}
+
+.chain-continue-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  padding: .55rem 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chain-chevron-open {
+  transform: rotate(180deg);
+}
+
+.chain-provenance-panel {
+  display: grid;
+  gap: .9rem;
+  margin: 0 0 .9rem;
+  padding: .8rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.chain-provenance-section {
+  display: grid;
+  gap: .5rem;
+}
+
+.chain-provenance-card {
+  display: grid;
+  gap: .2rem;
+  padding: .7rem .8rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card, #fff);
+  color: inherit;
+  text-decoration: none;
+}
+
+.chain-provenance-card p {
+  margin: .25rem 0 0;
+}
+
+.chain-provenance-card:hover,
+.chain-provenance-card:focus-visible {
+  background: var(--soft, #f6f8f8);
+}
