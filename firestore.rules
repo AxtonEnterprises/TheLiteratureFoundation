@@ -22,12 +22,25 @@ service cloud.firestore {
      || data.visibility == "group";
   }
 
+  function membershipIsActive(groupId, userId) {
+    return groupId is string
+     && userId is string
+     && exists(
+       /databases/$(database)/documents/groups/$(groupId)/members/$(userId)
+     )
+     && !(
+       get(
+         /databases/$(database)/documents/groups/$(groupId)/members/$(userId)
+       ).data.keys().hasAll(["status"])
+       && get(
+         /databases/$(database)/documents/groups/$(groupId)/members/$(userId)
+       ).data.status in ["removed", "suspended"]
+     );
+  }
+
   function isGroupMember(groupId) {
     return signedIn()
-     && groupId is string
-     && exists(
-       /databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)
-     );
+     && membershipIsActive(groupId, request.auth.uid);
   }
 
   function validGroupVisibility(data) {
@@ -104,10 +117,7 @@ function moderationTargetRole(groupId, userId) {
 }
 
 function canDiscipline(groupId, targetUserId) {
- return request.auth != null
-  && exists(
-    /databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)
-  )
+ return isGroupMember(groupId)
   && (
     (
        isGroupOwner(groupId)
@@ -330,23 +340,64 @@ function platformWriteAllowed() {
    ======================================================== */
 
 function classMember(groupId) {
-  return request.auth != null
-   && exists(
-     /databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)
-   );
+  return isGroupMember(groupId);
 }
 
 function classTeacher(groupId) {
- return request.auth != null
-  && exists(
-    /databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)
-  )
+ return isGroupMember(groupId)
   && get(
     /databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)
      ).data.role in [
        "owner",
        "admin"
      ];
+}
+
+function validStudentProgressCreate(progressId, data) {
+  return data.keys().hasOnly([
+      "userId",
+      "bookId",
+      "title",
+      "author",
+      "paragraphIndex",
+      "furthestParagraphIndex",
+      "totalParagraphs",
+      "percentComplete",
+      "updatedAtISO",
+      "updatedAt"
+    ])
+    && data.userId == request.auth.uid
+    && data.bookId is string
+    && data.bookId.size() > 0
+    && data.bookId.size() <= 100
+    && progressId == request.auth.uid + "_" + data.bookId
+    && data.title is string
+    && data.title.size() <= 500
+    && data.author is string
+    && data.author.size() <= 300
+    && data.paragraphIndex is int
+    && data.paragraphIndex >= 0
+    && data.furthestParagraphIndex is int
+    && data.furthestParagraphIndex >= data.paragraphIndex
+    && data.totalParagraphs is int
+    && data.totalParagraphs > 0
+    && data.paragraphIndex < data.totalParagraphs
+    && data.furthestParagraphIndex < data.totalParagraphs
+    && data.percentComplete is int
+    && data.percentComplete >= 0
+    && data.percentComplete <= 100
+    && data.updatedAtISO is string
+    && data.updatedAtISO.size() <= 64
+    && data.updatedAt is timestamp;
+}
+
+function validStudentProgressUpdate(progressId, oldData, newData) {
+  return validStudentProgressCreate(progressId, newData)
+    && newData.userId == oldData.userId
+    && newData.bookId == oldData.bookId
+    && newData.furthestParagraphIndex >= oldData.furthestParagraphIndex
+    && newData.totalParagraphs >= oldData.totalParagraphs
+    && newData.percentComplete >= oldData.percentComplete;
 }
 
 match /groups/{groupId}/assignments/{assignmentId} {
@@ -369,13 +420,20 @@ match /groups/{groupId}/studentProgress/{progressId} {
     allow create:
      if platformWriteAllowed()
      && classMember(groupId)
-     && request.resource.data.userId == request.auth.uid;
+     && validStudentProgressCreate(
+       progressId,
+       request.resource.data
+     );
 
     allow update:
      if platformWriteAllowed()
      && classMember(groupId)
      && resource.data.userId == request.auth.uid
-     && request.resource.data.userId == request.auth.uid;
+     && validStudentProgressUpdate(
+       progressId,
+       resource.data,
+       request.resource.data
+     );
 
     allow delete:
      if platformWriteAllowed()
@@ -431,6 +489,53 @@ function validUsernameReservation(username, data) {
    && data.username == username;
 }
 
+
+/* ========================================================
+   USER CONTENT VALIDATION
+   ======================================================== */
+
+function validOptionalString(data, key, maxSize) {
+  return !data.keys().hasAll([key])
+    || (
+      data[key] is string
+      && data[key].size() <= maxSize
+    );
+}
+
+function validOptionalNullableString(data, key, maxSize) {
+  return !data.keys().hasAll([key])
+    || data[key] == null
+    || (
+      data[key] is string
+      && data[key].size() <= maxSize
+    );
+}
+
+function validJournalContent(entryId, data) {
+  return data.id == entryId
+    && data.note is string
+    && data.note.size() > 0
+    && data.note.size() <= 3000
+    && validOptionalString(data, "title", 500)
+    && validOptionalString(data, "author", 300)
+    && validOptionalString(data, "paragraphPreview", 1200)
+    && (
+      !data.keys().hasAll(["paragraphIndex"])
+      || (
+        data.paragraphIndex is int
+        && data.paragraphIndex >= 0
+      )
+    )
+    && (
+      !data.keys().hasAll(["paragraphNumber"])
+      || data.paragraphNumber == null
+      || (
+        data.paragraphNumber is int
+        && data.paragraphNumber >= 1
+      )
+    )
+    && validOptionalNullableString(data, "groupId", 160);
+}
 
 /* ========================================================
    CHAIN REPLY HELPERS
@@ -518,6 +623,10 @@ match /users/{userId} {
    )
    && validGroupVisibility(
      request.resource.data
+   )
+   && validJournalContent(
+     entryId,
+     request.resource.data
    );
 
   allow update:
@@ -529,6 +638,10 @@ match /users/{userId} {
            request.resource.data
          )
          && validGroupVisibility(
+           request.resource.data
+         )
+         && validJournalContent(
+           entryId,
            request.resource.data
          );
 
@@ -1570,7 +1683,11 @@ match /forumPosts/{postId} {
      && request.resource.data.userId == request.auth.uid
      && request.resource.data.groupId == groupId
      && request.resource.data.title is string
+     && request.resource.data.title.size() >= 2
+     && request.resource.data.title.size() <= 200
      && request.resource.data.body is string
+     && request.resource.data.body.size() > 0
+     && request.resource.data.body.size() <= 10000
      && request.resource.data.pinned == false
      && request.resource.data.locked == false;
 allow update:
@@ -1618,7 +1735,10 @@ match /replies/{replyId} {
   && isGroupMember(groupId)
   && request.resource.data.userId == request.auth.uid
   && request.resource.data.groupId == groupId
-  && request.resource.data.postId == postId;
+  && request.resource.data.postId == postId
+  && request.resource.data.body is string
+  && request.resource.data.body.size() > 0
+  && request.resource.data.body.size() <= 5000;
              allow update:
               if platformWriteAllowed()
               && isGroupMember(groupId)
@@ -1672,6 +1792,80 @@ match /{path=**}/joinRequests/{requestId} {
 
 
 /* ========================================================
+   NOTIFICATIONS
+   ======================================================== */
+
+function validNotificationType(type) {
+  return type in [
+    "friend_request",
+    "friend_accepted",
+    "group_invite",
+    "group_invite_accepted",
+    "group_join_approved",
+    "group_role_changed",
+    "forum_reply",
+    "class_assignment",
+    "chain_reply",
+    "group_chain_reply"
+  ];
+}
+
+function validNotificationCreate(notificationId, data) {
+  return data.id == notificationId
+    && data.recipientUserId is string
+    && data.recipientUserId.size() > 0
+    && data.recipientUserId != request.auth.uid
+    && data.actorUserId == request.auth.uid
+    && data.type is string
+    && validNotificationType(data.type)
+    && data.read == false
+    && data.createdAtISO is string
+    && data.createdAtISO.size() <= 64
+    && validOptionalString(data, "actorName", 120)
+    && validOptionalString(data, "actorUsername", 40)
+    && validOptionalString(data, "actorAvatar", 1000)
+    && validOptionalNullableString(data, "groupId", 160)
+    && validOptionalString(data, "groupName", 200)
+    && validOptionalNullableString(data, "chainId", 160)
+    && validOptionalNullableString(data, "postId", 160)
+    && validOptionalString(data, "targetPath", 500)
+    && validOptionalString(data, "message", 1000);
+}
+
+match /notifications/{notificationId} {
+  allow read:
+    if signedIn()
+    && resource.data.recipientUserId == request.auth.uid;
+
+  allow create:
+    if platformWriteAllowed()
+    && validNotificationCreate(
+      notificationId,
+      request.resource.data
+    );
+
+  allow update:
+    if platformWriteAllowed()
+    && resource.data.recipientUserId == request.auth.uid
+    && request.resource.data.recipientUserId == resource.data.recipientUserId
+    && request.resource.data.actorUserId == resource.data.actorUserId
+    && request.resource.data.type == resource.data.type
+    && request.resource.data.id == resource.data.id
+    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+      "read",
+      "readAtISO",
+      "readAt"
+    ])
+    && request.resource.data.read == true
+    && request.resource.data.readAtISO is string
+    && request.resource.data.readAtISO.size() <= 64
+    && request.resource.data.readAt is timestamp;
+
+  allow delete:
+    if false;
+}
+
+/* ========================================================
    CHAIN REPLIES
    ======================================================== */
 
@@ -1696,8 +1890,16 @@ match /chainReplies/{replyId} {
   && request.resource.data.userId == request.auth.uid
   && request.resource.data.parentUserId is string
   && request.resource.data.parentEntryId is string
+  && request.resource.data.id == replyId
   && request.resource.data.note is string
   && request.resource.data.note.size() > 0
+  && request.resource.data.note.size() <= 3000
+  && validOptionalString(request.resource.data, "title", 500)
+  && validOptionalString(request.resource.data, "author", 300)
+  && validOptionalNullableString(request.resource.data, "bookId", 100)
+  && validOptionalNullableString(request.resource.data, "parentReplyId", 160)
+  && request.resource.data.createdAtISO is string
+  && request.resource.data.createdAtISO.size() <= 64
   && validChainReplyVisibility(
     request.resource.data
   );
