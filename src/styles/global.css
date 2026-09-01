@@ -5418,3 +5418,181 @@ body.reader-mode.reader-dark-mode {
 .chain-provenance-card:focus-visible {
   background: var(--soft, #f6f8f8);
 }
+/* ========================================================
+   PHASE 5C — INTERACTIVE THOUGHT MAP
+   ======================================================== */
+
+.chain-thought-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-top: 0.6rem;
+  padding: 0.7rem 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chain-thought-toggle-hint {
+  font-size: 0.78rem;
+  font-weight: 500;
+  opacity: 0.62;
+}
+
+.chain-thought-window {
+  margin: 0.15rem 0 1rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--soft, #f6f8f8);
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.chain-thought-breadcrumb,
+.chain-thought-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  font-size: 0.75rem;
+  opacity: 0.68;
+}
+
+.chain-thought-breadcrumb {
+  padding-bottom: 0.65rem;
+}
+
+.chain-thought-loading {
+  min-height: 210px;
+  display: grid;
+  place-items: center;
+}
+
+.chain-thought-stage {
+  display: grid;
+  grid-template-columns:
+    minmax(44px, 0.55fr)
+    minmax(0, 2.8fr)
+    minmax(44px, 0.55fr);
+  grid-template-rows: auto minmax(190px, auto) auto;
+  grid-template-areas:
+    ". up ."
+    "left current right"
+    ". down .";
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.chain-thought-current {
+  grid-area: current;
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card, #fff);
+}
+
+.chain-thought-current small {
+  font-size: 0.76rem;
+  opacity: 0.62;
+}
+
+.chain-thought-current strong,
+.chain-thought-current span,
+.chain-thought-current p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chain-thought-current p {
+  margin: 0.4rem 0;
+  line-height: 1.55;
+}
+
+.chain-thought-direction {
+  display: grid;
+  place-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0.35rem;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.chain-thought-direction span {
+  max-width: 100%;
+  font-size: 0.68rem;
+  line-height: 1.15;
+  opacity: 0.68;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.chain-thought-direction:disabled {
+  opacity: 0.24;
+  cursor: default;
+}
+
+.chain-thought-up {
+  grid-area: up;
+}
+
+.chain-thought-left {
+  grid-area: left;
+}
+
+.chain-thought-right {
+  grid-area: right;
+}
+
+.chain-thought-down {
+  grid-area: down;
+}
+
+.chain-thought-legend {
+  justify-content: space-between;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--line);
+  margin-top: 0.65rem;
+}
+
+@media (max-width: 480px) {
+  .chain-thought-window {
+    padding: 0.65rem;
+  }
+
+  .chain-thought-stage {
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
+    gap: 0.35rem;
+  }
+
+  .chain-thought-current {
+    padding: 0.8rem;
+  }
+
+  .chain-thought-direction span {
+    display: none;
+  }
+
+  .chain-thought-legend {
+    justify-content: center;
+    gap: 0.8rem;
+  }
+}
