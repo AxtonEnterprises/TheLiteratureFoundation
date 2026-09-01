@@ -695,6 +695,101 @@ export default function Chain() {
 
                   </div>
 
+                  {discussEntry?.id === entry.id && (
+                    <form
+                      className="chain-discussion-composer"
+                      onSubmit={handleCreateGroupDiscussion}
+                    >
+                      <div className="margin-reply-heading">
+                        <strong>Discuss in Group</strong>
+                        <button
+                          type="button"
+                          className="margin-close-button"
+                          onClick={() => setDiscussEntry(null)}
+                          aria-label="Close group discussion"
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+
+                      <div className="chain-discussion-source">
+                        <small>From The Chain</small>
+                        <strong>{discussEntry.title || "Untitled"}</strong>
+                        {discussEntry.author && <span>{discussEntry.author}</span>}
+                        {discussEntry.paragraphNumber && (
+                          <span>Paragraph {discussEntry.paragraphNumber}</span>
+                        )}
+                        {discussEntry.note && <p>“{discussEntry.note}”</p>}
+                      </div>
+
+                      <label>
+                        Group
+                        <select
+                          value={discussionGroupId}
+                          onChange={(event) =>
+                            setDiscussionGroupId(event.target.value)
+                          }
+                          disabled={groupsLoading}
+                        >
+                          <option value="">
+                            {groupsLoading
+                              ? "Loading groups..."
+                              : "Choose a group..."}
+                          </option>
+                          {myGroups.map((item) => (
+                            <option
+                              key={item.id || item.groupId}
+                              value={item.id || item.groupId}
+                            >
+                              {item.name || "Reading Group"}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      {!groupsLoading && myGroups.length === 0 && (
+                        <p className="muted">
+                          Join or create a group before starting a group discussion.
+                        </p>
+                      )}
+
+                      <label>
+                        Discussion title
+                        <input
+                          value={discussionTitle}
+                          onChange={(event) =>
+                            setDiscussionTitle(event.target.value)
+                          }
+                          maxLength={200}
+                        />
+                      </label>
+
+                      <label>
+                        Your comment
+                        <textarea
+                          rows={4}
+                          value={discussionBody}
+                          onChange={(event) =>
+                            setDiscussionBody(event.target.value)
+                          }
+                          maxLength={2000}
+                          placeholder="What would you like the group to discuss?"
+                        />
+                      </label>
+
+                      <button
+                        className="button primary"
+                        disabled={
+                          discussionPosting ||
+                          groupsLoading ||
+                          !myGroups.length
+                        }
+                      >
+                        {discussionPosting ? "Posting..." : "Start Discussion"}
+                      </button>
+                    </form>
+                  )}
+
                   {replyOpen && (
                     <div className="margin-reply-box">
                       <div className="margin-reply-heading">
@@ -774,88 +869,6 @@ export default function Chain() {
           </div>
         )}
       </div>
-
-      {discussEntry && (
-        <div className="modal-backdrop" role="presentation">
-          <form className="modal-card" onSubmit={handleCreateGroupDiscussion}>
-            <div className="margin-reply-heading">
-              <strong>Discuss in Group</strong>
-              <button
-                type="button"
-                className="margin-close-button"
-                onClick={() => setDiscussEntry(null)}
-                aria-label="Close group discussion"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="chain-discussion-source">
-              <small>From The Chain</small>
-              <strong>{discussEntry.title || "Untitled"}</strong>
-              {discussEntry.author && <span>{discussEntry.author}</span>}
-              {discussEntry.paragraphNumber && (
-                <span>Paragraph {discussEntry.paragraphNumber}</span>
-              )}
-              {discussEntry.note && <p>“{discussEntry.note}”</p>}
-            </div>
-
-            <label>
-              Group
-              <select
-                value={discussionGroupId}
-                onChange={(event) => setDiscussionGroupId(event.target.value)}
-                disabled={groupsLoading}
-              >
-                <option value="">
-                  {groupsLoading ? "Loading groups..." : "Choose a group..."}
-                </option>
-                {myGroups.map((item) => (
-                  <option
-                    key={item.id || item.groupId}
-                    value={item.id || item.groupId}
-                  >
-                    {item.name || "Reading Group"}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {!groupsLoading && myGroups.length === 0 && (
-              <p className="muted">
-                Join or create a group before starting a group discussion.
-              </p>
-            )}
-
-            <label>
-              Discussion title
-              <input
-                value={discussionTitle}
-                onChange={(event) => setDiscussionTitle(event.target.value)}
-                maxLength={200}
-              />
-            </label>
-
-            <label>
-              Your comment
-              <textarea
-                rows={4}
-                value={discussionBody}
-                onChange={(event) => setDiscussionBody(event.target.value)}
-                maxLength={2000}
-                placeholder="What would you like the group to discuss?"
-              />
-            </label>
-
-            <button
-              className="button primary"
-              disabled={discussionPosting || groupsLoading || !myGroups.length}
-            >
-              {discussionPosting ? "Posting..." : "Start Discussion"}
-            </button>
-          </form>
-        </div>
-      )}
 
       {reportEntry && (
         <div className="modal-backdrop" role="presentation">
