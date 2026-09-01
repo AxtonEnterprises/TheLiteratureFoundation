@@ -320,7 +320,7 @@ export default function Chain() {
     }
   }
 
-  async function openDiscussInGroup(entry) {
+  function openDiscussInGroup(entry) {
     if (!requireLogin()) return;
 
     setShareMenuId(null);
@@ -330,21 +330,28 @@ export default function Chain() {
     );
     setDiscussionBody("");
     setDiscussionGroupId("");
+    setGroupsLoading(true);
 
-    try {
-      setGroupsLoading(true);
-      const groups = await getMyGroups();
-      setMyGroups(groups || []);
+    Promise.resolve()
+      .then(() => getMyGroups())
+      .then((groups) => {
+        const availableGroups = Array.isArray(groups) ? groups : [];
+        setMyGroups(availableGroups);
 
-      if (groups?.length === 1) {
-        setDiscussionGroupId(String(groups[0].id || groups[0].groupId || ""));
-      }
-    } catch (error) {
-      console.error("Could not load groups:", error);
-      setStatus("We couldn't load your groups.");
-    } finally {
-      setGroupsLoading(false);
-    }
+        if (availableGroups.length === 1) {
+          setDiscussionGroupId(
+            String(availableGroups[0].id || availableGroups[0].groupId || "")
+          );
+        }
+      })
+      .catch((error) => {
+        console.error("Could not load groups:", error);
+        setMyGroups([]);
+        setStatus("We couldn't load your groups.");
+      })
+      .finally(() => {
+        setGroupsLoading(false);
+      });
   }
 
   async function handleCreateGroupDiscussion(event) {
@@ -549,22 +556,76 @@ export default function Chain() {
                       )}
                     </div>
 
-                    <Link
-                      to={`${link}${link.includes("?") ? "&" : "?"}note=${encodeURIComponent(entry.id)}`}
-                      state={{
-                        book: {
-                          id: entry.bookId,
-                          bookId: entry.bookId,
-                          title: entry.title,
-                          author: entry.author
+                    <div className="chain-share-menu-wrap chain-share-menu-top">
+                      <button
+                        type="button"
+                        className="public-entry-book-icon"
+                        aria-label="Share this Chain post"
+                        title="Share"
+                        aria-expanded={shareMenuId === entry.id}
+                        onClick={() =>
+                          setShareMenuId((current) =>
+                            current === entry.id ? null : entry.id
+                          )
                         }
-                      }}
-                      className="public-entry-book-icon"
-                      aria-label={`Open ${entry.title || "book"} at this note`}
-                      title="Open where this note was written"
-                    >
-                      <BookOpen size={20} />
-                    </Link>
+                      >
+                        <Share2 size={20} />
+                      </button>
+
+                      {shareMenuId === entry.id && (
+                        <div className="chain-share-menu">
+                          <Link
+                            to={link}
+                            state={{
+                              book: {
+                                id: entry.bookId,
+                                bookId: entry.bookId,
+                                title: entry.title,
+                                author: entry.author
+                              },
+                              addFromChain: true,
+                              sourceChainEntry: entry
+                            }}
+                            className="chain-share-menu-item"
+                            onClick={(event) => {
+                              if (!user) {
+                                event.preventDefault();
+                                requireLogin();
+                                return;
+                              }
+                              setShareMenuId(null);
+                            }}
+                          >
+                            Add to My Notes
+                          </Link>
+
+                          <button
+                            type="button"
+                            className="chain-share-menu-item"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              openDiscussInGroup(entry);
+                            }}
+                          >
+                            Discuss in Group
+                          </button>
+
+                          <button
+                            type="button"
+                            className="chain-share-menu-item"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setShareMenuId(null);
+                              handleShare(entry);
+                            }}
+                          >
+                            Share Link
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="public-entry-meta">
@@ -617,71 +678,6 @@ export default function Chain() {
                       {isSaved ? "Saved" : "Save"}
                     </button>
 
-                    <div className="chain-share-menu-wrap">
-                      <button
-                        type="button"
-                        className={shareMenuId === entry.id ? "margin-action active" : "margin-action"}
-                        onClick={() =>
-                          setShareMenuId((current) =>
-                            current === entry.id ? null : entry.id
-                          )
-                        }
-                        aria-expanded={shareMenuId === entry.id}
-                      >
-                        <Share2 size={17} />
-                        Share
-                        <ChevronDown size={14} />
-                      </button>
-
-                      {shareMenuId === entry.id && (
-                        <div className="chain-share-menu">
-                          <Link
-                            to={link}
-                            state={{
-                              book: {
-                                id: entry.bookId,
-                                bookId: entry.bookId,
-                                title: entry.title,
-                                author: entry.author
-                              },
-                              addFromChain: true,
-                              sourceChainEntry: entry
-                            }}
-                            className="chain-share-menu-item"
-                            onClick={(event) => {
-                              if (!user) {
-                                event.preventDefault();
-                                requireLogin();
-                                return;
-                              }
-                              setShareMenuId(null);
-                            }}
-                          >
-                            Add to My Notes
-                          </Link>
-
-                          <button
-                            type="button"
-                            className="chain-share-menu-item"
-                            onClick={() => openDiscussInGroup(entry)}
-                          >
-                            Discuss in Group
-                          </button>
-
-                          <button
-                            type="button"
-                            className="chain-share-menu-item"
-                            onClick={() => {
-                              setShareMenuId(null);
-                              handleShare(entry);
-                            }}
-                          >
-                            Share Link
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
                     <button
                       type="button"
                       className="margin-action report"
@@ -696,6 +692,7 @@ export default function Chain() {
                       <Flag size={17} />
                       Report
                     </button>
+
                   </div>
 
                   {replyOpen && (
