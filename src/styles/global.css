@@ -5261,12 +5261,14 @@ body.reader-mode.reader-dark-mode {
   z-index: 30;
   top: calc(100% + 0.4rem);
   right: 0;
+  left: auto;
   min-width: 190px;
   padding: 0.35rem;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--card, #fff);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+  transform-origin: top right;
 }
 
 .chain-share-menu-item {
@@ -5303,9 +5305,19 @@ body.reader-mode.reader-dark-mode {
   margin: 0.25rem 0;
 }
 
-@media (max-width: 640px) {
-  .chain-share-menu {
-    right: auto;
-    left: 0;
-  }
+/* Top-right Share icon */
+.chain-share-menu-top {
+  margin-left: auto;
+}
+
+.chain-share-menu-top .public-entry-book-icon {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.chain-share-menu-top .chain-share-menu {
+  right: 0;
+  left: auto;
+  transform-origin: top right;
 }
