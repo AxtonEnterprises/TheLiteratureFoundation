@@ -676,12 +676,37 @@ match /users/{userId} {
 
 match /{path=**}/journal/{entryId} {
   allow read:
-   if resource.data.visibility == "public"
+   if (
+     signedIn()
+     && resource.data.userId == request.auth.uid
+   )
+   || resource.data.visibility == "public"
    || (
      resource.data.visibility == "group"
      && isGroupMember(
        resource.data.groupId
      )
+   );
+}
+
+
+/* ========================================================
+   PHASE 5C GROUP FORUM COLLECTION-GROUP READS
+   ======================================================== */
+
+/*
+ * Allows the Idea Chain to discover group discussions
+ * branching from a Chain note.
+ *
+ * A forum post remains visible only to an active member
+ * of the group it belongs to.
+ */
+match /{path=**}/forumPosts/{postId} {
+  allow read:
+   if signedIn()
+   && resource.data.groupId is string
+   && isGroupMember(
+     resource.data.groupId
    );
 }
 /* ========================================================
