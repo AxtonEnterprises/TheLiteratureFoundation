@@ -1183,17 +1183,100 @@ export async function searchBooks(
         )}`
       : API_BASE;
 
-  const response =
-    await fetch(
-      url
+  let response;
+
+  try {
+    response =
+      await fetch(
+        url
+      );
+
+    if (
+      !response.ok
+    ) {
+      throw new Error(
+        `Search request failed: ${response.status}`
+      );
+    }
+  } catch (firstError) {
+    /*
+     * One short retry handles transient mobile/network failures
+     * without bringing back the aggressive type-ahead traffic.
+     */
+    await new Promise(
+      (resolve) =>
+        setTimeout(
+          resolve,
+          350
+        )
     );
 
-  if (
-    !response.ok
-  ) {
-    throw new Error(
-      "Search failed"
-    );
+    try {
+      response =
+        await fetch(
+          url
+        );
+
+      if (
+        !response.ok
+      ) {
+        throw new Error(
+          `Search request failed: ${response.status}`
+        );
+      }
+    } catch (secondError) {
+      /*
+       * If Gutendex is temporarily unavailable, return matching books
+       * from the local random-book pool rather than failing the UI.
+       */
+      const localBooks =
+        await getCachedBooks()
+          .catch(
+            () => []
+          );
+
+      const localMatches =
+        localBooks.filter(
+          (book) => {
+            const title =
+              normalizeSearchText(
+                book?.title
+              );
+
+            const author =
+              normalizeSearchText(
+                getSearchAuthorText(
+                  book
+                )
+              );
+
+            const query =
+              normalizeSearchText(
+                normalizedQuery
+              );
+
+            return (
+              title.includes(
+                query
+              ) ||
+              author.includes(
+                query
+              )
+            );
+          }
+        );
+
+      if (
+        localMatches.length
+      ) {
+        return rankSearchBooks(
+          localMatches,
+          normalizedQuery
+        );
+      }
+
+      throw secondError;
+    }
   }
 
   const data =
@@ -1235,15 +1318,20 @@ export async function prefetchSearchBooks(
     return;
   }
 
-  try {
-    await searchBooks(
-      normalizedQuery
-    );
-  } catch {
-    /*
-     * Background prefetch failures are intentionally silent.
-     */
-  }
+  /*
+   * Do not issue a Gutendex request for every partial value typed
+   * into the search box. The previous prefetch implementation could
+   * turn one search into several rapid API requests (for example:
+   * "she", "sher", "sherl"...), which made the real submitted search
+   * much more likely to fail or be throttled.
+   *
+   * A completed search is already cached for 30 minutes, so simply
+   * touching that cache here preserves the cheap prefetch path
+   * without generating background network traffic.
+   */
+  readSearchCache(
+    normalizedQuery
+  );
 }
 
 
