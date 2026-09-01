@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronUp,
   List,
+  Link2,
   Moon,
   Sun,
   Globe2,
@@ -24,6 +25,7 @@ import {
   addJournalEntry,
   clearReadingPresence,
   deleteJournalEntry,
+  getJournal,
   getJournalForBook,
   getMyGroups,
   getReadingProgress,
@@ -36,6 +38,7 @@ import { paginateParagraphs } from "../utils/paginateText.js";
 import { auth } from "../firebase";
 import SEO from "../components/SEO.jsx";
 import { syncClassReadingProgress } from "../services/classStorage.js";
+import { createNoteLink, deleteNoteLink, getMyNoteLinks } from "../services/noteLinks.js";
 
 function formatNoteDate(value) {
   if (!value) return "";
@@ -118,6 +121,14 @@ export default function Reader() {
   const [editGroupId, setEditGroupId] = useState("");
   const [savingEntry, setSavingEntry] = useState(false);
   const [deletingEntryId, setDeletingEntryId] = useState(null);
+
+  // Phase 5A — note-to-note chains.
+  const [allMyNotes, setAllMyNotes] = useState([]);
+  const [noteLinks, setNoteLinks] = useState([]);
+  const [linkingEntryId, setLinkingEntryId] = useState(null);
+  const [linkTargetId, setLinkTargetId] = useState("");
+  const [linkRelationship, setLinkRelationship] = useState("");
+  const [linkSaving, setLinkSaving] = useState(false);
 
   useEffect(() => {
     document.body.classList.add("reader-mode");
@@ -249,6 +260,24 @@ export default function Reader() {
     loadJournal();
     return () => { active = false; };
   }, [book?.id, progressLoaded]);
+
+  useEffect(() => {
+    if (!showPageNotes || !auth.currentUser) return;
+
+    let active = true;
+
+    Promise.all([getJournal(), getMyNoteLinks()])
+      .then(([notes, links]) => {
+        if (!active) return;
+        setAllMyNotes(notes || []);
+        setNoteLinks(links || []);
+      })
+      .catch((error) => {
+        console.error("Could not load note connections:", error);
+      });
+
+    return () => { active = false; };
+  }, [showPageNotes, journalEntries]);
 
   useEffect(() => {
     function updateSize() {
@@ -448,6 +477,67 @@ export default function Reader() {
     if (targetPage >= 0) {
       readingAnchorRef.current = target;
       setPageIndex(targetPage);
+    }
+  }
+
+  function linksForEntry(entryId) {
+    return noteLinks.filter(
+      (link) => link.sourceNoteId === entryId || link.targetNoteId === entryId
+    );
+  }
+
+  function linkedEntryFor(link, entryId) {
+    const otherId =
+      link.sourceNoteId === entryId ? link.targetNoteId : link.sourceNoteId;
+    return allMyNotes.find((entry) => entry.id === otherId) || null;
+  }
+
+  async function handleCreateLink(sourceEntry) {
+    if (!sourceEntry?.id || !linkTargetId || sourceEntry.id === linkTargetId) return;
+
+    const duplicate = noteLinks.some((link) =>
+      (link.sourceNoteId === sourceEntry.id && link.targetNoteId === linkTargetId) ||
+      (link.targetNoteId === sourceEntry.id && link.sourceNoteId === linkTargetId)
+    );
+    if (duplicate) {
+      setStatus("Those notes are already connected.");
+      return;
+    }
+
+    const targetEntry = allMyNotes.find((entry) => entry.id === linkTargetId);
+    if (!targetEntry) {
+      setStatus("Choose a note to connect.");
+      return;
+    }
+
+    try {
+      setLinkSaving(true);
+      const created = await createNoteLink({
+        sourceEntry,
+        targetEntry,
+        relationship: linkRelationship
+      });
+      setNoteLinks((current) => [created, ...current]);
+      setLinkingEntryId(null);
+      setLinkTargetId("");
+      setLinkRelationship("");
+      setStatus("Notes connected.");
+    } catch (error) {
+      console.error("Could not connect notes:", error);
+      setStatus(error?.message || "We couldn't connect those notes.");
+    } finally {
+      setLinkSaving(false);
+    }
+  }
+
+  async function handleDeleteLink(linkId) {
+    try {
+      await deleteNoteLink(linkId);
+      setNoteLinks((current) => current.filter((link) => link.id !== linkId));
+      setStatus("Connection removed.");
+    } catch (error) {
+      console.error("Could not remove note connection:", error);
+      setStatus("We couldn't remove that connection.");
     }
   }
 
@@ -853,7 +943,84 @@ export default function Reader() {
                       ) : (
                         <>
                           <p>{entry.note}</p>
+
+                          {linksForEntry(entry.id).length > 0 && (
+                            <div className="ereader-note-connections">
+                              <strong><Link2 size={15} /> {linksForEntry(entry.id).length} connection{linksForEntry(entry.id).length === 1 ? "" : "s"}</strong>
+                              {linksForEntry(entry.id).map((link) => {
+                                const connected = linkedEntryFor(link, entry.id);
+                                return (
+                                  <div key={link.id} className="ereader-note-connection">
+                                    <button
+                                      type="button"
+                                      className="button secondary"
+                                      onClick={() => {
+                                        if (!connected?.bookId || connected.paragraphIndex === undefined) return;
+                                        setShowPageNotes(false);
+                                        setShowAddNote(false);
+                                        if (String(connected.bookId) === String(book?.id)) {
+                                          goToParagraph(connected.paragraphIndex);
+                                          setSelectedParagraphIndex(Number(connected.paragraphIndex));
+                                        } else {
+                                          navigate(`/read/reader/${connected.bookId}?paragraph=${Number(connected.paragraphIndex)}`);
+                                        }
+                                      }}
+                                    >
+                                      {connected
+                                        ? `${connected.title || "Untitled"} · Paragraph ${Number(connected.paragraphIndex) + 1}`
+                                        : "Connected note"}
+                                    </button>
+                                    {link.relationship && <small>{link.relationship}</small>}
+                                    <button
+                                      type="button"
+                                      className="ereader-icon-button"
+                                      aria-label="Remove connection"
+                                      title="Remove connection"
+                                      onClick={() => handleDeleteLink(link.id)}
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {linkingEntryId === entry.id && (
+                            <div className="ereader-link-note-panel">
+                              <label className="paragraph-select-label">
+                                Connect to one of my notes
+                                <select value={linkTargetId} onChange={(event) => setLinkTargetId(event.target.value)}>
+                                  <option value="">Choose a note...</option>
+                                  {allMyNotes
+                                    .filter((candidate) => candidate.id !== entry.id)
+                                    .map((candidate) => (
+                                      <option key={candidate.id} value={candidate.id}>
+                                        {(candidate.title || "Untitled").slice(0, 55)} · ¶{Number(candidate.paragraphIndex) + 1} — {(candidate.note || "").slice(0, 75)}
+                                      </option>
+                                    ))}
+                                </select>
+                              </label>
+                              <textarea
+                                rows={2}
+                                maxLength={500}
+                                value={linkRelationship}
+                                onChange={(event) => setLinkRelationship(event.target.value)}
+                                placeholder="Why are these notes connected? (optional)"
+                              />
+                              <div className="button-row">
+                                <button className="button primary" disabled={linkSaving || !linkTargetId} onClick={() => handleCreateLink(entry)}>
+                                  <Link2 size={15} /> {linkSaving ? "Connecting..." : "Connect Notes"}
+                                </button>
+                                <button className="button secondary" onClick={() => { setLinkingEntryId(null); setLinkTargetId(""); setLinkRelationship(""); }}>Cancel</button>
+                              </div>
+                            </div>
+                          )}
+
                           <div className="button-row">
+                            <button className="button secondary" onClick={() => { setLinkingEntryId(entry.id); setLinkTargetId(""); setLinkRelationship(""); }}>
+                              <Link2 size={15} /> Link
+                            </button>
                             <button className="button secondary" onClick={() => { setEditingEntryId(entry.id); setEditNote(entry.note || ""); setEditVisibility(entry.visibility || "private"); setEditGroupId(entry.groupId || ""); }}>
                               <Pencil size={15} /> Edit
                             </button>
