@@ -82,6 +82,11 @@ export default function Reader() {
     return Number.isFinite(parsed) ? Math.max(Math.floor(parsed), 0) : null;
   }, [searchParams]);
 
+  const requestedNoteId = useMemo(() => {
+    const raw = searchParams.get("note");
+    return raw ? String(raw) : null;
+  }, [searchParams]);
+
   const [book, setBook] = useState(location.state?.book || null);
   const [paragraphs, setParagraphs] = useState([]);
   const [chapters, setChapters] = useState([]);
@@ -124,7 +129,10 @@ export default function Reader() {
 
   // Phase 5A — note-to-note chains.
   const [allMyNotes, setAllMyNotes] = useState([]);
+  const [allMyNotesLoaded, setAllMyNotesLoaded] = useState(false);
   const [noteLinks, setNoteLinks] = useState([]);
+  const [noteLinksLoaded, setNoteLinksLoaded] = useState(false);
+  const [focusedNoteId, setFocusedNoteId] = useState(requestedNoteId);
   const [linkingEntryId, setLinkingEntryId] = useState(null);
   const [linkTargetId, setLinkTargetId] = useState("");
   const [linkRelationship, setLinkRelationship] = useState("");
@@ -162,6 +170,7 @@ export default function Reader() {
       setPageIndex(0);
       setSavedParagraphAnchor(0);
       setSelectedParagraphIndex(null);
+      setFocusedNoteId(requestedNoteId);
       setShowPageNotes(false);
       setShowAddNote(false);
       readingAnchorRef.current = 0;
@@ -222,7 +231,7 @@ export default function Reader() {
 
     loadBook();
     return () => { active = false; };
-  }, [id, location.state, requestedParagraph]);
+  }, [id, location.state, requestedParagraph, requestedNoteId]);
 
   useEffect(() => {
     if (!showAddNote && !showPageNotes) return;
@@ -262,22 +271,40 @@ export default function Reader() {
   }, [book?.id, progressLoaded]);
 
   useEffect(() => {
-    if (!showPageNotes || !auth.currentUser) return;
+    if (!showPageNotes || !auth.currentUser || noteLinksLoaded) return;
 
     let active = true;
 
-    Promise.all([getJournal(), getMyNoteLinks()])
-      .then(([notes, links]) => {
+    getMyNoteLinks()
+      .then((links) => {
         if (!active) return;
-        setAllMyNotes(notes || []);
         setNoteLinks(links || []);
+        setNoteLinksLoaded(true);
       })
       .catch((error) => {
         console.error("Could not load note connections:", error);
       });
 
     return () => { active = false; };
-  }, [showPageNotes, journalEntries]);
+  }, [showPageNotes, noteLinksLoaded]);
+
+  useEffect(() => {
+    if (!requestedNoteId || !journalEntries.length) return;
+
+    const targetNote = journalEntries.find(
+      (entry) => String(entry.id) === String(requestedNoteId)
+    );
+    if (!targetNote) return;
+
+    const targetParagraph = Number(targetNote.paragraphIndex);
+    if (Number.isFinite(targetParagraph)) {
+      setSelectedParagraphIndex(targetParagraph);
+    }
+    setFocusedNoteId(String(targetNote.id));
+    setShowAddNote(false);
+    setShowPageNotes(true);
+    setControlsVisible(true);
+  }, [requestedNoteId, journalEntries]);
 
   useEffect(() => {
     function updateSize() {
@@ -377,6 +404,16 @@ export default function Reader() {
         currentSet.has(Number(entry.paragraphIndex))
     );
   }, [journalEntries, currentParagraphIndexes]);
+
+  useEffect(() => {
+    if (!focusedNoteId || !showPageNotes) return;
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .getElementById(`reader-note-${focusedNoteId}`)
+        ?.scrollIntoView({ block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusedNoteId, showPageNotes, notesForCurrentPage]);
 
   const progress =
     totalPages > 1
@@ -487,9 +524,26 @@ export default function Reader() {
   }
 
   function linkedEntryFor(link, entryId) {
-    const otherId =
-      link.sourceNoteId === entryId ? link.targetNoteId : link.sourceNoteId;
-    return allMyNotes.find((entry) => entry.id === otherId) || null;
+    return String(link.sourceNoteId) === String(entryId)
+      ? (link.target || null)
+      : (link.source || null);
+  }
+
+  async function openLinkPicker(entryId) {
+    setLinkingEntryId(entryId);
+    setLinkTargetId("");
+    setLinkRelationship("");
+
+    if (allMyNotesLoaded) return;
+
+    try {
+      const notes = await getJournal();
+      setAllMyNotes(notes || []);
+      setAllMyNotesLoaded(true);
+    } catch (error) {
+      console.error("Could not load journal for linking:", error);
+      setStatus("We couldn't load your notes to create a connection.");
+    }
   }
 
   async function handleCreateLink(sourceEntry) {
@@ -915,7 +969,14 @@ export default function Reader() {
                 )}
                 <div className="ereader-note-list">
                   {notesForCurrentPage.map((entry) => (
-                    <article key={entry.id} className="ereader-note-card">
+                    <article
+                      key={entry.id}
+                      id={`reader-note-${entry.id}`}
+                      className={[
+                        "ereader-note-card",
+                        String(entry.id) === String(focusedNoteId) ? "ereader-note-target" : ""
+                      ].filter(Boolean).join(" ")}
+                    >
                       <div className="public-entry-meta">
                         <span>Paragraph {Number(entry.paragraphIndex) + 1}</span>
                         <span><VisibilityIcon visibility={entry.visibility} /> {getVisibilityLabel(entry.visibility)}</span>
@@ -956,13 +1017,19 @@ export default function Reader() {
                                       className="button secondary"
                                       onClick={() => {
                                         if (!connected?.bookId || connected.paragraphIndex === undefined) return;
-                                        setShowPageNotes(false);
-                                        setShowAddNote(false);
+                                        const targetParagraph = Number(connected.paragraphIndex);
+                                        const targetNoteId = String(connected.noteId || "");
                                         if (String(connected.bookId) === String(book?.id)) {
-                                          goToParagraph(connected.paragraphIndex);
-                                          setSelectedParagraphIndex(Number(connected.paragraphIndex));
+                                          goToParagraph(targetParagraph);
+                                          setSelectedParagraphIndex(targetParagraph);
+                                          setFocusedNoteId(targetNoteId || null);
+                                          setShowAddNote(false);
+                                          setShowPageNotes(true);
+                                          setControlsVisible(true);
                                         } else {
-                                          navigate(`/read/reader/${connected.bookId}?paragraph=${Number(connected.paragraphIndex)}`);
+                                          navigate(
+                                            `/read/reader/${connected.bookId}?paragraph=${targetParagraph}&note=${encodeURIComponent(targetNoteId)}`
+                                          );
                                         }
                                       }}
                                     >
@@ -1018,7 +1085,7 @@ export default function Reader() {
                           )}
 
                           <div className="button-row">
-                            <button className="button secondary" onClick={() => { setLinkingEntryId(entry.id); setLinkTargetId(""); setLinkRelationship(""); }}>
+                            <button className="button secondary" onClick={() => openLinkPicker(entry.id)}>
                               <Link2 size={15} /> Link
                             </button>
                             <button className="button secondary" onClick={() => { setEditingEntryId(entry.id); setEditNote(entry.note || ""); setEditVisibility(entry.visibility || "private"); setEditGroupId(entry.groupId || ""); }}>
