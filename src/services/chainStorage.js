@@ -1030,3 +1030,270 @@ export async function deleteReportedGroupChainEntry(
     }
   );
 }
+
+
+/* ============================================================
+   PHASE 5C — PROVENANCE / IDEA CHAIN
+============================================================ */
+
+function sameEntry(entry, userId, entryId) {
+  return (
+    String(entry?.userId || "") === String(userId || "") &&
+    String(entry?.id || "") === String(entryId || "")
+  );
+}
+
+function isDerivedFrom(entry, sourceEntry) {
+  if (!entry || !sourceEntry) return false;
+
+  const sourceEntryId = String(sourceEntry.id || "");
+  const sourceUserId = String(sourceEntry.userId || "");
+
+  return (
+    String(entry.sourceChainEntryId || "") === sourceEntryId &&
+    (
+      !entry.sourceUserId ||
+      !sourceUserId ||
+      String(entry.sourceUserId) === sourceUserId
+    )
+  );
+}
+
+async function enrichChainEntries(entries) {
+  const userIds = [
+    ...new Set(
+      entries
+        .map((entry) => entry?.userId)
+        .filter(Boolean)
+        .map(String)
+    )
+  ];
+
+  const profilePairs = await Promise.all(
+    userIds.map(async (userId) => {
+      try {
+        return [userId, await getPublicProfile(userId)];
+      } catch (error) {
+        console.error(`Could not load public profile ${userId}:`, error);
+        return [userId, null];
+      }
+    })
+  );
+
+  const profiles = new Map(profilePairs);
+
+  return entries.map((entry) => ({
+    ...entry,
+    reader: profiles.get(String(entry.userId || "")) || null
+  }));
+}
+
+export async function getChainEntry(userId, entryId) {
+  if (!userId || !entryId) return null;
+
+  const snapshot = await getDoc(
+    doc(
+      db,
+      "users",
+      String(userId),
+      "journal",
+      String(entryId)
+    )
+  );
+
+  if (!snapshot.exists()) return null;
+
+  const entry = normalizeChainEntry({
+    id: snapshot.id,
+    ...snapshot.data()
+  });
+
+  if (!entry) return null;
+
+  const viewer = auth.currentUser;
+  const isOwner = viewer?.uid === String(entry.userId || userId);
+
+  if (entry.visibility === "private" && !isOwner) {
+    return null;
+  }
+
+  if (entry.visibility === "group" && !isOwner) {
+    if (!viewer || !entry.groupId) return null;
+
+    const membership = await getGroupMemberRecord(
+      entry.groupId,
+      viewer.uid
+    );
+
+    if (
+      !membership ||
+      ["removed", "suspended"].includes(membership.status)
+    ) {
+      return null;
+    }
+  }
+
+  const [enriched] = await enrichChainEntries([entry]);
+  return enriched || null;
+}
+
+export async function getChainBranches(sourceEntry) {
+  if (!sourceEntry?.id) {
+    return {
+      notes: [],
+      noteCount: 0,
+      groupDiscussions: [],
+      groupDiscussionCount: 0
+    };
+  }
+
+  const viewer = auth.currentUser;
+
+  const journalSnapshot = await getDocs(
+    query(
+      collectionGroup(db, "journal"),
+      where(
+        "sourceChainEntryId",
+        "==",
+        String(sourceEntry.id)
+      )
+    )
+  );
+
+  const derivedNotes = journalSnapshot.docs
+    .map((entryDoc) =>
+      normalizeChainEntry({
+        id: entryDoc.id,
+        ...entryDoc.data()
+      })
+    )
+    .filter(Boolean)
+    .filter((entry) => !sameEntry(
+      entry,
+      sourceEntry.userId,
+      sourceEntry.id
+    ))
+    .filter((entry) => isDerivedFrom(entry, sourceEntry));
+
+  const visibleNotes = [];
+
+  for (const entry of derivedNotes) {
+    if (entry.visibility === "public") {
+      visibleNotes.push(entry);
+      continue;
+    }
+
+    if (
+      viewer &&
+      String(entry.userId || "") === String(viewer.uid)
+    ) {
+      visibleNotes.push(entry);
+      continue;
+    }
+
+    if (
+      viewer &&
+      entry.visibility === "group" &&
+      entry.groupId
+    ) {
+      const membership = await getGroupMemberRecord(
+        entry.groupId,
+        viewer.uid
+      );
+
+      if (
+        membership &&
+        !["removed", "suspended"].includes(membership.status)
+      ) {
+        visibleNotes.push(entry);
+      }
+    }
+  }
+
+  const enrichedNotes = await enrichChainEntries(visibleNotes);
+
+  /*
+   * Group discussions live under groups/{groupId}/forumPosts.
+   * A collection-group query lets us discover branches without
+   * duplicating the forum system. Firestore may request an index
+   * the first time this query is deployed.
+   */
+  let groupDiscussions = [];
+
+  try {
+    const forumSnapshot = await getDocs(
+      query(
+        collectionGroup(db, "forumPosts"),
+        where(
+          "sourceChainEntryId",
+          "==",
+          String(sourceEntry.id)
+        )
+      )
+    );
+
+    const candidates = forumSnapshot.docs.map((postDoc) => ({
+      id: postDoc.id,
+      ...postDoc.data()
+    }));
+
+    if (viewer) {
+      for (const post of candidates) {
+        if (!post.groupId) continue;
+
+        const membership = await getGroupMemberRecord(
+          post.groupId,
+          viewer.uid
+        );
+
+        if (
+          membership &&
+          !["removed", "suspended"].includes(membership.status)
+        ) {
+          groupDiscussions.push(post);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn(
+      "Could not load Chain group-discussion branches:",
+      error
+    );
+  }
+
+  return {
+    notes: enrichedNotes,
+    noteCount: enrichedNotes.length,
+    groupDiscussions,
+    groupDiscussionCount: groupDiscussions.length
+  };
+}
+
+export async function getChainProvenance(entry) {
+  if (!entry) {
+    return {
+      source: null,
+      branches: {
+        notes: [],
+        noteCount: 0,
+        groupDiscussions: [],
+        groupDiscussionCount: 0
+      }
+    };
+  }
+
+  const source =
+    entry.sourceChainEntryId && entry.sourceUserId
+      ? await getChainEntry(
+          entry.sourceUserId,
+          entry.sourceChainEntryId
+        )
+      : null;
+
+  const branches = await getChainBranches(entry);
+
+  return {
+    source,
+    branches
+  };
+}
