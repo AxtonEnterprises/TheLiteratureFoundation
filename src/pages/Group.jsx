@@ -2052,6 +2052,38 @@ export default function Group() {
     }
   }
 
+  const selectedDiscussion =
+    forumPosts[discussionIndex] || null;
+
+  const selectedReply = currentReplyItem();
+
+  /*
+   * This hook must run on every render. Keeping it above the
+   * loading/auth/group early returns prevents React's
+   * "Rendered more hooks than during the previous render"
+   * runtime crash when a group finishes loading.
+   */
+  useEffect(() => {
+    if (loading || !user || !group || activeTab !== "forum") return;
+
+    if (replyModePostId && selectedReply) {
+      ensureForumVote("reply", selectedReply.id);
+      return;
+    }
+
+    if (selectedDiscussion) {
+      ensureForumVote("post", selectedDiscussion.id);
+    }
+  }, [
+    loading,
+    user?.uid,
+    group?.id,
+    activeTab,
+    replyModePostId,
+    selectedReply?.id,
+    selectedDiscussion?.id
+  ]);
+
   if (loading) {
     return (
       <main className="page-wrap">
@@ -2106,35 +2138,8 @@ export default function Group() {
     );
   }
 
-  const selectedDiscussion =
-    forumPosts[discussionIndex] || null;
-
-  const selectedReply = currentReplyItem();
-
-  useEffect(() => {
-    if (activeTab !== "forum") return;
-
-    if (replyModePostId && selectedReply) {
-      ensureForumVote("reply", selectedReply.id);
-      return;
-    }
-
-    if (selectedDiscussion) {
-      ensureForumVote("post", selectedDiscussion.id);
-    }
-  }, [
-    activeTab,
-    replyModePostId,
-    selectedReply?.id,
-    selectedDiscussion?.id
-  ]);
-
   return (
-    <main
-      className="page-wrap group-spatial-page"
-      onTouchStart={handleGroupTouchStart}
-      onTouchEnd={handleGroupTouchEnd}
-    >
+    <main className="page-wrap group-spatial-page">
       <SEO
         title={`${group.name} | Lit Chain`}
         description={
