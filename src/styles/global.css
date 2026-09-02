@@ -8795,3 +8795,57 @@ body.reader-mode .random-reads-app {
     right: 0.18rem;
   }
 }
+
+/* ==================================================
+   LIT CHAIN — GROUP SWIPE + LEVEL 0 COVER REFINEMENT
+   ================================================== */
+
+/* Member groups now open spatially with a left swipe. */
+.groups-home-swipe-hint {
+  margin: 0.85rem 0 0.15rem;
+  color: #8c9497;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+/*
+ * Level 0 artwork should read as a book cover, not a stretched
+ * full-screen background. Keep it in the upper portion of the
+ * reel and let it end before the information card.
+ */
+.chain-source-reel {
+  background: var(--paper, #fbf7ef) !important;
+}
+
+.chain-source-cover-screen {
+  inset: 0 0 auto 0 !important;
+  height: 49% !important;
+  max-height: 430px;
+  background: #202326;
+}
+
+.chain-source-cover-screen::after {
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.03) 0%,
+      rgba(0, 0, 0, 0.09) 100%
+    ) !important;
+}
+
+.chain-source-cover-screen img {
+  width: auto !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  object-position: center top !important;
+}
+
+@media (max-width: 560px) {
+  .chain-source-cover-screen {
+    height: 44% !important;
+    max-height: 360px;
+  }
+}
