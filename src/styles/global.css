@@ -6384,3 +6384,502 @@ body.reader-mode.reader-dark-mode {
     max-height: 62dvh;
   }
 }
+
+
+/* ========================================================
+   PHASE 5C — COVER REELS / LEVEL DOTS / DEPTH SWIPE / FILTER
+   ======================================================== */
+
+/* Filter stays attached to the bottom edge of the app header. */
+.chain-fixed-filter {
+  position: fixed;
+  top: var(--chain-header-offset, 72px);
+  left: 50%;
+  z-index: 85;
+
+  width: min(calc(100vw - 1rem), 820px);
+
+  transform: translateX(-50%);
+
+  padding: 0.35rem 0.5rem;
+
+  border-bottom: 1px solid rgba(174, 180, 182, 0.45);
+
+  background: rgba(247, 247, 245, 0.94);
+  backdrop-filter: blur(12px);
+}
+
+.chain-fixed-filter .margins-filter-bar {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* The old tap-to-show chrome is no longer part of Chain navigation. */
+.chain-chrome-controls,
+.chain-depth-bar,
+.chain-chrome-tap-target {
+  display: none !important;
+}
+
+/* Leave room for the fixed filter without changing the reel viewport. */
+.chain-immersive-stage {
+  padding-top: 44px;
+}
+
+/* --------------------------------------------------------
+   Level 0 — cover fills the reel
+   -------------------------------------------------------- */
+
+.chain-source-reel {
+  position: relative;
+
+  display: block;
+
+  padding: 0;
+
+  isolation: isolate;
+  background: #222;
+}
+
+.chain-source-cover-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+
+  display: block;
+
+  overflow: hidden;
+
+  background:
+    radial-gradient(circle at 50% 25%, rgba(255,255,255,0.13), transparent 38%),
+    #35383a;
+}
+
+.chain-source-cover-screen::after {
+  content: "";
+
+  position: absolute;
+  inset: 0;
+
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.06) 20%,
+      rgba(0, 0, 0, 0.18) 56%,
+      rgba(0, 0, 0, 0.68) 100%
+    );
+
+  pointer-events: none;
+}
+
+.chain-source-cover-screen img {
+  position: absolute;
+  inset: 0;
+
+  width: 100%;
+  height: 100%;
+
+  object-fit: cover;
+  object-position: center;
+
+  transform: scale(1.015);
+}
+
+.chain-source-cover-fallback {
+  position: absolute;
+  inset: 0;
+
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 1rem;
+
+  padding: 2rem;
+
+  color: rgba(255, 255, 255, 0.9);
+  text-align: center;
+}
+
+.chain-source-cover-fallback strong {
+  max-width: 18ch;
+
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.65rem, 7vw, 3rem);
+  line-height: 1.1;
+}
+
+.chain-source-overlay-card {
+  position: absolute;
+  left: clamp(0.8rem, 4vw, 1.5rem);
+  right: clamp(0.8rem, 4vw, 1.5rem);
+  bottom: clamp(1.25rem, 6dvh, 3rem);
+  z-index: 3;
+
+  max-width: 620px;
+  margin: 0 auto;
+
+  padding: clamp(1rem, 4vw, 1.5rem);
+
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 22px;
+
+  background: rgba(248, 246, 240, 0.88);
+  backdrop-filter: blur(16px);
+
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+}
+
+.chain-source-overlay-card h2 {
+  margin: 0.2rem 0 0;
+
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.45rem, 5.4vw, 2.15rem);
+  line-height: 1.12;
+}
+
+.chain-source-overlay-card .timeline-author {
+  margin: 0.35rem 0 0;
+}
+
+.chain-source-overlay-card .chain-source-open {
+  width: 100%;
+  justify-content: center;
+}
+
+/* Hide superseded Level 0 timeline layout styles. */
+.chain-source-timeline-book,
+.chain-source-cover {
+  display: none;
+}
+
+/* --------------------------------------------------------
+   Horizontal level orientation
+   -------------------------------------------------------- */
+
+.chain-level-dots {
+  position: absolute;
+  left: 50%;
+  bottom: max(13px, env(safe-area-inset-bottom));
+  z-index: 58;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+
+  transform: translateX(-50%);
+
+  min-height: 28px;
+  max-width: calc(100% - 7rem);
+
+  padding: 6px 10px;
+
+  border-radius: 999px;
+
+  background: rgba(247, 247, 245, 0.74);
+  backdrop-filter: blur(7px);
+}
+
+.chain-level-dot {
+  width: 6px;
+  height: 6px;
+
+  display: grid;
+  place-items: center;
+
+  flex: 0 0 auto;
+
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+
+  background: rgba(65, 72, 76, 0.34);
+
+  color: white;
+
+  transition:
+    width 150ms ease,
+    height 150ms ease,
+    background 150ms ease,
+    transform 150ms ease;
+}
+
+.chain-level-dot.active {
+  width: 9px;
+  height: 9px;
+
+  background: var(--ink);
+}
+
+.chain-level-dot.add {
+  width: 15px;
+  height: 15px;
+
+  font-size: 12px;
+  font-weight: 900;
+
+  background: var(--primary);
+}
+
+.chain-level-dot.add span {
+  transform: translateY(-0.5px);
+}
+
+.chain-level-dot:disabled {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------
+   Horizontal depth-card animation
+   -------------------------------------------------------- */
+
+@keyframes chainDepthExitForward {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(-42%) scale(0.97);
+  }
+}
+
+@keyframes chainDepthEnterForward {
+  from {
+    opacity: 0;
+    transform: translateX(42%) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes chainDepthExitBack {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(42%) scale(0.97);
+  }
+}
+
+@keyframes chainDepthEnterBack {
+  from {
+    opacity: 0;
+    transform: translateX(-42%) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.chain-depth-exit-forward .chain-link-shell,
+.chain-depth-exit-forward .chain-source-level {
+  animation: chainDepthExitForward 145ms ease both;
+}
+
+.chain-depth-enter-forward .chain-link-shell,
+.chain-depth-enter-forward .chain-source-level {
+  animation: chainDepthEnterForward 185ms ease-out both;
+}
+
+.chain-depth-exit-back .chain-link-shell,
+.chain-depth-exit-back .chain-source-level {
+  animation: chainDepthExitBack 145ms ease both;
+}
+
+.chain-depth-enter-back .chain-link-shell,
+.chain-depth-enter-back .chain-source-level {
+  animation: chainDepthEnterBack 185ms ease-out both;
+}
+
+/* --------------------------------------------------------
+   End-of-branch plus reel
+   -------------------------------------------------------- */
+
+.chain-add-link-card {
+  display: grid;
+  place-items: center;
+
+  text-align: center;
+
+  background:
+    radial-gradient(circle at 50% 38%, rgba(59, 182, 177, 0.12), transparent 32%),
+    transparent;
+}
+
+.chain-add-link-content {
+  width: min(100%, 480px);
+
+  display: grid;
+  justify-items: center;
+  gap: 0.8rem;
+
+  padding: 1.5rem;
+}
+
+.chain-add-link-icon {
+  width: 92px;
+  height: 92px;
+
+  display: grid;
+  place-items: center;
+
+  border: 1.5px solid rgba(59, 182, 177, 0.56);
+  border-radius: 50%;
+
+  background: rgba(59, 182, 177, 0.08);
+
+  color: var(--primary);
+}
+
+.chain-add-link-icon span {
+  font-size: 3.8rem;
+  font-weight: 200;
+  line-height: 1;
+}
+
+.chain-add-link-content h2 {
+  margin: 0;
+
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.7rem, 6vw, 2.4rem);
+}
+
+.chain-add-link-content > p:not(.eyebrow) {
+  max-width: 32rem;
+  margin: 0;
+
+  color: var(--muted);
+}
+
+.chain-add-link-button {
+  margin-top: 0.4rem;
+}
+
+/* --------------------------------------------------------
+   Floating reply modal
+   -------------------------------------------------------- */
+
+.chain-reply-modal-backdrop {
+  z-index: 1300;
+
+  padding:
+    max(1rem, env(safe-area-inset-top))
+    1rem
+    max(1rem, env(safe-area-inset-bottom));
+}
+
+.chain-reply-modal {
+  width: min(100%, 540px);
+  max-height: min(82dvh, 720px);
+
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 0.75rem;
+
+  overflow: hidden;
+}
+
+.chain-reply-modal-source {
+  padding: 0.7rem 0.8rem;
+
+  border-radius: 14px;
+
+  background: rgba(174, 180, 182, 0.11);
+}
+
+.chain-reply-modal-source p {
+  display: -webkit-box;
+  margin: 0.35rem 0 0;
+
+  overflow: hidden;
+
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+
+  color: var(--muted);
+}
+
+.chain-reply-modal-scroll {
+  min-height: 0;
+
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  padding-right: 0.15rem;
+
+  -webkit-overflow-scrolling: touch;
+}
+
+.chain-reply-modal-compose {
+  display: grid;
+  gap: 0.55rem;
+
+  padding-top: 0.65rem;
+
+  border-top: 1px solid var(--line);
+}
+
+.chain-reply-modal-compose textarea {
+  width: 100%;
+  resize: vertical;
+  max-height: 24dvh;
+}
+
+/* Supersede the old on-card reply sheet. */
+.chain-reel-page > .margin-reply-box {
+  display: none !important;
+}
+
+@media (max-width: 560px) {
+  .chain-fixed-filter {
+    top: var(--chain-header-offset-mobile, 64px);
+
+    width: 100%;
+
+    padding-left:
+      max(0.4rem, env(safe-area-inset-left));
+    padding-right:
+      max(0.4rem, env(safe-area-inset-right));
+  }
+
+  .chain-immersive-stage {
+    padding-top: 42px;
+  }
+
+  .chain-source-overlay-card {
+    bottom: max(3.1rem, calc(env(safe-area-inset-bottom) + 2.4rem));
+  }
+
+  .chain-level-dots {
+    bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .chain-reply-modal {
+    width: 100%;
+    max-height: 86dvh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chain-depth-exit-forward .chain-link-shell,
+  .chain-depth-exit-forward .chain-source-level,
+  .chain-depth-enter-forward .chain-link-shell,
+  .chain-depth-enter-forward .chain-source-level,
+  .chain-depth-exit-back .chain-link-shell,
+  .chain-depth-exit-back .chain-source-level,
+  .chain-depth-enter-back .chain-link-shell,
+  .chain-depth-enter-back .chain-source-level {
+    animation: none;
+  }
+}
