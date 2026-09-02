@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowDown,
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
+  Bookmark,
   ChevronLeft,
   ChevronRight,
-  Bookmark,
+  Link2,
+  Link2Off,
   BookOpen,
   Flag,
   MessageCircle,
@@ -30,7 +34,10 @@ import {
   getGroupsChainFeed,
   getSavedChainEntries,
   getChainBranches,
+  getMyChainVotes,
   reportChainEntry,
+  sortChainEntriesByVote,
+  voteOnChainEntry,
   saveChainEntry,
   unsaveChainEntry
 } from "../services/chainStorage.js";
@@ -106,10 +113,31 @@ export default function Chain() {
   const [selectedBookId, setSelectedBookId] = useState("");
   const [levels, setLevels] = useState([]);
   const [levelLoading, setLevelLoading] = useState(false);
+  const [chromeVisible, setChromeVisible] = useState(false);
+  const [myVotes, setMyVotes] = useState({});
+  const [voteLoadingKey, setVoteLoadingKey] = useState("");
   const chainSwipeStartRef = useRef(null);
 
 
   useEffect(() => onAuthStateChanged(auth, setUser), []);
+
+  useEffect(() => {
+    document.body.classList.add("chain-immersive");
+
+    return () => {
+      document.body.classList.remove(
+        "chain-immersive",
+        "chain-chrome-visible"
+      );
+    };
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle(
+      "chain-chrome-visible",
+      chromeVisible
+    );
+  }, [chromeVisible]);
 
   useEffect(() => {
     let active = true;
@@ -482,10 +510,12 @@ export default function Chain() {
   function levelOneForBook(book) {
     if (!book) return [];
 
-    return entries.filter(
-      (entry) =>
-        String(entry.bookId || "") === String(book.id) &&
-        !entry.sourceChainEntryId
+    return sortChainEntriesByVote(
+      entries.filter(
+        (entry) =>
+          String(entry.bookId || "") === String(book.id) &&
+          !entry.sourceChainEntryId
+      )
     );
   }
 
@@ -531,10 +561,12 @@ export default function Chain() {
 
       const branches = await getChainBranches(currentSelectedItem);
       const nextItems = [
-        ...(branches?.notes || []).map((item) => ({
-          ...item,
-          nodeType: "note"
-        })),
+        ...sortChainEntriesByVote(
+          (branches?.notes || []).map((item) => ({
+            ...item,
+            nodeType: "note"
+          }))
+        ),
         ...(branches?.groupDiscussions || []).map((item) => ({
           ...item,
           nodeType: "group"
@@ -588,9 +620,9 @@ export default function Chain() {
     if (elapsed > 900 || Math.abs(deltaX) < 58) return;
     if (Math.abs(deltaX) <= Math.abs(deltaY) * 1.2) return;
 
-    // Lit Chain deliberately uses the user's spatial model:
-    // swipe RIGHT = move deeper; swipe LEFT = move back.
-    if (deltaX > 0) {
+    // Depth navigation:
+    // swipe LEFT = move deeper; swipe RIGHT = move back.
+    if (deltaX < 0) {
       if (currentDepth === 0) {
         enterSourceBook();
       } else {
@@ -598,6 +630,80 @@ export default function Chain() {
       }
     } else {
       goBackOneLevel();
+    }
+  }
+
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadVotes() {
+      if (!user || !currentItems.length) {
+        if (active) setMyVotes({});
+        return;
+      }
+
+      const noteItems = currentItems.filter(
+        (item) => item?.nodeType !== "group"
+      );
+
+      const votes = await getMyChainVotes(noteItems);
+      if (active) {
+        setMyVotes((current) => ({
+          ...current,
+          ...votes
+        }));
+      }
+    }
+
+    loadVotes();
+
+    return () => {
+      active = false;
+    };
+  }, [user, currentDepth, currentLevel?.parent?.id, currentItems.length]);
+
+  async function handleChainVote(entry, direction) {
+    if (!requireLogin()) return;
+
+    const key = savedChainKey(entry);
+
+    try {
+      setVoteLoadingKey(key);
+      setStatus("");
+
+      const result = await voteOnChainEntry(entry, direction);
+
+      setMyVotes((current) => ({
+        ...current,
+        [key]: result.direction
+      }));
+
+      setEntries((current) =>
+        current.map((item) =>
+          item.id === entry.id && item.userId === entry.userId
+            ? { ...item, ...result }
+            : item
+        )
+      );
+
+      setLevels((current) =>
+        current.map((level) => ({
+          ...level,
+          items: sortChainEntriesByVote(
+            level.items.map((item) =>
+              item.id === entry.id && item.userId === entry.userId
+                ? { ...item, ...result }
+                : item
+            )
+          )
+        }))
+      );
+    } catch (error) {
+      console.error("Could not save Chain vote:", error);
+      setStatus(error?.message || "We couldn't save your Chain vote.");
+    } finally {
+      setVoteLoadingKey("");
     }
   }
 
@@ -781,9 +887,53 @@ export default function Chain() {
 
         <p className="public-journal-note">{entry.note}</p>
 
+        <div
+          className="chain-vote-row"
+          onClick={(event) => event.stopPropagation()}
+          aria-label="Chain voting"
+        >
+          <button
+            type="button"
+            className={
+              myVotes[savedChainKey(entry)] === 1
+                ? "chain-vote-button up active"
+                : "chain-vote-button up"
+            }
+            disabled={voteLoadingKey === savedChainKey(entry)}
+            onClick={() => handleChainVote(entry, 1)}
+            aria-label="Up Chain"
+            title="Up Chain"
+          >
+            <Link2 size={20} strokeWidth={3} />
+            <span>Up Chain</span>
+            <strong>{Number(entry.chainUpCount) || 0}</strong>
+          </button>
+
+          <div className="chain-vote-score" title="Chain score">
+            {Number(entry.chainScore) || 0}
+          </div>
+
+          <button
+            type="button"
+            className={
+              myVotes[savedChainKey(entry)] === -1
+                ? "chain-vote-button down active"
+                : "chain-vote-button down"
+            }
+            disabled={voteLoadingKey === savedChainKey(entry)}
+            onClick={() => handleChainVote(entry, -1)}
+            aria-label="Down Chain"
+            title="Down Chain"
+          >
+            <Link2Off size={20} />
+            <span>Down Chain</span>
+            <strong>{Number(entry.chainDownCount) || 0}</strong>
+          </button>
+        </div>
+
         <div className="chain-level-selection">
           {selected ? (
-            <span>Selected · swipe right to follow</span>
+            <span>Selected · swipe left to follow</span>
           ) : (
             <span>Tap to select this link</span>
           )}
@@ -1010,43 +1160,52 @@ export default function Chain() {
 
   return (
     <main
-      className="page-wrap chain-browser-page"
+      className="chain-browser-page"
       onTouchStart={handleChainTouchStart}
       onTouchEnd={handleChainTouchEnd}
     >
+      <button
+        type="button"
+        className={chromeVisible ? "chain-chrome-toggle active" : "chain-chrome-toggle"}
+        onClick={() => setChromeVisible((current) => !current)}
+        aria-label={chromeVisible ? "Hide Lit Chain controls" : "Show Lit Chain controls"}
+        aria-expanded={chromeVisible}
+      >
+        <span className="chain-mini-link">
+          <ArrowDown size={18} />
+        </span>
+      </button>
       <SEO
         title="Lit Chain"
         description="Follow ideas outward from literature through connected reader notes and discussions."
         path="/read"
       />
 
-      <div className="stack-lg">
-        <section className="hero-card small margins-hero">
-          <p className="eyebrow">Reader Community</p>
-          <h1>Lit Chain</h1>
-          <p className="muted">
-            Start with the literature. Swipe right to follow a thought deeper.
-            Scroll vertically to explore other links at the same level.
-          </p>
+      <div className="chain-immersive-stage">
+        <section className={chromeVisible ? "chain-chrome-controls visible" : "chain-chrome-controls"}>
+          <div className="chain-compact-title">
+            <p className="eyebrow">Reader Community</p>
+            <strong>Lit Chain</strong>
+          </div>
+
+          <div className="margins-filter-bar">
+            {["all", "friends", "groups"].map((value) => (
+              <button
+                key={value}
+                type="button"
+                className={filter === value ? "margins-filter active" : "margins-filter"}
+                onClick={() => {
+                  setFilter(value);
+                  setLevels([]);
+                }}
+              >
+                {value.charAt(0).toUpperCase() + value.slice(1)}
+              </button>
+            ))}
+          </div>
         </section>
 
-        <section className="margins-filter-bar">
-          {["all", "friends", "groups"].map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={filter === value ? "margins-filter active" : "margins-filter"}
-              onClick={() => {
-                setFilter(value);
-                setLevels([]);
-              }}
-            >
-              {value.charAt(0).toUpperCase() + value.slice(1)}
-            </button>
-          ))}
-        </section>
-
-        <nav className="chain-depth-bar" aria-label="Chain depth">
+        <nav className={chromeVisible ? "chain-depth-bar visible" : "chain-depth-bar"} aria-label="Chain depth">
           <button
             type="button"
             className="chain-depth-back"
@@ -1097,7 +1256,42 @@ export default function Chain() {
         )}
 
         {!loading && currentDepth === 0 && (
-          <section className="chain-source-level">
+          <section className="chain-link-shell chain-source-level">
+            <button
+              type="button"
+              className="chain-edge-link top"
+              aria-label="Scroll to previous source"
+              onClick={() => document.querySelector(".chain-link-body")?.scrollBy({ top: -320, behavior: "smooth" })}
+            >
+              <ArrowUp size={20} />
+            </button>
+            <button
+              type="button"
+              className="chain-edge-link bottom"
+              aria-label="Scroll to next source"
+              onClick={() => document.querySelector(".chain-link-body")?.scrollBy({ top: 320, behavior: "smooth" })}
+            >
+              <ArrowDown size={20} />
+            </button>
+            <button
+              type="button"
+              className="chain-edge-link left follow"
+              aria-label="Follow selected source"
+              disabled={!selectedSourceBook}
+              onClick={() => enterSourceBook()}
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <button
+              type="button"
+              className="chain-edge-link right back"
+              aria-label="No previous level"
+              disabled
+            >
+              <ArrowRight size={20} />
+            </button>
+            <div className="chain-link-body">
+
             <div className="chain-level-heading">
               <div>
                 <p className="eyebrow">Level 0</p>
@@ -1140,14 +1334,50 @@ export default function Chain() {
             )}
 
             <div className="chain-swipe-cue">
-              <ArrowRight size={18} />
-              <span>Swipe right to enter the selected book's Chain</span>
+              <ArrowLeft size={18} />
+              <span>Swipe left to enter the selected book's Chain</span>
+            </div>
             </div>
           </section>
         )}
 
         {!loading && currentDepth > 0 && (
-          <section className="chain-link-level">
+          <section className="chain-link-shell chain-link-level">
+            <button
+              type="button"
+              className="chain-edge-link top"
+              aria-label="Scroll to previous linked idea"
+              onClick={() => document.querySelector(".chain-link-level .chain-link-body")?.scrollBy({ top: -360, behavior: "smooth" })}
+            >
+              <ArrowUp size={20} />
+            </button>
+            <button
+              type="button"
+              className="chain-edge-link bottom"
+              aria-label="Scroll to next linked idea"
+              onClick={() => document.querySelector(".chain-link-level .chain-link-body")?.scrollBy({ top: 360, behavior: "smooth" })}
+            >
+              <ArrowDown size={20} />
+            </button>
+            <button
+              type="button"
+              className="chain-edge-link left follow"
+              aria-label="Follow selected Chain link"
+              disabled={levelLoading || !currentSelectedItem || currentSelectedItem.nodeType === "group"}
+              onClick={followSelectedIdea}
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <button
+              type="button"
+              className="chain-edge-link right back"
+              aria-label="Return to previous Chain level"
+              onClick={goBackOneLevel}
+            >
+              <ArrowRight size={20} />
+            </button>
+            <div className="chain-link-body">
+
             <div className="chain-level-heading">
               <div>
                 <p className="eyebrow">Level {currentDepth}</p>
@@ -1193,8 +1423,9 @@ export default function Chain() {
             )}
 
             <div className="chain-swipe-cue chain-swipe-cue-split">
-              <span><ArrowLeft size={17} /> Swipe left: back</span>
-              <span>Swipe right: follow <ArrowRight size={17} /></span>
+              <span><ArrowRight size={17} /> Swipe right: back</span>
+              <span>Swipe left: follow <ArrowLeft size={17} /></span>
+            </div>
             </div>
           </section>
         )}
