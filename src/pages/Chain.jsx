@@ -1602,44 +1602,6 @@ export default function Chain() {
 
         {!loading && currentDepth === 0 && (
           <section className="chain-link-shell chain-source-level">
-            <button
-              type="button"
-              className="chain-edge-link top"
-              aria-label="Previous source book"
-              disabled={selectedSourceIndex <= 0}
-              onClick={() => goToSourceSibling(selectedSourceIndex - 1)}
-            >
-              <ArrowUp size={20} />
-            </button>
-            <button
-              type="button"
-              className="chain-edge-link bottom"
-              aria-label="Next source book"
-              disabled={
-                !sourceBooks.length ||
-                selectedSourceIndex >= sourceBooks.length - 1
-              }
-              onClick={() => goToSourceSibling(selectedSourceIndex + 1)}
-            >
-              <ArrowDown size={20} />
-            </button>
-            <button
-              type="button"
-              className="chain-edge-link left back"
-              aria-label="Source level"
-              disabled
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <button
-              type="button"
-              className="chain-edge-link right follow"
-              aria-label="Open selected source"
-              disabled={!selectedSourceBook}
-              onClick={() => enterSourceBook()}
-            >
-              <ArrowRight size={20} />
-            </button>
 
             <div className="chain-link-body">
               {renderOrientationDots(
@@ -1737,44 +1699,6 @@ export default function Chain() {
 
         {!loading && currentDepth > 0 && (
           <section className="chain-link-shell chain-link-level">
-            <button
-              type="button"
-              className="chain-edge-link top"
-              aria-label="Scroll to previous linked idea"
-              onClick={() => goToSibling(currentSelectedIndex - 1)}
-            >
-              <ArrowUp size={20} />
-            </button>
-            <button
-              type="button"
-              className="chain-edge-link bottom"
-              aria-label="Scroll to next linked idea"
-              onClick={() => goToSibling(currentSelectedIndex + 1)}
-            >
-              <ArrowDown size={20} />
-            </button>
-            <button
-              type="button"
-              className="chain-edge-link left back"
-              aria-label="Return to previous Chain level"
-              onClick={goBackOneLevel}
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <button
-              type="button"
-              className="chain-edge-link right follow"
-              aria-label="Follow selected Chain link"
-              disabled={
-                levelLoading ||
-                !currentSelectedItem ||
-                currentSelectedItem.nodeType === "group" ||
-                currentSelectedItem.nodeType === "add-link"
-              }
-              onClick={followSelectedIdea}
-            >
-              <ArrowRight size={20} />
-            </button>
             <div className="chain-link-body">
 
             <div className="chain-level-heading">
