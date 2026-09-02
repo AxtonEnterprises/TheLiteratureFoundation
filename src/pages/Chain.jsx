@@ -744,6 +744,7 @@ export default function Chain() {
         className={[
           "margins-entry",
           "chain-level-card",
+          "chain-reel-page",
           selected ? "selected" : ""
         ].filter(Boolean).join(" ")}
         onClick={() => selectLevelItem(index)}
@@ -1138,6 +1139,7 @@ export default function Chain() {
         className={[
           "margins-entry",
           "chain-level-card",
+          "chain-reel-page",
           "chain-level-discussion",
           selected ? "selected" : ""
         ].filter(Boolean).join(" ")}
@@ -1160,7 +1162,22 @@ export default function Chain() {
 
   return (
     <main
-      className="chain-browser-page"
+      className={
+        chromeVisible
+          ? "chain-browser-page chain-chrome-visible"
+          : "chain-browser-page"
+      }
+      onClick={(event) => {
+        if (
+          event.target.closest(
+            "button, a, input, textarea, select, .chain-level-card, .chain-source-book"
+          )
+        ) {
+          return;
+        }
+
+        setChromeVisible((current) => !current);
+      }}
       onTouchStart={handleChainTouchStart}
       onTouchEnd={handleChainTouchEnd}
     >
@@ -1413,7 +1430,7 @@ export default function Chain() {
             )}
 
             {!levelLoading && currentItems.length > 0 && (
-              <div className="margins-feed chain-level-list">
+              <div className="margins-feed chain-level-list chain-reels">
                 {currentItems.map((item, index) =>
                   item.nodeType === "group"
                     ? renderGroupDiscussionCard(item, index)
