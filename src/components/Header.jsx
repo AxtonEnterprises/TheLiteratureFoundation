@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Bell, Ban, Compass, Library, LogIn } from "lucide-react";
+import { AlertTriangle, Bell, Ban, Compass, Library, LogIn, Link2, Users } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -98,64 +98,77 @@ export default function Header() {
 
   return (
     <>
-      <header className="site-header rr-header">
-        <nav className="top-nav" aria-label="Lit Chain navigation">
-          <NavLink to="/read/discover" className={navClass}>
-            <Compass size={18} />
-            <span>Discover</span>
-          </NavLink>
+      <header className="site-header rr-header lit-chain-topbar">
+        <NavLink
+          to="/read"
+          end
+          className="chain-logo-link"
+          aria-label="Lit Chain home"
+          title="Lit Chain"
+        >
+          <img
+            className="chain-logo-image"
+            src="/branding/lit-chain-logo-horizontal.png"
+            alt="Lit Chain"
+          />
+        </NavLink>
 
-          <NavLink
-            to="/read"
-            end
-            className="chain-logo-link"
-            aria-label="Lit Chain home"
-            title="Lit Chain"
-          >
-            <img
-              className="chain-logo-image"
-              src="/branding/lit-chain-logo-horizontal.png"
-              alt="Lit Chain"
-            />
-          </NavLink>
-
+        <div className="lit-chain-top-actions">
           {!authLoading && !user && (
-            <NavLink to="/read/login" className={navClass}>
-              <LogIn size={18} />
+            <NavLink to="/read/login" className="lit-chain-top-action">
+              <LogIn size={20} />
               <span>Log In</span>
             </NavLink>
           )}
 
           {!authLoading && user && (
-            <>
-              <NavLink to="/read/profile" className={navClass}>
-                <Library size={18} />
-                <span>My Library</span>
-              </NavLink>
-
-              <NavLink
-                to="/read/notifications"
-                className={navClass}
-                aria-label={
-                  unreadCount
-                    ? `Notifications, ${unreadCount} unread`
-                    : "Notifications"
-                }
-                title="Notifications"
-              >
-                <span className="notification-bell-wrap">
-                  <Bell size={18} />
-                  {unreadCount > 0 && (
-                    <span className="notification-badge">
-                      {unreadCount > 99 ? "99+" : unreadCount}
-                    </span>
-                  )}
-                </span>
-              </NavLink>
-            </>
+            <NavLink
+              to="/read/notifications"
+              className="lit-chain-top-action"
+              aria-label={
+                unreadCount
+                  ? `Notifications, ${unreadCount} unread`
+                  : "Notifications"
+              }
+              title="Notifications"
+            >
+              <span className="notification-bell-wrap">
+                <Bell size={21} />
+                {unreadCount > 0 && (
+                  <span className="notification-badge">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </span>
+            </NavLink>
           )}
-        </nav>
+        </div>
       </header>
+
+      <nav className="lit-chain-bottom-nav" aria-label="Primary Lit Chain navigation">
+        <NavLink to="/read/discover" className={navClass}>
+          <Compass size={21} />
+          <span>Discover</span>
+        </NavLink>
+
+        <NavLink to="/read" end className={navClass}>
+          <Link2 size={22} />
+          <span>Chain</span>
+        </NavLink>
+
+        <NavLink to="/read/groups" className={navClass}>
+          <Users size={21} />
+          <span>Groups</span>
+        </NavLink>
+
+        <NavLink
+          to={user ? "/read/profile" : "/read/login"}
+          className={navClass}
+        >
+          <Library size={21} />
+          <span>{user ? "Library" : "Log In"}</span>
+        </NavLink>
+      </nav>
 
       {user && enforcement && (
         <section
