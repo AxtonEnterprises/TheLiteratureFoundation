@@ -1642,14 +1642,6 @@ export default function Chain() {
             </button>
 
             <div className="chain-link-body">
-              <div className="chain-level-heading">
-                <div>
-                  <p className="eyebrow">Level 0</p>
-                  <h2>Literature</h2>
-                  <p className="muted">Most linked works first</p>
-                </div>
-              </div>
-
               {renderOrientationDots(
                 sourceBooks.length,
                 selectedSourceIndex,
@@ -1841,14 +1833,14 @@ export default function Chain() {
 
       {replyEntry && openReplyId && (
         <div
-          className="modal-backdrop chain-reply-modal-backdrop"
+          className="margin-modal-backdrop chain-reply-modal-backdrop"
           onClick={() => {
             setOpenReplyId(null);
             setReplyText("");
           }}
         >
           <section
-            className="modal-card chain-reply-modal"
+            className="chain-reply-modal"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="margin-reply-heading">
