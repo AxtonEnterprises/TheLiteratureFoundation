@@ -5346,154 +5346,78 @@ body.reader-mode.reader-dark-mode {
 
 /* ========================================================
    PHASE 5C — CLEAN IMMERSIVE CHAIN + REELS
-   Level 0 = literature
-   Level 1+ = full-page linked ideas
-   Swipe LEFT = follow deeper
-   Swipe RIGHT = go back
-   Vertical swipe = next / previous sibling
    ======================================================== */
 
 .chain-browser-page {
   position: relative;
-  width: 100%;
-  height: 100dvh;
-  min-height: 100dvh;
-
+  height: 100vh;
+  min-height: 100vh;
   overflow: hidden;
-
   padding: 0;
-
-  background: var(--paper, #fbf7ef);
-  color: var(--ink);
-
+  background: var(--background, #f7f7f5);
   touch-action: pan-y;
 }
 
 .chain-immersive-stage {
   position: relative;
-
   width: 100%;
   height: 100%;
-
   max-width: 820px;
-
   margin: 0 auto;
-  padding:
-    max(8px, env(safe-area-inset-top))
-    max(8px, env(safe-area-inset-right))
-    max(8px, env(safe-area-inset-bottom))
-    max(8px, env(safe-area-inset-left));
-
+  padding: 12px;
   display: grid;
-  grid-template-rows: minmax(0, 1fr);
-
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 0;
 }
 
 /* ========================================================
-   APP HEADER — IMMERSIVE CHAIN MODE
-   ======================================================== */
-
-body.chain-immersive {
-  overflow: hidden;
-}
-
-body.chain-immersive .site-header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-
-  z-index: 90;
-
-  transform: translateY(-115%);
-  opacity: 0;
-  pointer-events: none;
-
-  transition:
-    transform 160ms ease,
-    opacity 160ms ease;
-}
-
-body.chain-immersive.chain-chrome-visible .site-header {
-  transform: translateY(0);
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* ========================================================
-   TAP-TO-SHOW CHAIN CONTROLS
+   HEADER / FILTERS / ARROWS
+   All appear and disappear together.
    ======================================================== */
 
 .chain-chrome-toggle {
   position: absolute;
-
-  top: 6px;
+  top: 8px;
   left: 50%;
-
-  z-index: 70;
-
+  z-index: 60;
+  transform: translateX(-50%);
   width: 48px;
   height: 28px;
-
-  transform: translateX(-50%);
-
   display: grid;
   place-items: center;
-
   padding: 0;
-
   border: 0;
-
   background: transparent;
-  color: #7f888c;
+  color: #767d80;
 }
 
 .chain-mini-link {
   width: 44px;
   height: 25px;
-
   display: grid;
   place-items: center;
-
   border: 1.5px solid #aeb4b6;
   border-radius: 999px;
-
-  background: var(--paper, #fbf7ef);
-
+  background: var(--background, #f7f7f5);
   box-shadow: none;
 }
 
-/* Banner + All / Friends / Groups */
-
 .chain-chrome-controls {
   position: absolute;
-
-  top: 40px;
-  left: 12px;
-  right: 12px;
-
-  z-index: 65;
-
+  top: 42px;
+  left: 14px;
+  right: 14px;
+  z-index: 50;
   display: grid;
-  gap: 0.55rem;
-
+  gap: 0.5rem;
   padding: 0.7rem;
-
-  border: 1px solid rgba(174, 180, 182, 0.48);
+  border: 1px solid rgba(174, 180, 182, 0.45);
   border-radius: 18px;
-
-  background: rgba(251, 247, 239, 0.96);
-
-  box-shadow: none;
-
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-
+  background: rgba(247, 247, 245, 0.94);
+  backdrop-filter: blur(10px);
   opacity: 0;
   transform: translateY(-8px);
   pointer-events: none;
-
   transition:
     opacity 160ms ease,
     transform 160ms ease;
@@ -5506,12 +5430,9 @@ body.chain-immersive.chain-chrome-visible .site-header {
 }
 
 .chain-compact-title {
-  min-width: 0;
-
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-
   gap: 1rem;
 }
 
@@ -5520,71 +5441,28 @@ body.chain-immersive.chain-chrome-visible .site-header {
 }
 
 .chain-compact-title strong {
-  color: var(--ink);
-
-  font-family:
-    Georgia,
-    "Times New Roman",
-    serif;
-
-  font-size: 1.1rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.15rem;
 }
-
-/* Filters remain compact while Chain chrome is open. */
-
-.chain-chrome-controls .margins-filter-bar {
-  width: 100%;
-
-  padding: 0.3rem;
-
-  background: rgba(255, 255, 255, 0.86);
-
-  border-color: rgba(174, 180, 182, 0.42);
-}
-
-.chain-chrome-controls .margins-filter {
-  min-height: 40px;
-
-  padding: 0.55rem 0.75rem;
-}
-
-/* ========================================================
-   DEPTH NAVIGATION
-   ======================================================== */
 
 .chain-depth-bar {
   position: absolute;
-
-  top: 128px;
-  left: 12px;
-  right: 12px;
-
-  z-index: 64;
-
+  top: 132px;
+  left: 14px;
+  right: 14px;
+  z-index: 49;
   display: grid;
-  grid-template-columns:
-    auto
-    minmax(0, 1fr)
-    auto;
-
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-
   gap: 0.35rem;
-
-  padding: 0.3rem 0.4rem;
-
-  border: 1px solid rgba(174, 180, 182, 0.48);
+  padding: 0.35rem;
+  border: 1px solid rgba(174, 180, 182, 0.5);
   border-radius: 999px;
-
-  background: rgba(251, 247, 239, 0.96);
-
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-
+  background: rgba(247, 247, 245, 0.94);
+  backdrop-filter: blur(10px);
   opacity: 0;
   transform: translateY(-8px);
   pointer-events: none;
-
   transition:
     opacity 160ms ease,
     transform 160ms ease;
@@ -5598,51 +5476,35 @@ body.chain-immersive.chain-chrome-visible .site-header {
 
 .chain-depth-back,
 .chain-depth-forward {
-  appearance: none;
-
-  min-height: 38px;
-
+  min-height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-
   gap: 0.2rem;
-
   padding: 0.35rem 0.5rem;
-
   border: 0;
   border-radius: 999px;
-
   background: transparent;
-  color: var(--ink);
-
+  color: inherit;
   font: inherit;
-  font-size: 0.78rem;
-  font-weight: 800;
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .chain-depth-back:disabled,
 .chain-depth-forward:disabled {
   opacity: 0.3;
-  cursor: default;
 }
 
 .chain-depth-path {
   min-width: 0;
-
   display: flex;
   align-items: center;
   justify-content: center;
-
-  gap: 0.12rem;
-
   overflow: hidden;
-
   white-space: nowrap;
-
-  color: var(--muted);
-
-  font-size: 0.72rem;
+  font-size: 0.75rem;
+  color: #71787a;
 }
 
 .chain-depth-path span {
@@ -5651,47 +5513,36 @@ body.chain-immersive.chain-chrome-visible .site-header {
 }
 
 .chain-depth-path span.active {
-  color: var(--ink);
-  font-weight: 900;
+  font-weight: 800;
+  color: inherit;
 }
 
 /* ========================================================
-   LARGE CHAIN LINK — THIN EDGE ONLY
+   MAIN OUTER CHAIN LINK
+   Thin edge only.
    ======================================================== */
 
 .chain-link-shell {
   position: relative;
-
   width: 100%;
   height: 100%;
   min-height: 0;
-
-  padding: 10px;
-
+  padding: 12px;
   overflow: visible;
 }
 
 .chain-link-body {
   position: relative;
-
   width: 100%;
   height: 100%;
   min-height: 0;
-
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
-
-  padding:
-    3rem
-    1rem
-    3rem;
-
+  padding: 3.25rem 1rem 3.25rem;
   background: transparent;
-
   border: 1.5px solid #aeb4b6;
-  border-radius: 38px;
-
+  border-radius: 42px;
   box-shadow: none;
 }
 
@@ -5700,37 +5551,25 @@ body.chain-immersive.chain-chrome-visible .site-header {
 }
 
 /* ========================================================
-   DIRECTIONAL CHAIN LINKS
-   Hidden until the page controls are shown.
+   SMALL DIRECTIONAL LINKS
    ======================================================== */
 
 .chain-edge-link {
   position: absolute;
-
-  z-index: 55;
-
-  width: 44px;
-  height: 27px;
-
+  z-index: 40;
+  width: 46px;
+  height: 28px;
   display: grid;
   place-items: center;
-
   padding: 0;
-
   border: 1.5px solid #aeb4b6;
   border-radius: 999px;
-
-  background: var(--paper, #fbf7ef);
-  color: #778084;
-
+  background: var(--background, #f7f7f5);
+  color: #767d80;
   box-shadow: none;
-
   opacity: 0;
   pointer-events: none;
-
-  transition:
-    opacity 160ms ease,
-    background 160ms ease;
+  transition: opacity 160ms ease;
 }
 
 .chain-chrome-visible .chain-edge-link {
@@ -5738,192 +5577,131 @@ body.chain-immersive.chain-chrome-visible .site-header {
   pointer-events: auto;
 }
 
-.chain-edge-link:disabled {
-  opacity: 0;
-  pointer-events: none;
-}
-
-/*
- * Vertical links sit completely inside the viewport.
- * Rotate only the link shape; rotate the SVG back so the
- * arrow itself remains upright.
- */
-
-.chain-edge-link.top,
-.chain-edge-link.bottom {
-  left: 50%;
-
-  transform:
-    translateX(-50%)
-    rotate(90deg);
-}
-
 .chain-edge-link.top {
-  top: -3px;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%) rotate(90deg);
+}
+
+.chain-edge-link.top svg {
+  transform: rotate(-90deg);
 }
 
 .chain-edge-link.bottom {
-  bottom: -3px;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%) rotate(90deg);
 }
 
-.chain-edge-link.top svg,
 .chain-edge-link.bottom svg {
   transform: rotate(-90deg);
 }
 
-.chain-edge-link.left,
-.chain-edge-link.right {
+.chain-edge-link.left {
+  left: 0;
   top: 50%;
-
   transform: translateY(-50%);
 }
 
-.chain-edge-link.left {
-  left: -3px;
+.chain-edge-link.right {
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
-.chain-edge-link.right {
-  right: -3px;
+.chain-edge-link:disabled {
+  opacity: 0.22;
+}
+
+.chain-chrome-visible .chain-edge-link:disabled {
+  opacity: 0.3;
 }
 
 /* ========================================================
-   LEVEL HEADING
+   LEVEL 0 SOURCE BOOKS
+   Retains the original vertically scrollable list.
    ======================================================== */
 
 .chain-level-heading {
-  min-width: 0;
-
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-
   gap: 1rem;
-
-  padding: 0.2rem 0 0.8rem;
+  padding: 0.2rem 0 0.75rem;
 }
 
-.chain-level-heading > div {
-  min-width: 0;
-}
-
-.chain-level-heading h2 {
-  margin: 0.05rem 0 0;
-
-  overflow-wrap: anywhere;
-
-  font-size:
-    clamp(
-      1.5rem,
-      6vw,
-      2.25rem
-    );
-}
-
+.chain-level-heading h2,
 .chain-level-heading p {
   margin-bottom: 0;
 }
 
 .chain-level-heading > span {
   flex: 0 0 auto;
-
-  color: var(--muted);
-
-  font-size: 0.74rem;
-}
-
-/* ========================================================
-   LEVEL 0 — LIT CHAIN SOURCE
-   ======================================================== */
-
-.chain-source-level .chain-link-body {
-  overflow-y: auto;
+  font-size: 0.75rem;
+  color: #7d8385;
 }
 
 .chain-source-list {
   display: grid;
-
-  gap: 0.7rem;
+  gap: 0.75rem;
 }
 
 .chain-source-book {
-  appearance: none;
-
   width: 100%;
   min-height: 72px;
-
   display: flex;
   align-items: center;
   justify-content: space-between;
-
   gap: 1rem;
-
   padding: 0.85rem 1rem;
-
-  border: 1px solid var(--line);
-  border-radius: 16px;
-
+  border: 1px solid #d3d6d7;
+  border-radius: 18px;
   background: transparent;
-  color: var(--ink);
-
+  color: inherit;
   font: inherit;
   text-align: left;
 }
 
 .chain-source-book > div {
   min-width: 0;
-
   display: grid;
-
-  gap: 0.08rem;
-}
-
-.chain-source-book strong {
-  overflow-wrap: anywhere;
-
-  font-size: 1rem;
-  line-height: 1.25;
+  gap: 0.1rem;
 }
 
 .chain-source-book span,
 .chain-source-book small {
-  color: var(--muted);
+  color: #8a8f91;
 }
 
 .chain-source-book.selected {
-  border-color: #788388;
-
-  outline: 2px solid rgba(120, 131, 136, 0.2);
-  outline-offset: 1px;
+  border-color: #7f898c;
+  outline: none;
 }
 
 /* ========================================================
-   LEVEL 1+ — FULL-PAGE REELS
+   LEVEL 1+ — REELS
+   One linked idea fills the usable page.
+   Vertical swipe moves exactly one item.
    ======================================================== */
 
-/*
- * The outer chain body no longer behaves like a feed.
- * The reel list owns the vertical gesture.
- */
-
 .chain-link-level .chain-link-body {
+  padding:
+    0.7rem
+    0.7rem
+    0.7rem;
   overflow: hidden;
-
-  padding: 0.55rem;
 }
 
 .chain-level-list.chain-reels {
-  width: 100%;
   height: 100%;
   min-height: 0;
-
-  display: block;
-
+  display: grid;
+  grid-auto-rows: 100%;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-
   scroll-snap-type: y mandatory;
   scroll-behavior: smooth;
-
+  touch-action: pan-y;
   scrollbar-width: none;
 }
 
@@ -5931,34 +5709,22 @@ body.chain-immersive.chain-chrome-visible .site-header {
   display: none;
 }
 
-/*
- * One note/discussion = one complete reel.
- * Existing .margins-entry styles are intentionally neutralized
- * inside this view.
- */
-
-.chain-reel-page,
-.chain-reels .margins-entry {
+.chain-reel-page {
   width: 100%;
-  height: 100%;
   min-height: 100%;
-
+  height: 100%;
   margin: 0;
-  padding:
-    clamp(1rem, 4vw, 1.6rem);
-
-  overflow-y: auto;
-  overscroll-behavior: contain;
-
   scroll-snap-align: start;
   scroll-snap-stop: always;
-
-  background: transparent;
-
+  overflow: hidden;
+  overscroll-behavior: contain;
+  padding:
+    clamp(1rem, 4vw, 1.5rem);
   border: 0;
   border-radius: 30px;
-
+  background: transparent;
   box-shadow: none;
+  cursor: pointer;
 }
 
 .chain-reel-page + .chain-reel-page {
@@ -5969,107 +5735,39 @@ body.chain-immersive.chain-chrome-visible .site-header {
   outline: none;
 }
 
-/* Reader identity remains subtle rather than feed-like. */
-
-.chain-reel-page .margins-reader-row {
-  margin-bottom: 1rem;
-  padding-bottom: 0.8rem;
-
-  border-bottom: 1px solid rgba(11, 45, 69, 0.09);
-}
-
-.chain-reel-page .margins-reader-avatar {
-  width: 40px;
-  height: 40px;
-
-  flex-basis: 40px;
-
-  border-width: 1.5px;
-}
-
 .chain-reel-page .public-entry-heading {
-  gap: 0.75rem;
+  margin-top: 0.4rem;
 }
 
 .chain-reel-page .public-entry-book-title {
-  font-size:
-    clamp(
-      1.35rem,
-      5vw,
-      2rem
-    );
-
-  line-height: 1.12;
+  font-size: clamp(1.35rem, 5vw, 2rem);
+  line-height: 1.08;
 }
-
-.chain-reel-page .public-entry-author {
-  font-size: 0.9rem;
-}
-
-/* Source passage behaves like a reading quotation. */
 
 .chain-reel-page .public-entry-quote {
   margin-top: 1rem;
-
   padding: 1rem 0;
-
-  border-top: 1px solid rgba(11, 45, 69, 0.10);
-  border-right: 0;
-  border-bottom: 1px solid rgba(11, 45, 69, 0.10);
-  border-left: 0;
-
+  border-top: 1px solid #dedfdf;
+  border-bottom: 1px solid #dedfdf;
   background: transparent;
-}
-
-.chain-reel-page .public-entry-quote p {
-  display: block;
-
-  overflow: visible;
-
-  color: var(--muted);
-
-  font-family:
-    Georgia,
-    "Times New Roman",
-    serif;
-
-  font-style: italic;
-  line-height: 1.6;
 }
 
 .chain-reel-page .public-journal-note {
   margin: 1.25rem 0;
-
-  color: var(--ink);
-
-  font-family:
-    Georgia,
-    "Times New Roman",
-    serif;
-
-  font-size:
-    clamp(
-      1.08rem,
-      4vw,
-      1.35rem
-    );
-
-  line-height: 1.58;
+  font-size: clamp(1.08rem, 4vw, 1.35rem);
+  line-height: 1.55;
 }
 
 .chain-level-selection {
   display: flex;
   justify-content: flex-end;
-
   padding-top: 0.35rem;
-
-  color: var(--muted);
-
-  font-size: 0.71rem;
+  font-size: 0.72rem;
+  color: #82888a;
 }
 
 /* ========================================================
-   UP CHAIN / DOWN CHAIN VOTING
+   VOTING
    ======================================================== */
 
 .chain-vote-row {
@@ -6078,39 +5776,25 @@ body.chain-immersive.chain-chrome-visible .site-header {
     minmax(0, 1fr)
     36px
     minmax(0, 1fr);
-
   align-items: center;
-
   gap: 0.45rem;
-
   margin-top: 0.85rem;
   padding-top: 0.7rem;
-
-  border-top: 1px solid rgba(11, 45, 69, 0.10);
+  border-top: 1px solid #dedfdf;
 }
 
 .chain-vote-button {
-  appearance: none;
-
   min-height: 42px;
-
   display: inline-flex;
   align-items: center;
   justify-content: center;
-
   gap: 0.3rem;
-
-  padding: 0.45rem 0.7rem;
-
-  border: 1px solid var(--line);
+  border: 1px solid #d3d6d7;
   border-radius: 999px;
-
   background: transparent;
-  color: var(--muted);
-
+  color: #6e7678;
   font: inherit;
-  font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .chain-vote-button.up svg {
@@ -6122,70 +5806,14 @@ body.chain-immersive.chain-chrome-visible .site-header {
 }
 
 .chain-vote-button.active {
-  border-color: #7f898d;
-
-  background: rgba(47, 142, 156, 0.08);
-  color: var(--ink);
+  background: #e5e7e7;
+  border-color: #848d90;
+  color: #27383e;
 }
 
 .chain-vote-score {
-  min-width: 36px;
-
   text-align: center;
-
-  color: var(--ink);
-
-  font-weight: 900;
-}
-
-/* ========================================================
-   STANDARD CHAIN ACTIONS INSIDE REELS
-   ======================================================== */
-
-.chain-reel-page .margins-actions {
-  margin-top: 0.85rem;
-  padding-top: 0.75rem;
-
-  border-top: 1px solid rgba(11, 45, 69, 0.10);
-}
-
-.chain-reel-page .margin-action {
-  min-height: 38px;
-}
-
-/* ========================================================
-   GROUP DISCUSSION REELS
-   ======================================================== */
-
-.chain-level-group-avatar {
-  width: 30px;
-  height: 30px;
-
-  flex: 0 0 30px;
-
-  display: grid;
-  place-items: center;
-
-  overflow: hidden;
-
-  border-radius: 50%;
-
-  background: #fff;
-}
-
-.chain-level-group-avatar img {
-  width: 100%;
-  height: 100%;
-
-  object-fit: cover;
-}
-
-.chain-level-discussion {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-
-  gap: 0.8rem;
+  font-weight: 800;
 }
 
 /* ========================================================
@@ -6196,14 +5824,10 @@ body.chain-immersive.chain-chrome-visible .site-header {
   display: flex;
   align-items: center;
   justify-content: center;
-
   gap: 0.35rem;
-
-  padding: 0.7rem 0 0.1rem;
-
-  color: #8b9295;
-
-  font-size: 0.72rem;
+  padding: 0.75rem 0;
+  font-size: 0.74rem;
+  color: #969b9d;
 }
 
 .chain-swipe-cue-split {
@@ -6213,116 +5837,103 @@ body.chain-immersive.chain-chrome-visible .site-header {
 .chain-swipe-cue-split span {
   display: inline-flex;
   align-items: center;
-
-  gap: 0.2rem;
+  gap: 0.25rem;
 }
 
 /* ========================================================
-   SHARE MENU / INLINE GROUP COMPOSER IN REELS
+   GROUP DISCUSSION REEL
    ======================================================== */
 
-.chain-reel-page .chain-share-menu {
-  z-index: 80;
+.chain-level-group-avatar {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #fff;
 }
 
-.chain-reel-page .chain-discussion-composer,
-.chain-reel-page .margin-reply-box {
-  border-radius: 16px;
+.chain-level-group-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 
-  background: rgba(255, 255, 255, 0.82);
+.chain-level-discussion {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.8rem;
 }
 
 /* ========================================================
-   PHONE LAYOUT
+   MOBILE
    ======================================================== */
 
 @media (max-width: 560px) {
   .chain-immersive-stage {
-    padding:
-      max(5px, env(safe-area-inset-top))
-      max(5px, env(safe-area-inset-right))
-      max(5px, env(safe-area-inset-bottom))
-      max(5px, env(safe-area-inset-left));
+    padding: 8px;
   }
 
   .chain-link-shell {
-    padding: 8px;
+    padding: 10px;
   }
 
   .chain-link-body {
     padding:
-      2.75rem
-      0.8rem
-      2.75rem;
-
-    border-radius: 32px;
+      3rem
+      0.85rem
+      3rem;
+    border-radius: 34px;
   }
 
   .chain-link-level .chain-link-body {
-    padding: 0.4rem;
+    padding: 0.5rem;
   }
 
   .chain-edge-link {
-    width: 41px;
-    height: 25px;
-  }
-
-  .chain-edge-link.top {
-    top: -2px;
-  }
-
-  .chain-edge-link.bottom {
-    bottom: -2px;
+    width: 42px;
+    height: 26px;
   }
 
   .chain-edge-link.left {
-    left: -2px;
+    left: -5px;
   }
 
   .chain-edge-link.right {
-    right: -2px;
+    right: -5px;
+  }
+
+  .chain-edge-link.top {
+    top: -4px;
+  }
+
+  .chain-edge-link.bottom {
+    bottom: -4px;
   }
 
   .chain-chrome-controls,
   .chain-depth-bar {
-    left: 9px;
-    right: 9px;
+    left: 10px;
+    right: 10px;
   }
 
-  .chain-reel-page,
-  .chain-reels .margins-entry {
-    padding: 0.9rem;
-
-    border-radius: 24px;
-  }
-
-  .chain-reel-page .public-entry-book-title {
-    font-size: 1.3rem;
-  }
-
-  .chain-reel-page .public-journal-note {
-    font-size: 1.08rem;
+  .chain-reel-page {
+    border-radius: 26px;
+    padding: 1rem;
   }
 
   .chain-vote-button span {
     display: none;
   }
-
-  .chain-vote-button {
-    padding-inline: 0.45rem;
-  }
-
-  .chain-swipe-cue-split {
-    font-size: 0.68rem;
-  }
 }
 
 /* ========================================================
-   ACCESSIBILITY / REDUCED MOTION
+   REDUCED MOTION
    ======================================================== */
 
 @media (prefers-reduced-motion: reduce) {
-  body.chain-immersive .site-header,
   .chain-edge-link,
   .chain-chrome-controls,
   .chain-depth-bar {
@@ -6332,4 +5943,43 @@ body.chain-immersive.chain-chrome-visible .site-header {
   .chain-level-list.chain-reels {
     scroll-behavior: auto;
   }
+}
+
+
+/* Phase 5C navigation fixes */
+.chain-chrome-toggle,
+.chain-mini-link {
+  display: none !important;
+}
+
+.chain-chrome-tap-target {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 70;
+  width: 84px;
+  height: 30px;
+  transform: translateX(-50%);
+  border: 0;
+  background: transparent;
+  opacity: 0;
+}
+
+.chain-level-list.chain-reels {
+  display: grid;
+  grid-auto-rows: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+
+.chain-reel-page {
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
