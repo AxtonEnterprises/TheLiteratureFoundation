@@ -67,6 +67,22 @@ function savedChainKey(entry) {
 }
 
 
+function sourceBookCoverUrl(book) {
+  const explicit =
+    book?.coverUrl ||
+    book?.cover ||
+    book?.image ||
+    book?.thumbnail ||
+    "";
+
+  if (explicit) return explicit;
+
+  const numericId = String(book?.bookId || book?.id || "").match(/\d+/)?.[0];
+  if (!numericId) return "";
+
+  return `https://www.gutenberg.org/cache/epub/${numericId}/pg${numericId}.cover.medium.jpg`;
+}
+
 function readingLink(entry) {
   const base = `/read/reader/${entry.bookId}`;
 
@@ -115,13 +131,15 @@ export default function Chain() {
   const [levels, setLevels] = useState([]);
   const [initialChainSeeded, setInitialChainSeeded] = useState(false);
   const [levelLoading, setLevelLoading] = useState(false);
-  const [chromeVisible, setChromeVisible] = useState(false);
+  const [chromeVisible] = useState(true);
+  const [depthMotion, setDepthMotion] = useState("");
   const [myVotes, setMyVotes] = useState({});
   const [voteLoadingKey, setVoteLoadingKey] = useState("");
   const [emptyLinkPrompt, setEmptyLinkPrompt] = useState(null);
   const chainSwipeStartRef = useRef(null);
   const reelsRef = useRef(null);
   const sourceReelsRef = useRef(null);
+  const depthMotionTimerRef = useRef(null);
 
 
   useEffect(() => onAuthStateChanged(auth, setUser), []);
@@ -130,6 +148,10 @@ export default function Chain() {
     document.body.classList.add("chain-immersive");
 
     return () => {
+      if (depthMotionTimerRef.current) {
+        window.clearTimeout(depthMotionTimerRef.current);
+      }
+
       document.body.classList.remove(
         "chain-immersive",
         "chain-chrome-visible"
@@ -470,6 +492,12 @@ export default function Chain() {
           bookId,
           title: entry.title || "Untitled",
           author: entry.author || "",
+          coverUrl:
+            entry.coverUrl ||
+            entry.cover ||
+            entry.image ||
+            entry.thumbnail ||
+            "",
           linkCount: 0,
           latestAt: entry.updatedAtISO || entry.createdAt || ""
         });
@@ -571,6 +599,60 @@ export default function Chain() {
     Math.max(currentItems.length - 1, 0)
   );
   const currentSelectedItem = currentItems[currentSelectedIndex] || null;
+  const replyEntry = useMemo(() => {
+    if (!openReplyId) return null;
+
+    return (
+      currentItems.find((entry) => entry?.id === openReplyId) ||
+      entries.find((entry) => entry?.id === openReplyId) ||
+      null
+    );
+  }, [openReplyId, currentItems, entries]);
+
+
+  function animateDepthChange(direction, applyChange) {
+    const exitClass =
+      direction === "forward"
+        ? "chain-depth-exit-forward"
+        : "chain-depth-exit-back";
+
+    const enterClass =
+      direction === "forward"
+        ? "chain-depth-enter-forward"
+        : "chain-depth-enter-back";
+
+    if (depthMotionTimerRef.current) {
+      window.clearTimeout(depthMotionTimerRef.current);
+    }
+
+    setDepthMotion(exitClass);
+
+    depthMotionTimerRef.current = window.setTimeout(() => {
+      applyChange();
+      setDepthMotion(enterClass);
+
+      requestAnimationFrame(() => {
+        depthMotionTimerRef.current = window.setTimeout(() => {
+          setDepthMotion("");
+        }, 190);
+      });
+    }, 135);
+  }
+
+  function jumpToDepth(depth) {
+    const safeDepth = Math.max(0, Math.min(depth, currentDepth));
+
+    if (safeDepth === currentDepth) return;
+
+    animateDepthChange("back", () => {
+      if (safeDepth === 0) {
+        setLevels([]);
+      } else {
+        setLevels((current) => current.slice(0, safeDepth));
+      }
+      setStatus("");
+    });
+  }
 
   function levelOneForBook(book) {
     if (!book) return [];
@@ -590,17 +672,20 @@ export default function Chain() {
     const items = levelOneForBook(book);
 
     setSelectedBookId(String(book.id));
-    setLevels([
-      {
-        parent: {
-          nodeType: "book",
-          ...book
-        },
-        items,
-        selectedIndex: 0
-      }
-    ]);
-    setStatus("");
+
+    animateDepthChange("forward", () => {
+      setLevels([
+        {
+          parent: {
+            nodeType: "book",
+            ...book
+          },
+          items,
+          selectedIndex: 0
+        }
+      ]);
+      setStatus("");
+    });
   }
 
   function selectLevelItem(index) {
@@ -718,8 +803,54 @@ export default function Chain() {
     );
   }
 
+  function renderLevelDots() {
+    const count = levels.length + 1;
+
+    return (
+      <nav className="chain-level-dots" aria-label="Chain levels">
+        {Array.from({ length: count }, (_, depth) => {
+          const level = depth === 0 ? null : levels[depth - 1];
+          const isAddLevel =
+            depth > 0 &&
+            level?.items?.[level.selectedIndex || 0]?.nodeType === "add-link";
+
+          return (
+            <button
+              key={depth}
+              type="button"
+              className={[
+                "chain-level-dot",
+                depth === currentDepth ? "active" : "",
+                isAddLevel ? "add" : ""
+              ].filter(Boolean).join(" ")}
+              aria-label={
+                isAddLevel
+                  ? `Add link at level ${depth}`
+                  : depth === 0
+                    ? "Literature source"
+                    : `Level ${depth}`
+              }
+              aria-current={depth === currentDepth ? "true" : undefined}
+              disabled={depth > currentDepth}
+              onClick={(event) => {
+                event.stopPropagation();
+                jumpToDepth(depth);
+              }}
+            >
+              {isAddLevel ? <span>+</span> : null}
+            </button>
+          );
+        })}
+      </nav>
+    );
+  }
+
   async function followSelectedIdea() {
-    if (!currentSelectedItem || currentSelectedItem.nodeType === "group") {
+    if (
+      !currentSelectedItem ||
+      currentSelectedItem.nodeType === "group" ||
+      currentSelectedItem.nodeType === "add-link"
+    ) {
       return;
     }
 
@@ -741,19 +872,26 @@ export default function Chain() {
         }))
       ];
 
-      if (!nextItems.length) {
-        setEmptyLinkPrompt(currentSelectedItem);
-        return;
-      }
+      const itemsToOpen = nextItems.length
+        ? nextItems
+        : [
+            {
+              id: `add_${currentSelectedItem.userId || "reader"}_${currentSelectedItem.id}`,
+              nodeType: "add-link",
+              sourceEntry: currentSelectedItem
+            }
+          ];
 
-      setLevels((current) => [
-        ...current,
-        {
-          parent: currentSelectedItem,
-          items: nextItems,
-          selectedIndex: 0
-        }
-      ]);
+      animateDepthChange("forward", () => {
+        setLevels((current) => [
+          ...current,
+          {
+            parent: currentSelectedItem,
+            items: itemsToOpen,
+            selectedIndex: 0
+          }
+        ]);
+      });
     } catch (error) {
       console.error("Could not follow this Chain link:", error);
       setStatus("We couldn't load the next Chain level.");
@@ -1323,68 +1461,63 @@ export default function Chain() {
           </form>
         )}
 
-        {replyOpen && (
-          <div className="margin-reply-box" onClick={(event) => event.stopPropagation()}>
-            <div className="margin-reply-heading">
-              <strong>Reply</strong>
-              <button
-                type="button"
-                className="margin-close-button"
-                onClick={() => {
-                  setOpenReplyId(null);
-                  setReplyText("");
-                }}
-                aria-label="Close reply"
-              >
-                <X size={18} />
-              </button>
-            </div>
+      </article>
+    );
+  }
 
-            <textarea
-              rows={4}
-              maxLength={3000}
-              value={replyText}
-              onChange={(event) => setReplyText(event.target.value)}
-              placeholder="Add to the conversation…"
-            />
+  function renderAddLinkCard(item, index) {
+    const sourceEntry = item.sourceEntry;
+    const selected = index === currentSelectedIndex;
 
-            <button
-              type="button"
-              className="button primary"
-              disabled={replying || !replyText.trim()}
-              onClick={() => handleReply(entry)}
-            >
-              <Send size={16} />
-              {replying ? "Posting..." : "Post Reply"}
-            </button>
-
-            {repliesLoading[entry.id] && <p className="muted">Loading replies…</p>}
-
-            {replies.length > 0 && (
-              <div className="margin-replies">
-                {replies.map((reply) => (
-                  <div key={reply.id} className="margin-reply">
-                    <div>
-                      <strong>{reply.reader?.displayName || "Reader"}</strong>
-                      <small>{formatDate(reply.createdAtISO || reply.createdAt)}</small>
-                    </div>
-                    <p>{reply.note}</p>
-                    {reply.userId === user?.uid && (
-                      <button
-                        type="button"
-                        className="margin-action report"
-                        onClick={() => handleDeleteReply(entry, reply)}
-                      >
-                        <Trash2 size={14} />
-                        Delete
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+    return (
+      <article
+        key={item.id}
+        className={[
+          "chain-level-card",
+          "chain-reel-page",
+          "chain-add-link-card",
+          selected ? "selected" : ""
+        ].filter(Boolean).join(" ")}
+        onClick={() => selectLevelItem(index)}
+      >
+        <div className="chain-add-link-content">
+          <div className="chain-add-link-icon">
+            <span>+</span>
           </div>
-        )}
+
+          <p className="eyebrow">End of this branch</p>
+          <h2>Add your own link</h2>
+          <p>
+            No reader has connected another idea here yet. Continue the Chain
+            from this note.
+          </p>
+
+          <Link
+            to={readingLink(sourceEntry)}
+            state={{
+              book: {
+                id: sourceEntry.bookId,
+                bookId: sourceEntry.bookId,
+                title: sourceEntry.title,
+                author: sourceEntry.author
+              },
+              addFromChain: true,
+              sourceChainEntry: sourceEntry
+            }}
+            className="button primary chain-add-link-button"
+            onClick={(event) => {
+              event.stopPropagation();
+
+              if (!user) {
+                event.preventDefault();
+                requireLogin();
+              }
+            }}
+          >
+            <Link2 size={18} />
+            Add your own link
+          </Link>
+        </div>
       </article>
     );
   }
@@ -1425,43 +1558,22 @@ export default function Chain() {
           ? "chain-browser-page chain-chrome-visible"
           : "chain-browser-page"
       }
-      onClick={(event) => {
-        if (
-          event.target.closest(
-            "button, a, input, textarea, select, .chain-share-menu, .chain-discussion-composer, .margin-reply-box"
-          )
-        ) {
-          return;
-        }
-
-        setChromeVisible((current) => !current);
-      }}
       onTouchStart={handleChainTouchStart}
       onTouchEnd={handleChainTouchEnd}
     >
-      <button
-        type="button"
-        className="chain-chrome-tap-target"
-        onClick={(event) => {
-          event.stopPropagation();
-          setChromeVisible((current) => !current);
-        }}
-        aria-label={chromeVisible ? "Hide Lit Chain controls" : "Show Lit Chain controls"}
-        aria-expanded={chromeVisible}
-      />
       <SEO
         title="Lit Chain"
         description="Follow ideas outward from literature through connected reader notes and discussions."
         path="/read"
       />
 
-      <div className="chain-immersive-stage">
-        <section className={chromeVisible ? "chain-chrome-controls visible" : "chain-chrome-controls"}>
-          <div className="chain-compact-title">
-            <p className="eyebrow">Reader Community</p>
-            <strong>Lit Chain</strong>
-          </div>
-
+      <div
+        className={[
+          "chain-immersive-stage",
+          depthMotion
+        ].filter(Boolean).join(" ")}
+      >
+        <section className="chain-fixed-filter" aria-label="Chain filter">
           <div className="margins-filter-bar">
             {["all", "friends", "groups"].map((value) => (
               <button
@@ -1479,48 +1591,6 @@ export default function Chain() {
             ))}
           </div>
         </section>
-
-        <nav className={chromeVisible ? "chain-depth-bar visible" : "chain-depth-bar"} aria-label="Chain depth">
-          <button
-            type="button"
-            className="chain-depth-back"
-            disabled={currentDepth === 0}
-            onClick={goBackOneLevel}
-          >
-            <ChevronLeft size={18} />
-            Back
-          </button>
-
-          <div className="chain-depth-path">
-            <span className={currentDepth === 0 ? "active" : ""}>Source</span>
-            {levels.map((level, index) => (
-              <span
-                key={`${index}_${level.parent?.id || level.parent?.bookId || "level"}`}
-                className={index === levels.length - 1 ? "active" : ""}
-              >
-                <ChevronRight size={13} />
-                Level {index + 1}
-              </span>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            className="chain-depth-forward"
-            disabled={
-              levelLoading ||
-              (currentDepth === 0
-                ? !selectedSourceBook
-                : !currentSelectedItem || currentSelectedItem.nodeType === "group")
-            }
-            onClick={() =>
-              currentDepth === 0 ? enterSourceBook() : followSelectedIdea()
-            }
-          >
-            Follow
-            <ChevronRight size={18} />
-          </button>
-        </nav>
 
         {status && <p className="status">{status}</p>}
 
@@ -1607,51 +1677,63 @@ export default function Chain() {
                         index === selectedSourceIndex ? "selected" : ""
                       ].filter(Boolean).join(" ")}
                     >
-                      <div className="chain-source-timeline-book">
-                        <div className="chain-source-cover">
-                          <div className="timeline-cover-placeholder">
-                            <BookOpen size={34} />
-                          </div>
+                      <Link
+                        to={`/read/reader/${book.id}`}
+                        state={{
+                          book: {
+                            ...book,
+                            id: book.id,
+                            bookId: book.id
+                          }
+                        }}
+                        className="chain-source-cover-screen"
+                        aria-label={`Read ${book.title}`}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <div className="chain-source-cover-fallback">
+                          <BookOpen size={48} />
+                          <strong>{book.title}</strong>
                         </div>
 
-                        <div className="chain-source-content">
-                          <p className="eyebrow">Literature source</p>
-                          <button
-                            type="button"
-                            className="chain-source-title"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              enterSourceBook(book);
+                        {sourceBookCoverUrl(book) && (
+                          <img
+                            src={sourceBookCoverUrl(book)}
+                            alt=""
+                            loading={index <= 1 ? "eager" : "lazy"}
+                            onError={(event) => {
+                              event.currentTarget.style.display = "none";
                             }}
-                          >
-                            {book.title}
-                          </button>
+                          />
+                        )}
+                      </Link>
 
-                          {book.author && (
-                            <p className="timeline-author">{book.author}</p>
-                          )}
+                      <div
+                        className="chain-source-overlay-card"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <p className="eyebrow">Literature source</p>
+                        <h2>{book.title}</h2>
+                        {book.author && (
+                          <p className="timeline-author">{book.author}</p>
+                        )}
 
-                          <div className="chain-source-link-summary">
-                            <strong>{book.linkCount}</strong>
-                            <span>
-                              {book.linkCount === 1
-                                ? "direct link"
-                                : "direct links"}
-                            </span>
-                          </div>
-
-                          <button
-                            type="button"
-                            className="button secondary chain-source-open"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              enterSourceBook(book);
-                            }}
-                          >
-                            Explore this Chain
-                            <ArrowRight size={17} />
-                          </button>
+                        <div className="chain-source-link-summary">
+                          <strong>{book.linkCount}</strong>
+                          <span>
+                            {book.linkCount === 1
+                              ? "direct link"
+                              : "direct links"}
+                          </span>
                         </div>
+
+                        <button
+                          type="button"
+                          className="button primary chain-source-open"
+                          onClick={() => enterSourceBook(book)}
+                        >
+                          Explore this Chain
+                          <ArrowRight size={17} />
+                        </button>
                       </div>
                     </article>
                   ))}
@@ -1691,7 +1773,12 @@ export default function Chain() {
               type="button"
               className="chain-edge-link right follow"
               aria-label="Follow selected Chain link"
-              disabled={levelLoading || !currentSelectedItem || currentSelectedItem.nodeType === "group"}
+              disabled={
+                levelLoading ||
+                !currentSelectedItem ||
+                currentSelectedItem.nodeType === "group" ||
+                currentSelectedItem.nodeType === "add-link"
+              }
               onClick={followSelectedIdea}
             >
               <ArrowRight size={20} />
@@ -1748,59 +1835,99 @@ export default function Chain() {
         )}
       </div>
 
-      {emptyLinkPrompt && (
+        {renderLevelDots()}
+      </div>
+
+      {replyEntry && openReplyId && (
         <div
-          className="modal-backdrop chain-empty-link-backdrop"
-          onClick={() => setEmptyLinkPrompt(null)}
+          className="modal-backdrop chain-reply-modal-backdrop"
+          onClick={() => {
+            setOpenReplyId(null);
+            setReplyText("");
+          }}
         >
           <section
-            className="modal-card chain-empty-link-card"
+            className="modal-card chain-reply-modal"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="margin-reply-heading">
               <div>
-                <p className="eyebrow">End of this branch</p>
-                <strong>No one has linked another idea here yet.</strong>
+                <p className="eyebrow">Chain conversation</p>
+                <strong>Replies</strong>
               </div>
               <button
                 type="button"
                 className="margin-close-button"
-                onClick={() => setEmptyLinkPrompt(null)}
-                aria-label="Close"
+                onClick={() => {
+                  setOpenReplyId(null);
+                  setReplyText("");
+                }}
+                aria-label="Close replies"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <p className="muted">
-              Add a note from this link to create the next level of the Chain.
-            </p>
+            <div className="chain-reply-modal-source">
+              <strong>{replyEntry.title || "Untitled"}</strong>
+              {replyEntry.note && <p>“{replyEntry.note}”</p>}
+            </div>
 
-            <Link
-              to={readingLink(emptyLinkPrompt)}
-              state={{
-                book: {
-                  id: emptyLinkPrompt.bookId,
-                  bookId: emptyLinkPrompt.bookId,
-                  title: emptyLinkPrompt.title,
-                  author: emptyLinkPrompt.author
-                },
-                addFromChain: true,
-                sourceChainEntry: emptyLinkPrompt
-              }}
-              className="button primary"
-              onClick={(event) => {
-                if (!user) {
-                  event.preventDefault();
-                  requireLogin();
-                  return;
-                }
-                setEmptyLinkPrompt(null);
-              }}
-            >
-              <Link2 size={17} />
-              Create the first linked note
-            </Link>
+            <div className="chain-reply-modal-scroll">
+              {repliesLoading[replyEntry.id] && (
+                <p className="muted">Loading replies…</p>
+              )}
+
+              {(repliesByEntry[replyEntry.id] || []).length > 0 ? (
+                <div className="margin-replies">
+                  {(repliesByEntry[replyEntry.id] || []).map((reply) => (
+                    <div key={reply.id} className="margin-reply">
+                      <div>
+                        <strong>{reply.reader?.displayName || "Reader"}</strong>
+                        <small>
+                          {formatDate(reply.createdAtISO || reply.createdAt)}
+                        </small>
+                      </div>
+                      <p>{reply.note}</p>
+                      {reply.userId === user?.uid && (
+                        <button
+                          type="button"
+                          className="margin-action report"
+                          onClick={() => handleDeleteReply(replyEntry, reply)}
+                        >
+                          <Trash2 size={14} />
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                !repliesLoading[replyEntry.id] && (
+                  <p className="muted">No replies yet.</p>
+                )
+              )}
+            </div>
+
+            <div className="chain-reply-modal-compose">
+              <textarea
+                rows={3}
+                maxLength={3000}
+                value={replyText}
+                onChange={(event) => setReplyText(event.target.value)}
+                placeholder="Add to the conversation…"
+              />
+
+              <button
+                type="button"
+                className="button primary"
+                disabled={replying || !replyText.trim()}
+                onClick={() => handleReply(replyEntry)}
+              >
+                <Send size={16} />
+                {replying ? "Posting..." : "Post Reply"}
+              </button>
+            </div>
           </section>
         </div>
       )}
