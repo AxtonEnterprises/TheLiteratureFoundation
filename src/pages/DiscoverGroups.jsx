@@ -11,12 +11,20 @@ import {
 import { getGroupAvatar } from "../data/groupAvatars.js";
 import SEO from "../components/SEO.jsx";
 
+function joinPolicyLabel(group) {
+  if (group.joinPolicy === "open") return "Open";
+  if (group.joinPolicy === "request_to_join") return "Request to join";
+  return "Invite only";
+}
+
 export default function DiscoverGroups() {
   const [groups, setGroups] = useState([]);
   const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [status, setStatus] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
   async function load() {
     try {
@@ -52,13 +60,16 @@ export default function DiscoverGroups() {
     );
   }, [groups, search]);
 
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [search]);
+
   async function join(group) {
     try {
       setBusyId(group.id);
       setStatus("");
 
       const result = await requestToJoinGroup(group.id);
-
       await load();
 
       setStatus(
@@ -91,50 +102,83 @@ export default function DiscoverGroups() {
     }
   }
 
+  function handleScroll(event) {
+    const viewport = event.currentTarget;
+    const height = viewport.clientHeight;
+
+    if (!height) return;
+
+    const next = Math.round(viewport.scrollTop / height);
+
+    setSelectedIndex(
+      Math.max(0, Math.min(filtered.length - 1, next))
+    );
+  }
+
   return (
-    <main className="page-wrap">
+    <main className="groups-reel-page">
       <SEO
-        title="Discover Groups | Random Reads"
-        description="Find public and discoverable reading groups."
+        title="Groups | Lit Chain"
+        description="Explore Lit Chain reading groups and classes."
         path="/read/groups"
         noindex
       />
 
-      <div className="stack-lg">
-        <section className="hero-card small">
-          <p className="eyebrow">Reading Communities</p>
-          <h1>Discover Groups</h1>
+      <div className="groups-reel-toolbar">
+        <div>
+          <p className="eyebrow">Communities</p>
+          <strong>Groups & Classes</strong>
+        </div>
+
+        <button
+          type="button"
+          className={
+            searchOpen
+              ? "groups-search-toggle active"
+              : "groups-search-toggle"
+          }
+          onClick={() => setSearchOpen((current) => !current)}
+          aria-label="Search groups"
+        >
+          <Search size={18} />
+        </button>
+      </div>
+
+      {searchOpen && (
+        <div className="groups-reel-search">
+          <Search size={16} />
+          <input
+            autoFocus
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search groups and classes..."
+          />
+        </div>
+      )}
+
+      {status && (
+        <p className="status groups-reel-status">
+          {status}
+        </p>
+      )}
+
+      {loading ? (
+        <section className="groups-reel-state">
+          <p className="muted">Loading groups...</p>
+        </section>
+      ) : filtered.length === 0 ? (
+        <section className="groups-reel-state">
           <p className="muted">
-            Find reading groups and classes that are open to new readers.
+            No groups match your search yet.
           </p>
         </section>
-
-        <section className="panel profile-panel">
-          <div className="group-discovery-search">
-            <Search size={18} />
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search groups..."
-            />
-          </div>
-        </section>
-
-        {status && <p className="status">{status}</p>}
-
-        {loading ? (
-          <section className="panel profile-panel">
-            <p className="muted">Loading groups...</p>
-          </section>
-        ) : filtered.length === 0 ? (
-          <section className="panel profile-panel">
-            <p className="muted">
-              No groups match your search yet.
-            </p>
-          </section>
-        ) : (
-          <div className="group-discovery-grid">
+      ) : (
+        <>
+          <div
+            className="groups-reel-viewport"
+            onScroll={handleScroll}
+          >
             {filtered.map((group) => {
               const avatar = getGroupAvatar(group.avatar);
               const isMember = Boolean(group.membership);
@@ -144,87 +188,113 @@ export default function DiscoverGroups() {
               return (
                 <article
                   key={group.id}
-                  className="panel group-discovery-card"
+                  className="groups-reel-card"
                 >
-                  <div className="group-discovery-heading">
-                    <div className="group-discovery-avatar">
+                  <div className="groups-reel-card-inner">
+                    <div className="groups-reel-avatar">
                       {avatar ? (
                         <img src={avatar.image} alt="" />
                       ) : (
-                        <Users size={28} />
+                        <Users size={44} />
                       )}
                     </div>
 
-                    <div>
-                      <Link
-                        to={`/read/groups/${group.id}`}
-                        className="public-entry-book-title"
-                      >
-                        {group.name}
-                      </Link>
+                    <p className="eyebrow">
+                      {group.type === "class"
+                        ? "Class"
+                        : "Reading Group"}
+                    </p>
 
-                      <p className="muted group-discovery-meta">
-                        {group.type === "class" ? "Class" : "Reading Group"}
-                        {" · "}
-                        {group.joinPolicy === "open"
-                          ? "Open"
-                          : group.joinPolicy === "request_to_join"
-                            ? "Request to join"
-                            : "Invite only"}
+                    <h1>{group.name}</h1>
+
+                    <p className="groups-reel-meta">
+                      {joinPolicyLabel(group)}
+                    </p>
+
+                    {group.description && (
+                      <p className="groups-reel-description">
+                        {group.description}
                       </p>
-                    </div>
-                  </div>
+                    )}
 
-                  {group.description && (
-                    <p>{group.description}</p>
-                  )}
-
-                  <div className="button-row">
-                    {isMember ? (
+                    <div className="groups-reel-actions">
                       <Link
                         to={`/read/groups/${group.id}`}
                         className="button primary"
                       >
-                        Open Group
+                        {isMember ? "Open" : "View"}
                       </Link>
-                    ) : pending ? (
-                      <>
-                        <span className="button secondary">
-                          Request Pending
-                        </span>
 
+                      {!isMember && pending && (
                         <button
                           type="button"
                           className="button secondary"
                           disabled={busyId === group.id}
                           onClick={() => cancel(group)}
                         >
-                          Cancel
+                          Cancel Request
                         </button>
-                      </>
-                    ) : group.joinPolicy === "invite_only" ? (
-                      <span className="button secondary">
-                        Invite Only
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        className="button primary"
-                        disabled={busyId === group.id}
-                        onClick={() => join(group)}
-                      >
-                        {group.joinPolicy === "open"
-                          ? "Join Group"
-                          : "Request to Join"}
-                      </button>
-                    )}
+                      )}
+
+                      {!isMember &&
+                        !pending &&
+                        group.joinPolicy !== "invite_only" && (
+                          <button
+                            type="button"
+                            className="button secondary"
+                            disabled={busyId === group.id}
+                            onClick={() => join(group)}
+                          >
+                            {group.joinPolicy === "open"
+                              ? "Join"
+                              : "Request to Join"}
+                          </button>
+                        )}
+
+                      {!isMember &&
+                        group.joinPolicy === "invite_only" && (
+                          <span className="groups-invite-only">
+                            Invite Only
+                          </span>
+                        )}
+                    </div>
+
+                    <p className="groups-reel-hint">
+                      Swipe vertically to explore
+                    </p>
                   </div>
                 </article>
               );
             })}
           </div>
-        )}
-      </div>
+
+          <div
+            className="groups-reel-dots"
+            aria-label={`Group ${selectedIndex + 1} of ${filtered.length}`}
+          >
+            {filtered
+              .slice(
+                Math.max(0, selectedIndex - 3),
+                Math.min(filtered.length, selectedIndex + 4)
+              )
+              .map((group, localIndex) => {
+                const start = Math.max(0, selectedIndex - 3);
+                const index = start + localIndex;
+
+                return (
+                  <span
+                    key={group.id}
+                    className={
+                      index === selectedIndex
+                        ? "groups-reel-dot active"
+                        : "groups-reel-dot"
+                    }
+                  />
+                );
+              })}
+          </div>
+        </>
+      )}
     </main>
   );
 }

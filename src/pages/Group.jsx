@@ -391,7 +391,12 @@ export default function Group() {
   const [
     activeTab,
     setActiveTab
-  ] = useState("forum");
+  ] = useState("overview");
+
+  const [
+    groupSwipeStartX,
+    setGroupSwipeStartX
+  ] = useState(null);
 
   const [
     loading,
@@ -1826,6 +1831,7 @@ export default function Group() {
   }
 
   const tabs = [
+    ["overview", "Overview"],
     ["forum", "Forum"],
     ["members", "Members"],
     ...(canModerate
@@ -1836,8 +1842,59 @@ export default function Group() {
       : [])
   ];
 
+  const activeDepthIndex = Math.max(
+    0,
+    tabs.findIndex(([value]) => value === activeTab)
+  );
+
+  function moveGroupDepth(direction) {
+    const nextIndex = Math.max(
+      0,
+      Math.min(
+        tabs.length - 1,
+        activeDepthIndex + direction
+      )
+    );
+
+    if (nextIndex !== activeDepthIndex) {
+      setActiveTab(tabs[nextIndex][0]);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
+  function handleGroupTouchStart(event) {
+    setGroupSwipeStartX(
+      event.touches?.[0]?.clientX ?? null
+    );
+  }
+
+  function handleGroupTouchEnd(event) {
+    if (groupSwipeStartX === null) return;
+
+    const endX =
+      event.changedTouches?.[0]?.clientX;
+
+    if (typeof endX !== "number") {
+      setGroupSwipeStartX(null);
+      return;
+    }
+
+    const deltaX = endX - groupSwipeStartX;
+    setGroupSwipeStartX(null);
+
+    if (Math.abs(deltaX) < 70) return;
+
+    // Same grammar as The Chain:
+    // left = deeper, right = back.
+    moveGroupDepth(deltaX < 0 ? 1 : -1);
+  }
+
   return (
-    <main className="page-wrap">
+    <main
+      className="page-wrap group-spatial-page"
+      onTouchStart={handleGroupTouchStart}
+      onTouchEnd={handleGroupTouchEnd}
+    >
       <SEO
         title={`${group.name} | Lit Chain`}
         description={
@@ -1849,109 +1906,138 @@ export default function Group() {
       />
 
       <div className="stack-lg">
-        <section className="hero-card small">
-          <div
-            style={{
-              display: "flex",
-              gap: "1.25rem",
-              alignItems: "center",
-              flexWrap: "wrap"
-            }}
-          >
+        <section className="group-spatial-header">
+          <div className="group-spatial-heading">
             <GroupAvatar
               group={group}
+              size={68}
             />
 
-            <div
-              style={{
-                flex: "1 1 260px"
-              }}
-            >
+            <div className="group-spatial-heading-copy">
               <p className="eyebrow">
-                Reading Group
+                {group.type === "class"
+                  ? "Class"
+                  : "Reading Group"}
               </p>
 
               <h1>{group.name}</h1>
 
-              {group.description && (
-                <p>
-                  {group.description}
-                </p>
-              )}
-
               <p className="muted">
-                Your role:{" "}
-                <strong>
-                  <RoleBadge
-                    role={myRole}
-                  />
-                </strong>
-                {" · "}
                 {members.length} member
-                {members.length === 1
-                  ? ""
-                  : "s"}
-              </p>
-
-              <p className="muted">
-                {groupRoleDescription(
-                  myRole
-                )}
+                {members.length === 1 ? "" : "s"}
+                {" · "}
+                <RoleBadge role={myRole} />
               </p>
             </div>
           </div>
 
-          {status && (
-            <p className="status">
-              {status}
-            </p>
-          )}
-
-          <div className="button-row">
-            <Link
-              to="/read/profile?tab=groups"
-              className="button secondary"
-            >
-              <ArrowLeft size={16} />
-              My Groups
-            </Link>
-
-            {myRole !== "owner" && (
-              <button
-                type="button"
-                className="button secondary"
-                onClick={leave}
-              >
-                <LogOut size={16} />
-                Leave
-              </button>
-            )}
-          </div>
-        </section>
-
-        <section className="margins-filter-bar">
-          {tabs.map(
-            ([value, label]) => (
+          <div
+            className="group-depth-dots"
+            aria-label={`Group level ${activeDepthIndex + 1} of ${tabs.length}`}
+          >
+            {tabs.map(([value, label], index) => (
               <button
                 key={value}
                 type="button"
                 className={
-                  activeTab === value
-                    ? "margins-filter active"
-                    : "margins-filter"
+                  index === activeDepthIndex
+                    ? "group-depth-dot active"
+                    : "group-depth-dot"
                 }
-                onClick={() =>
-                  setActiveTab(value)
-                }
-              >
-                {label}
-              </button>
-            )
-          )}
+                aria-label={label}
+                title={label}
+                onClick={() => setActiveTab(value)}
+              />
+            ))}
+          </div>
         </section>
+
+        {status && (
+          <p className="status group-spatial-status">
+            {status}
+          </p>
+        )}
+
+        {activeTab === "overview" && (
+          <section className="group-overview-card">
+            <div className="group-overview-avatar">
+              <GroupAvatar group={group} size={112} />
+            </div>
+
+            <p className="eyebrow">
+              Level 0
+            </p>
+
+            <h2>{group.name}</h2>
+
+            {group.description && (
+              <p className="group-overview-description">
+                {group.description}
+              </p>
+            )}
+
+            <div className="group-overview-meta">
+              <span>
+                <Users size={16} />
+                {members.length} member
+                {members.length === 1 ? "" : "s"}
+              </span>
+
+              <span>
+                <RoleBadge role={myRole} />
+              </span>
+            </div>
+
+            <p className="muted group-overview-role">
+              {groupRoleDescription(myRole)}
+            </p>
+
+            <button
+              type="button"
+              className="button primary group-enter-forum"
+              onClick={() => setActiveTab("forum")}
+            >
+              Enter Forum
+              <MessageCircle size={17} />
+            </button>
+
+            <div className="group-overview-actions">
+              <Link
+                to="/read/profile?tab=groups"
+                className="button secondary"
+              >
+                <ArrowLeft size={16} />
+                My Groups
+              </Link>
+
+              {myRole !== "owner" && (
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={leave}
+                >
+                  <LogOut size={16} />
+                  Leave
+                </button>
+              )}
+            </div>
+
+            <p className="group-depth-hint">
+              Swipe left to go deeper
+            </p>
+          </section>
+        )}
 
         {activeTab === "forum" && (
           <>
+            <section className="group-depth-section-heading">
+              <div>
+                <p className="eyebrow">Level 1</p>
+                <h2>Forum</h2>
+              </div>
+              <span>Swipe right for overview</span>
+            </section>
+
             <section className="panel profile-panel">
               <h2>
                 Start a Discussion
