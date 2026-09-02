@@ -1479,8 +1479,8 @@ export default function Group() {
 
         if (upDifference !== 0) return upDifference;
 
-        return String(a.createdAtISO || "").localeCompare(
-          String(b.createdAtISO || "")
+        return String(b.createdAtISO || "").localeCompare(
+          String(a.createdAtISO || "")
         );
       });
   }
@@ -1535,6 +1535,13 @@ export default function Group() {
   function currentReplyItem() {
     const level = replyLevels[replyLevels.length - 1];
     return level?.items?.[level.selectedIndex] || null;
+  }
+
+  function replyChildCount(postId, replyId) {
+    return replyChildren(
+      forumReplies[postId] || [],
+      replyId
+    ).length;
   }
 
   function enterReplyChildren(post, reply) {
@@ -2348,6 +2355,8 @@ export default function Group() {
                                 type="button"
                                 className={vote === 1 ? "active" : ""}
                                 onClick={() => castForumVote(post, null, 1)}
+                                aria-label="Reinforce discussion"
+                                title="Reinforce"
                               >
                                 <Link2 size={18} />
                                 <span>{Number(post.forumUpCount || 0)}</span>
@@ -2359,6 +2368,8 @@ export default function Group() {
                                 type="button"
                                 className={vote === -1 ? "active" : ""}
                                 onClick={() => castForumVote(post, null, -1)}
+                                aria-label="Break discussion link"
+                                title="Break link"
                               >
                                 <Unlink2 size={18} />
                                 <span>{Number(post.forumDownCount || 0)}</span>
@@ -2370,7 +2381,7 @@ export default function Group() {
                               className="group-swipe-deeper-cue"
                               onClick={() => enterTopicReplies(post)}
                             >
-                              Swipe right for replies
+                              Swipe left for replies
                               <MessageCircle size={16} />
                             </button>
                           </div>
@@ -2421,12 +2432,19 @@ export default function Group() {
                     {replyLevels.length > 1 ? "Back" : "Discussion"}
                   </button>
 
-                  <div className="group-reply-depth-dots">
-                    <span className="active" />
+                  <div
+                    className="group-reply-depth-dots"
+                    aria-label={`Depth ${replyLevels.length} from discussion`}
+                  >
+                    <span
+                      className={replyLevels.length === 0 ? "active" : ""}
+                      title="Discussion"
+                    />
                     {replyLevels.map((_, index) => (
                       <span
                         key={index}
                         className={index === replyLevels.length - 1 ? "active" : ""}
+                        title={`Reply level ${index + 1}`}
                       />
                     ))}
                   </div>
@@ -2492,6 +2510,8 @@ export default function Group() {
                               type="button"
                               className={vote === 1 ? "active" : ""}
                               onClick={() => castForumVote(post, reply, 1)}
+                              aria-label="Reinforce reply"
+                              title="Reinforce"
                             >
                               <Link2 size={18} />
                               <span>{Number(reply.forumUpCount || 0)}</span>
@@ -2503,6 +2523,8 @@ export default function Group() {
                               type="button"
                               className={vote === -1 ? "active" : ""}
                               onClick={() => castForumVote(post, reply, -1)}
+                              aria-label="Break reply link"
+                              title="Break link"
                             >
                               <Unlink2 size={18} />
                               <span>{Number(reply.forumDownCount || 0)}</span>
@@ -2512,11 +2534,25 @@ export default function Group() {
                           <div className="group-reply-actions">
                             <button
                               type="button"
-                              className="group-swipe-deeper-cue"
+                              className={
+                                replyChildCount(post.id, reply.id) > 0
+                                  ? "group-swipe-deeper-cue"
+                                  : "group-swipe-deeper-cue branch-end"
+                              }
                               onClick={() => enterReplyChildren(post, reply)}
                             >
-                              Swipe right for replies
-                              <MessageCircle size={16} />
+                              {replyChildCount(post.id, reply.id) > 0 ? (
+                                <>
+                                  Swipe left for {replyChildCount(post.id, reply.id)} repl
+                                  {replyChildCount(post.id, reply.id) === 1 ? "y" : "ies"}
+                                  <MessageCircle size={16} />
+                                </>
+                              ) : (
+                                <>
+                                  End of branch · swipe left to reply
+                                  <Plus size={16} />
+                                </>
+                              )}
                             </button>
 
                             {!post?.locked && (
@@ -2535,6 +2571,35 @@ export default function Group() {
                     );
                   })}
                 </div>
+
+                {(replyLevels[replyLevels.length - 1]?.items || []).length > 1 && (
+                  <div className="group-reply-sibling-dots">
+                    {(replyLevels[replyLevels.length - 1]?.items || [])
+                      .slice(
+                        Math.max(
+                          0,
+                          (replyLevels[replyLevels.length - 1]?.selectedIndex || 0) - 3
+                        ),
+                        Math.min(
+                          (replyLevels[replyLevels.length - 1]?.items || []).length,
+                          (replyLevels[replyLevels.length - 1]?.selectedIndex || 0) + 4
+                        )
+                      )
+                      .map((reply, localIndex) => {
+                        const selectedIndex =
+                          replyLevels[replyLevels.length - 1]?.selectedIndex || 0;
+                        const start = Math.max(0, selectedIndex - 3);
+                        const index = start + localIndex;
+
+                        return (
+                          <span
+                            key={reply.id}
+                            className={index === selectedIndex ? "active" : ""}
+                          />
+                        );
+                      })}
+                  </div>
+                )}
               </div>
             )}
           </section>
