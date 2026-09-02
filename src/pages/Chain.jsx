@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowDown,
   ArrowLeft,
   ArrowRight,
-  ArrowUp,
+  ChevronLeft,
+  ChevronRight,
   Bookmark,
   BookOpen,
   Flag,
@@ -29,7 +29,7 @@ import {
   getFriendsChainFeed,
   getGroupsChainFeed,
   getSavedChainEntries,
-  getChainProvenance,
+  getChainBranches,
   reportChainEntry,
   saveChainEntry,
   unsaveChainEntry
@@ -58,38 +58,6 @@ function savedChainKey(entry) {
   return [entry?.userId || "", entry?.id || ""].filter(Boolean).join("_");
 }
 
-
-function ideaNodeKey(node) {
-  if (!node) return "";
-  if (node.nodeType === "group") {
-    return `group_${node.groupId || ""}_${node.id || ""}`;
-  }
-  return `note_${node.userId || ""}_${node.id || ""}`;
-}
-
-function toIdeaNode(entry, nodeType = "note") {
-  if (!entry) return null;
-
-  if (nodeType === "group") {
-    return {
-      ...entry,
-      nodeType: "group",
-      userId: entry.userId || null,
-      title: entry.title || "Group discussion"
-    };
-  }
-
-  return {
-    ...entry,
-    nodeType: "note"
-  };
-}
-
-function ideaNodeLabel(node) {
-  if (!node) return "Idea";
-  if (node.nodeType === "group") return "Group discussion";
-  return node.reader?.displayName || "Reader note";
-}
 
 function readingLink(entry) {
   const base = `/read/reader/${entry.bookId}`;
@@ -135,12 +103,10 @@ export default function Chain() {
   const [discussionTitle, setDiscussionTitle] = useState("");
   const [discussionBody, setDiscussionBody] = useState("");
   const [discussionPosting, setDiscussionPosting] = useState(false);
-  const [ideaWindowRootId, setIdeaWindowRootId] = useState(null);
-  const [ideaCurrentByRoot, setIdeaCurrentByRoot] = useState({});
-  const [ideaDataByNode, setIdeaDataByNode] = useState({});
-  const [ideaLoadingByNode, setIdeaLoadingByNode] = useState({});
-  const [ideaBranchIndexByNode, setIdeaBranchIndexByNode] = useState({});
-  const ideaSwipeStartRef = useRef(null);
+  const [selectedBookId, setSelectedBookId] = useState("");
+  const [levels, setLevels] = useState([]);
+  const [levelLoading, setLevelLoading] = useState(false);
+  const chainSwipeStartRef = useRef(null);
 
 
   useEffect(() => onAuthStateChanged(auth, setUser), []);
@@ -245,16 +211,32 @@ export default function Chain() {
     return false;
   }
 
-  function openReply(entry) {
+  async function openReply(entry) {
     if (!requireLogin()) return;
     setStatus("");
 
     if (openReplyId === entry.id) {
       setOpenReplyId(null);
       setReplyText("");
-    } else {
-      setOpenReplyId(entry.id);
-      setReplyText("");
+      return;
+    }
+
+    setOpenReplyId(entry.id);
+    setReplyText("");
+
+    if (!Object.prototype.hasOwnProperty.call(repliesByEntry, entry.id)) {
+      try {
+        setRepliesLoading((current) => ({ ...current, [entry.id]: true }));
+        const replies = await getChainReplies(entry);
+        setRepliesByEntry((current) => ({
+          ...current,
+          [entry.id]: replies
+        }));
+      } catch (error) {
+        console.error(`Could not load replies for ${entry.id}:`, error);
+      } finally {
+        setRepliesLoading((current) => ({ ...current, [entry.id]: false }));
+      }
     }
   }
 
@@ -440,146 +422,161 @@ export default function Chain() {
     }
   }
 
-  async function loadIdeaNode(node) {
-    if (!node || node.nodeType === "group") return null;
 
-    const key = ideaNodeKey(node);
-    if (ideaDataByNode[key]) return ideaDataByNode[key];
+
+  const sourceBooks = useMemo(() => {
+    const byBook = new Map();
+
+    for (const entry of entries) {
+      if (!entry?.bookId) continue;
+      const bookId = String(entry.bookId);
+
+      if (!byBook.has(bookId)) {
+        byBook.set(bookId, {
+          id: bookId,
+          bookId,
+          title: entry.title || "Untitled",
+          author: entry.author || "",
+          linkCount: 0,
+          latestAt: entry.updatedAtISO || entry.createdAt || ""
+        });
+      }
+
+      const book = byBook.get(bookId);
+
+      // Level 1 is a direct connection to literature itself.
+      if (!entry.sourceChainEntryId) {
+        book.linkCount += 1;
+      }
+
+      const candidateDate = entry.updatedAtISO || entry.createdAt || "";
+      if (String(candidateDate) > String(book.latestAt || "")) {
+        book.latestAt = candidateDate;
+      }
+    }
+
+    return [...byBook.values()]
+      .filter((book) => book.linkCount > 0)
+      .sort((a, b) =>
+        String(b.latestAt || "").localeCompare(String(a.latestAt || ""))
+      );
+  }, [entries]);
+
+  const selectedSourceBook = useMemo(
+    () =>
+      sourceBooks.find((book) => String(book.id) === String(selectedBookId)) ||
+      sourceBooks[0] ||
+      null,
+    [sourceBooks, selectedBookId]
+  );
+
+  const currentLevel = levels.length ? levels[levels.length - 1] : null;
+  const currentDepth = levels.length;
+  const currentItems = currentLevel?.items || [];
+  const currentSelectedIndex = Math.min(
+    currentLevel?.selectedIndex || 0,
+    Math.max(currentItems.length - 1, 0)
+  );
+  const currentSelectedItem = currentItems[currentSelectedIndex] || null;
+
+  function levelOneForBook(book) {
+    if (!book) return [];
+
+    return entries.filter(
+      (entry) =>
+        String(entry.bookId || "") === String(book.id) &&
+        !entry.sourceChainEntryId
+    );
+  }
+
+  function enterSourceBook(book = selectedSourceBook) {
+    if (!book) return;
+
+    const items = levelOneForBook(book);
+
+    setSelectedBookId(String(book.id));
+    setLevels([
+      {
+        parent: {
+          nodeType: "book",
+          ...book
+        },
+        items,
+        selectedIndex: 0
+      }
+    ]);
+    setStatus("");
+  }
+
+  function selectLevelItem(index) {
+    setLevels((current) => {
+      if (!current.length) return current;
+      const next = [...current];
+      next[next.length - 1] = {
+        ...next[next.length - 1],
+        selectedIndex: index
+      };
+      return next;
+    });
+  }
+
+  async function followSelectedIdea() {
+    if (!currentSelectedItem || currentSelectedItem.nodeType === "group") {
+      return;
+    }
 
     try {
-      setIdeaLoadingByNode((current) => ({ ...current, [key]: true }));
+      setLevelLoading(true);
+      setStatus("");
 
-      const provenance = await getChainProvenance(node);
-      const branches = [
-        ...(provenance?.branches?.notes || []).map((item) =>
-          toIdeaNode(item, "note")
-        ),
-        ...(provenance?.branches?.groupDiscussions || []).map((item) =>
-          toIdeaNode(item, "group")
-        )
+      const branches = await getChainBranches(currentSelectedItem);
+      const nextItems = [
+        ...(branches?.notes || []).map((item) => ({
+          ...item,
+          nodeType: "note"
+        })),
+        ...(branches?.groupDiscussions || []).map((item) => ({
+          ...item,
+          nodeType: "group"
+        }))
       ];
 
-      const data = {
-        source: provenance?.source
-          ? toIdeaNode(provenance.source, "note")
-          : null,
-        branches
-      };
-
-      setIdeaDataByNode((current) => ({
+      setLevels((current) => [
         ...current,
-        [key]: data
-      }));
-
-      return data;
+        {
+          parent: currentSelectedItem,
+          items: nextItems,
+          selectedIndex: 0
+        }
+      ]);
     } catch (error) {
-      console.error("Could not load idea chain:", error);
-      setStatus("We couldn't load this idea chain.");
-      return null;
+      console.error("Could not follow this Chain link:", error);
+      setStatus("We couldn't load the next Chain level.");
     } finally {
-      setIdeaLoadingByNode((current) => ({ ...current, [key]: false }));
+      setLevelLoading(false);
     }
   }
 
-  async function openIdeaWindow(entry) {
-    const rootKey = savedChainKey(entry);
-
-    if (ideaWindowRootId === rootKey) {
-      setIdeaWindowRootId(null);
-      return;
-    }
-
-    const rootNode = toIdeaNode(entry, "note");
-    setIdeaWindowRootId(rootKey);
-    setIdeaCurrentByRoot((current) => ({
-      ...current,
-      [rootKey]: rootNode
-    }));
-
-    await loadIdeaNode(rootNode);
+  function goBackOneLevel() {
+    if (!levels.length) return;
+    setStatus("");
+    setLevels((current) => current.slice(0, -1));
   }
 
-  async function moveIdea(rootKey, direction) {
-    const currentNode = ideaCurrentByRoot[rootKey];
-    if (!currentNode) return;
-
-    if (currentNode.nodeType === "group") {
-      if (direction === "left" && currentNode.sourceChainEntryId && currentNode.sourceUserId) {
-        const sourceNode = toIdeaNode({
-          id: currentNode.sourceChainEntryId,
-          userId: currentNode.sourceUserId,
-          bookId: currentNode.sourceBookId,
-          title: currentNode.sourceTitle,
-          author: currentNode.sourceAuthor,
-          paragraphIndex: currentNode.sourceParagraphIndex,
-          paragraphNumber: currentNode.sourceParagraphNumber,
-          note: currentNode.sourceNotePreview,
-          paragraphPreview: currentNode.sourceParagraphPreview
-        }, "note");
-
-        setIdeaCurrentByRoot((current) => ({
-          ...current,
-          [rootKey]: sourceNode
-        }));
-        await loadIdeaNode(sourceNode);
-      }
-      return;
-    }
-
-    const currentKey = ideaNodeKey(currentNode);
-    const data = ideaDataByNode[currentKey] || await loadIdeaNode(currentNode);
-    if (!data) return;
-
-    const branches = data.branches || [];
-    const branchIndex = Math.min(
-      ideaBranchIndexByNode[currentKey] || 0,
-      Math.max(branches.length - 1, 0)
-    );
-
-    if (direction === "left" && data.source) {
-      setIdeaCurrentByRoot((current) => ({
-        ...current,
-        [rootKey]: data.source
-      }));
-      await loadIdeaNode(data.source);
-      return;
-    }
-
-    if (direction === "right" && branches.length) {
-      const next = branches[branchIndex];
-      setIdeaCurrentByRoot((current) => ({
-        ...current,
-        [rootKey]: next
-      }));
-      if (next.nodeType !== "group") await loadIdeaNode(next);
-      return;
-    }
-
-    if ((direction === "up" || direction === "down") && branches.length > 1) {
-      const delta = direction === "down" ? 1 : -1;
-      const nextIndex = (branchIndex + delta + branches.length) % branches.length;
-
-      setIdeaBranchIndexByNode((current) => ({
-        ...current,
-        [currentKey]: nextIndex
-      }));
-    }
-  }
-
-  function handleIdeaTouchStart(event) {
+  function handleChainTouchStart(event) {
     const touch = event.touches?.[0];
     if (!touch) return;
 
-    ideaSwipeStartRef.current = {
+    chainSwipeStartRef.current = {
       x: touch.clientX,
       y: touch.clientY,
       time: Date.now()
     };
   }
 
-  function handleIdeaTouchEnd(event, rootKey) {
-    const start = ideaSwipeStartRef.current;
-    ideaSwipeStartRef.current = null;
+  function handleChainTouchEnd(event) {
+    const start = chainSwipeStartRef.current;
+    chainSwipeStartRef.current = null;
 
     const touch = event.changedTouches?.[0];
     if (!start || !touch) return;
@@ -588,15 +585,19 @@ export default function Chain() {
     const deltaY = touch.clientY - start.y;
     const elapsed = Date.now() - start.time;
 
-    if (elapsed > 900) return;
+    if (elapsed > 900 || Math.abs(deltaX) < 58) return;
+    if (Math.abs(deltaX) <= Math.abs(deltaY) * 1.2) return;
 
-    if (Math.abs(deltaX) >= 48 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
-      moveIdea(rootKey, deltaX > 0 ? "left" : "right");
-      return;
-    }
-
-    if (Math.abs(deltaY) >= 48 && Math.abs(deltaY) > Math.abs(deltaX) * 1.2) {
-      moveIdea(rootKey, deltaY > 0 ? "up" : "down");
+    // Lit Chain deliberately uses the user's spatial model:
+    // swipe RIGHT = move deeper; swipe LEFT = move back.
+    if (deltaX > 0) {
+      if (currentDepth === 0) {
+        enterSourceBook();
+      } else {
+        followSelectedIdea();
+      }
+    } else {
+      goBackOneLevel();
     }
   }
 
@@ -620,11 +621,402 @@ export default function Chain() {
     }
   }
 
+  function renderNoteCard(entry, index) {
+    const reader = entry.reader;
+    const avatar = getProfileAvatar(reader?.avatar);
+    const groupAvatar = getGroupAvatar(entry.group?.avatar);
+    const isSaved = savedKeys.has(savedChainKey(entry));
+    const replyOpen = openReplyId === entry.id;
+    const replies = repliesByEntry[entry.id] || [];
+    const link = readingLink(entry);
+    const selected = index === currentSelectedIndex;
+
+    return (
+      <article
+        key={`${entry.userId || "note"}_${entry.id}`}
+        id={`chain-${entry.id}`}
+        className={[
+          "margins-entry",
+          "chain-level-card",
+          selected ? "selected" : ""
+        ].filter(Boolean).join(" ")}
+        onClick={() => selectLevelItem(index)}
+      >
+        <div className="margins-reader-row">
+          <Link
+            to={`/read/public/${entry.userId}`}
+            className="margins-reader-link"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="margins-reader-avatar">
+              {avatar ? <img src={avatar.image} alt="" /> : <Users size={20} />}
+            </div>
+            <div>
+              <strong>{reader?.displayName || "Reader"}</strong>
+              <small>{formatDate(entry.updatedAtISO || entry.createdAt)}</small>
+            </div>
+          </Link>
+        </div>
+
+        {entry.group && (
+          <Link
+            to={`/read/groups/${entry.groupId || entry.group.id}`}
+            className="margins-group-link"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="chain-level-group-avatar">
+              {groupAvatar ? (
+                <img src={groupAvatar.image} alt="" />
+              ) : (
+                <Users size={16} />
+              )}
+            </div>
+            <strong>{entry.group.name}</strong>
+          </Link>
+        )}
+
+        <div className="public-entry-heading">
+          <div>
+            <p className="eyebrow">
+              {currentDepth === 1 ? "Linked to literature" : `Level ${currentDepth} link`}
+            </p>
+            <Link
+              to={`${link}${link.includes("?") ? "&" : "?"}note=${encodeURIComponent(entry.id)}`}
+              state={{
+                book: {
+                  id: entry.bookId,
+                  bookId: entry.bookId,
+                  title: entry.title,
+                  author: entry.author
+                }
+              }}
+              className="public-entry-book-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {entry.title || "Untitled"}
+            </Link>
+            {entry.author && <p className="public-entry-author">{entry.author}</p>}
+          </div>
+
+          <div className="chain-share-menu-wrap chain-share-menu-top">
+            <button
+              type="button"
+              className="public-entry-book-icon"
+              aria-label="Share this Chain post"
+              aria-expanded={shareMenuId === entry.id}
+              onClick={(event) => {
+                event.stopPropagation();
+                setShareMenuId((current) =>
+                  current === entry.id ? null : entry.id
+                );
+              }}
+            >
+              <Share2 size={20} />
+            </button>
+
+            {shareMenuId === entry.id && (
+              <div className="chain-share-menu" onClick={(event) => event.stopPropagation()}>
+                <Link
+                  to={link}
+                  state={{
+                    book: {
+                      id: entry.bookId,
+                      bookId: entry.bookId,
+                      title: entry.title,
+                      author: entry.author
+                    },
+                    addFromChain: true,
+                    sourceChainEntry: entry
+                  }}
+                  className="chain-share-menu-item"
+                  onClick={(event) => {
+                    if (!user) {
+                      event.preventDefault();
+                      requireLogin();
+                      return;
+                    }
+                    setShareMenuId(null);
+                  }}
+                >
+                  Add to My Notes
+                </Link>
+
+                <button
+                  type="button"
+                  className="chain-share-menu-item"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    openDiscussInGroup(entry);
+                  }}
+                >
+                  Discuss in Group
+                </button>
+
+                <button
+                  type="button"
+                  className="chain-share-menu-item"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setShareMenuId(null);
+                    handleShare(entry);
+                  }}
+                >
+                  Share Link
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="public-entry-meta">
+          {entry.paragraphNumber && <span>Paragraph {entry.paragraphNumber}</span>}
+          {entry.updatedAtISO && <span>Edited</span>}
+        </div>
+
+        {entry.paragraphPreview && (
+          <div className="public-entry-quote">
+            <p>“{entry.paragraphPreview}”</p>
+          </div>
+        )}
+
+        <p className="public-journal-note">{entry.note}</p>
+
+        <div className="chain-level-selection">
+          {selected ? (
+            <span>Selected · swipe right to follow</span>
+          ) : (
+            <span>Tap to select this link</span>
+          )}
+        </div>
+
+        <div className="margins-actions" onClick={(event) => event.stopPropagation()}>
+          <Link
+            to={`${link}${link.includes("?") ? "&" : "?"}note=${encodeURIComponent(entry.id)}`}
+            state={{
+              book: {
+                id: entry.bookId,
+                bookId: entry.bookId,
+                title: entry.title,
+                author: entry.author
+              }
+            }}
+            className="margin-action"
+          >
+            <BookOpen size={17} />
+            Read Context
+          </Link>
+
+          <button
+            type="button"
+            className={replyOpen ? "margin-action active" : "margin-action"}
+            onClick={() => openReply(entry)}
+          >
+            <MessageCircle size={17} />
+            Reply{replies.length > 0 ? ` (${replies.length})` : ""}
+          </button>
+
+          <button
+            type="button"
+            className={isSaved ? "margin-action active" : "margin-action"}
+            onClick={() => handleSave(entry)}
+          >
+            <Bookmark size={17} fill={isSaved ? "currentColor" : "none"} />
+            {isSaved ? "Saved" : "Save"}
+          </button>
+
+          <button
+            type="button"
+            className="margin-action report"
+            onClick={() => {
+              if (requireLogin()) {
+                setReportEntry(entry);
+                setReportReason("harassment");
+                setReportDetails("");
+              }
+            }}
+          >
+            <Flag size={17} />
+            Report
+          </button>
+        </div>
+
+        {discussEntry?.id === entry.id && (
+          <form
+            className="chain-discussion-composer"
+            onSubmit={handleCreateGroupDiscussion}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="margin-reply-heading">
+              <strong>Discuss in Group</strong>
+              <button
+                type="button"
+                className="margin-close-button"
+                onClick={() => setDiscussEntry(null)}
+                aria-label="Close group discussion"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="chain-discussion-source">
+              <small>From The Chain</small>
+              <strong>{discussEntry.title || "Untitled"}</strong>
+              {discussEntry.author && <span>{discussEntry.author}</span>}
+              {discussEntry.paragraphNumber && (
+                <span>Paragraph {discussEntry.paragraphNumber}</span>
+              )}
+              {discussEntry.note && <p>“{discussEntry.note}”</p>}
+            </div>
+
+            <label>
+              Group
+              <select
+                value={discussionGroupId}
+                onChange={(event) => setDiscussionGroupId(event.target.value)}
+                disabled={groupsLoading}
+              >
+                <option value="">
+                  {groupsLoading ? "Loading groups..." : "Choose a group..."}
+                </option>
+                {myGroups.map((item) => (
+                  <option key={item.id || item.groupId} value={item.id || item.groupId}>
+                    {item.name || "Reading Group"}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Discussion title
+              <input
+                value={discussionTitle}
+                onChange={(event) => setDiscussionTitle(event.target.value)}
+                maxLength={200}
+              />
+            </label>
+
+            <label>
+              Your comment
+              <textarea
+                rows={4}
+                value={discussionBody}
+                onChange={(event) => setDiscussionBody(event.target.value)}
+                maxLength={2000}
+              />
+            </label>
+
+            <button
+              className="button primary"
+              disabled={discussionPosting || groupsLoading || !myGroups.length}
+            >
+              {discussionPosting ? "Posting..." : "Start Discussion"}
+            </button>
+          </form>
+        )}
+
+        {replyOpen && (
+          <div className="margin-reply-box" onClick={(event) => event.stopPropagation()}>
+            <div className="margin-reply-heading">
+              <strong>Reply</strong>
+              <button
+                type="button"
+                className="margin-close-button"
+                onClick={() => {
+                  setOpenReplyId(null);
+                  setReplyText("");
+                }}
+                aria-label="Close reply"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <textarea
+              rows={4}
+              maxLength={3000}
+              value={replyText}
+              onChange={(event) => setReplyText(event.target.value)}
+              placeholder="Add to the conversation…"
+            />
+
+            <button
+              type="button"
+              className="button primary"
+              disabled={replying || !replyText.trim()}
+              onClick={() => handleReply(entry)}
+            >
+              <Send size={16} />
+              {replying ? "Posting..." : "Post Reply"}
+            </button>
+
+            {repliesLoading[entry.id] && <p className="muted">Loading replies…</p>}
+
+            {replies.length > 0 && (
+              <div className="margin-replies">
+                {replies.map((reply) => (
+                  <div key={reply.id} className="margin-reply">
+                    <div>
+                      <strong>{reply.reader?.displayName || "Reader"}</strong>
+                      <small>{formatDate(reply.createdAtISO || reply.createdAt)}</small>
+                    </div>
+                    <p>{reply.note}</p>
+                    {reply.userId === user?.uid && (
+                      <button
+                        type="button"
+                        className="margin-action report"
+                        onClick={() => handleDeleteReply(entry, reply)}
+                      >
+                        <Trash2 size={14} />
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </article>
+    );
+  }
+
+  function renderGroupDiscussionCard(item, index) {
+    const selected = index === currentSelectedIndex;
+    return (
+      <article
+        key={`group_${item.groupId}_${item.id}`}
+        className={[
+          "margins-entry",
+          "chain-level-card",
+          "chain-level-discussion",
+          selected ? "selected" : ""
+        ].filter(Boolean).join(" ")}
+        onClick={() => selectLevelItem(index)}
+      >
+        <p className="eyebrow">Group discussion</p>
+        <h3>{item.title || "Group discussion"}</h3>
+        {item.group?.name && <p className="muted">{item.group.name}</p>}
+        {item.body && <p>{item.body}</p>}
+        <Link
+          to={`/read/groups/${item.groupId}`}
+          className="button secondary"
+          onClick={(event) => event.stopPropagation()}
+        >
+          Open Discussion
+        </Link>
+      </article>
+    );
+  }
+
   return (
-    <main className="page-wrap">
+    <main
+      className="page-wrap chain-browser-page"
+      onTouchStart={handleChainTouchStart}
+      onTouchEnd={handleChainTouchEnd}
+    >
       <SEO
         title="Lit Chain"
-        description="Notes, questions, observations, and discoveries from readers across the library."
+        description="Follow ideas outward from literature through connected reader notes and discussions."
         path="/read"
       />
 
@@ -633,8 +1025,8 @@ export default function Chain() {
           <p className="eyebrow">Reader Community</p>
           <h1>Lit Chain</h1>
           <p className="muted">
-            Notes, questions, observations, and discoveries from readers
-            across the library.
+            Start with the literature. Swipe right to follow a thought deeper.
+            Scroll vertically to explore other links at the same level.
           </p>
         </section>
 
@@ -644,12 +1036,57 @@ export default function Chain() {
               key={value}
               type="button"
               className={filter === value ? "margins-filter active" : "margins-filter"}
-              onClick={() => setFilter(value)}
+              onClick={() => {
+                setFilter(value);
+                setLevels([]);
+              }}
             >
               {value.charAt(0).toUpperCase() + value.slice(1)}
             </button>
           ))}
         </section>
+
+        <nav className="chain-depth-bar" aria-label="Chain depth">
+          <button
+            type="button"
+            className="chain-depth-back"
+            disabled={currentDepth === 0}
+            onClick={goBackOneLevel}
+          >
+            <ChevronLeft size={18} />
+            Back
+          </button>
+
+          <div className="chain-depth-path">
+            <span className={currentDepth === 0 ? "active" : ""}>Source</span>
+            {levels.map((level, index) => (
+              <span
+                key={`${index}_${level.parent?.id || level.parent?.bookId || "level"}`}
+                className={index === levels.length - 1 ? "active" : ""}
+              >
+                <ChevronRight size={13} />
+                Level {index + 1}
+              </span>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="chain-depth-forward"
+            disabled={
+              levelLoading ||
+              (currentDepth === 0
+                ? !selectedSourceBook
+                : !currentSelectedItem || currentSelectedItem.nodeType === "group")
+            }
+            onClick={() =>
+              currentDepth === 0 ? enterSourceBook() : followSelectedIdea()
+            }
+          >
+            Follow
+            <ChevronRight size={18} />
+          </button>
+        </nav>
 
         {status && <p className="status">{status}</p>}
 
@@ -659,581 +1096,115 @@ export default function Chain() {
           </section>
         )}
 
-        {!loading && entries.length === 0 && (
-          <section className="panel margins-empty">
-            <p className="muted">Nothing has been posted to Lit Chain yet.</p>
+        {!loading && currentDepth === 0 && (
+          <section className="chain-source-level">
+            <div className="chain-level-heading">
+              <div>
+                <p className="eyebrow">Level 0</p>
+                <h2>Lit Chain Source</h2>
+              </div>
+              <span>{sourceBooks.length} books</span>
+            </div>
+
+            {sourceBooks.length === 0 ? (
+              <div className="panel margins-empty">
+                <p className="muted">
+                  No source-linked notes are available in this view yet.
+                </p>
+              </div>
+            ) : (
+              <div className="chain-source-list">
+                {sourceBooks.map((book) => {
+                  const selected =
+                    String(book.id) === String(selectedSourceBook?.id);
+
+                  return (
+                    <button
+                      key={book.id}
+                      type="button"
+                      className={selected ? "chain-source-book selected" : "chain-source-book"}
+                      onClick={() => setSelectedBookId(String(book.id))}
+                      onDoubleClick={() => enterSourceBook(book)}
+                    >
+                      <div>
+                        <strong>{book.title}</strong>
+                        {book.author && <span>{book.author}</span>}
+                      </div>
+                      <small>
+                        {book.linkCount} {book.linkCount === 1 ? "link" : "links"}
+                      </small>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="chain-swipe-cue">
+              <ArrowRight size={18} />
+              <span>Swipe right to enter the selected book's Chain</span>
+            </div>
           </section>
         )}
 
-        {!loading && entries.length > 0 && (
-          <div className="margins-feed">
-            {entries.map((entry) => {
-              const reader = entry.reader;
-              const avatar = getProfileAvatar(reader?.avatar);
-              const groupAvatar = getGroupAvatar(entry.group?.avatar);
-              const isSaved = savedKeys.has(savedChainKey(entry));
-              const replyOpen = openReplyId === entry.id;
-              const replies = repliesByEntry[entry.id] || [];
-              const link = readingLink(entry);
-              const ideaRootKey = savedChainKey(entry);
-              const ideaOpen = ideaWindowRootId === ideaRootKey;
-              const ideaCurrent = ideaCurrentByRoot[ideaRootKey] || toIdeaNode(entry, "note");
-              const ideaCurrentKey = ideaNodeKey(ideaCurrent);
-              const ideaData = ideaDataByNode[ideaCurrentKey] || null;
-              const ideaBranches = ideaData?.branches || [];
-              const ideaBranchIndex = Math.min(
-                ideaBranchIndexByNode[ideaCurrentKey] || 0,
-                Math.max(ideaBranches.length - 1, 0)
-              );
-              const ideaSelectedBranch = ideaBranches[ideaBranchIndex] || null;
+        {!loading && currentDepth > 0 && (
+          <section className="chain-link-level">
+            <div className="chain-level-heading">
+              <div>
+                <p className="eyebrow">Level {currentDepth}</p>
+                <h2>
+                  {currentDepth === 1
+                    ? currentLevel?.parent?.title || "Linked ideas"
+                    : "Connected ideas"}
+                </h2>
+                {currentDepth === 1 && currentLevel?.parent?.author && (
+                  <p className="muted">{currentLevel.parent.author}</p>
+                )}
+              </div>
+              <span>
+                {currentItems.length} {currentItems.length === 1 ? "link" : "links"}
+              </span>
+            </div>
 
-              return (
-                <article
-                  key={entry.id}
-                  id={`chain-${entry.id}`}
-                  className="margins-entry"
-                >
-                  <div className="margins-reader-row">
-                    <Link
-                      to={`/read/public/${entry.userId}`}
-                      className="margins-reader-link"
-                    >
-                      <div className="margins-reader-avatar">
-                        {avatar ? <img src={avatar.image} alt="" /> : <Users size={20} />}
-                      </div>
-                      <div>
-                        <strong>{reader?.displayName || "Reader"}</strong>
-                        <small>{formatDate(entry.updatedAtISO || entry.createdAt)}</small>
-                      </div>
-                    </Link>
-                  </div>
+            {levelLoading && (
+              <div className="panel">
+                <p className="muted">Following the Chain…</p>
+              </div>
+            )}
 
-                  {entry.group && (
-                    <Link
-                      to={`/read/groups/${entry.groupId || entry.group.id}`}
-                      className="margins-group-link"
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "0.55rem",
-                        marginBottom: "0.9rem",
-                        padding: "0.4rem 0.65rem",
-                        borderRadius: 999,
-                        background: "#eef4f3",
-                        textDecoration: "none",
-                        color: "inherit"
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 30,
-                          height: 30,
-                          borderRadius: "50%",
-                          overflow: "hidden",
-                          background: "#fff",
-                          display: "grid",
-                          placeItems: "center"
-                        }}
-                      >
-                        {groupAvatar ? (
-                          <img
-                            src={groupAvatar.image}
-                            alt=""
-                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                          />
-                        ) : (
-                          <Users size={16} />
-                        )}
-                      </div>
-                      <strong>{entry.group.name}</strong>
-                    </Link>
-                  )}
+            {!levelLoading && currentItems.length === 0 && (
+              <div className="panel margins-empty">
+                <p className="muted">
+                  This thought does not have another visible link yet.
+                </p>
+                <p className="muted">
+                  Swipe left or use Back to return to the previous level.
+                </p>
+              </div>
+            )}
 
-                  <div className="public-entry-heading">
-                    <div>
-                      <p className="eyebrow">Reading</p>
-                      <Link
-                        to={`${link}${link.includes("?") ? "&" : "?"}note=${encodeURIComponent(entry.id)}`}
-                        state={{
-                          book: {
-                            id: entry.bookId,
-                            bookId: entry.bookId,
-                            title: entry.title,
-                            author: entry.author
-                          }
-                        }}
-                        className="public-entry-book-title"
-                      >
-                        {entry.title || "Untitled"}
-                      </Link>
-                      {entry.author && (
-                        <p className="public-entry-author">{entry.author}</p>
-                      )}
-                    </div>
+            {!levelLoading && currentItems.length > 0 && (
+              <div className="margins-feed chain-level-list">
+                {currentItems.map((item, index) =>
+                  item.nodeType === "group"
+                    ? renderGroupDiscussionCard(item, index)
+                    : renderNoteCard(item, index)
+                )}
+              </div>
+            )}
 
-                    <div className="chain-share-menu-wrap chain-share-menu-top">
-                      <button
-                        type="button"
-                        className="public-entry-book-icon"
-                        aria-label="Share this Chain post"
-                        title="Share"
-                        aria-expanded={shareMenuId === entry.id}
-                        onClick={() =>
-                          setShareMenuId((current) =>
-                            current === entry.id ? null : entry.id
-                          )
-                        }
-                      >
-                        <Share2 size={20} />
-                      </button>
-
-                      {shareMenuId === entry.id && (
-                        <div className="chain-share-menu">
-                          <Link
-                            to={link}
-                            state={{
-                              book: {
-                                id: entry.bookId,
-                                bookId: entry.bookId,
-                                title: entry.title,
-                                author: entry.author
-                              },
-                              addFromChain: true,
-                              sourceChainEntry: entry
-                            }}
-                            className="chain-share-menu-item"
-                            onClick={(event) => {
-                              if (!user) {
-                                event.preventDefault();
-                                requireLogin();
-                                return;
-                              }
-                              setShareMenuId(null);
-                            }}
-                          >
-                            Add to My Notes
-                          </Link>
-
-                          <button
-                            type="button"
-                            className="chain-share-menu-item"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              openDiscussInGroup(entry);
-                            }}
-                          >
-                            Discuss in Group
-                          </button>
-
-                          <button
-                            type="button"
-                            className="chain-share-menu-item"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setShareMenuId(null);
-                              handleShare(entry);
-                            }}
-                          >
-                            Share Link
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="public-entry-meta">
-                    {entry.paragraphNumber && (
-                      <span>Paragraph {entry.paragraphNumber}</span>
-                    )}
-                    {entry.updatedAtISO && <span>Edited</span>}
-                  </div>
-
-                  {entry.paragraphPreview && (
-                    <div className="public-entry-quote">
-                      <p>“{entry.paragraphPreview}”</p>
-                    </div>
-                  )}
-
-                  <p className="public-journal-note">{entry.note}</p>
-
-                  <button
-                    type="button"
-                    className={ideaOpen ? "chain-thought-toggle active" : "chain-thought-toggle"}
-                    onClick={() => openIdeaWindow(entry)}
-                    aria-expanded={ideaOpen}
-                  >
-                    <span>Continue Chain</span>
-                    <span className="chain-thought-toggle-hint">
-                      Follow the thought
-                    </span>
-                  </button>
-
-                  {ideaOpen && (
-                    <section
-                      className="chain-thought-window"
-                      aria-label="Idea chain navigator"
-                      onTouchStart={handleIdeaTouchStart}
-                      onTouchEnd={(event) => handleIdeaTouchEnd(event, ideaRootKey)}
-                    >
-                      <div className="chain-thought-breadcrumb">
-                        <span>{ideaCurrent.nodeType === "group" ? "Discussion" : "Note"}</span>
-                        <span>•</span>
-                        <span>
-                          {ideaCurrent.paragraphNumber
-                            ? `Paragraph ${ideaCurrent.paragraphNumber}`
-                            : ideaCurrent.title || "Linked idea"}
-                        </span>
-                      </div>
-
-                      {ideaLoadingByNode[ideaCurrentKey] ? (
-                        <div className="chain-thought-loading">
-                          <p className="muted">Following the chain…</p>
-                        </div>
-                      ) : (
-                        <div className="chain-thought-stage">
-                          <button
-                            type="button"
-                            className="chain-thought-direction chain-thought-up"
-                            disabled={ideaBranches.length < 2}
-                            onClick={() => moveIdea(ideaRootKey, "up")}
-                            aria-label="Previous linked idea"
-                          >
-                            <ArrowUp size={18} />
-                            <span>
-                              {ideaBranches.length > 1
-                                ? `Idea ${ideaBranchIndex + 1} of ${ideaBranches.length}`
-                                : "Other ideas"}
-                            </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            className="chain-thought-direction chain-thought-left"
-                            disabled={!ideaData?.source && ideaCurrent.nodeType !== "group"}
-                            onClick={() => moveIdea(ideaRootKey, "left")}
-                            aria-label="Go back to source"
-                          >
-                            <ArrowLeft size={18} />
-                            <span>Source</span>
-                          </button>
-
-                          <article className="chain-thought-current">
-                            <small>{ideaNodeLabel(ideaCurrent)}</small>
-                            <strong>{ideaCurrent.title || "Linked idea"}</strong>
-
-                            {ideaCurrent.author && (
-                              <span>{ideaCurrent.author}</span>
-                            )}
-
-                            {ideaCurrent.paragraphNumber && (
-                              <span>Paragraph {ideaCurrent.paragraphNumber}</span>
-                            )}
-
-                            {ideaCurrent.note && (
-                              <p>“{String(ideaCurrent.note).slice(0, 320)}”</p>
-                            )}
-
-                            {ideaCurrent.nodeType === "group" ? (
-                              <Link
-                                className="button secondary"
-                                to={`/read/groups/${ideaCurrent.groupId}`}
-                              >
-                                Open Discussion
-                              </Link>
-                            ) : (
-                              ideaCurrent.bookId && (
-                                <Link
-                                  className="button secondary"
-                                  to={`${readingLink(ideaCurrent)}&note=${encodeURIComponent(ideaCurrent.id)}`}
-                                  state={{
-                                    book: {
-                                      id: ideaCurrent.bookId,
-                                      bookId: ideaCurrent.bookId,
-                                      title: ideaCurrent.title,
-                                      author: ideaCurrent.author
-                                    }
-                                  }}
-                                >
-                                  Read Context
-                                </Link>
-                              )
-                            )}
-                          </article>
-
-                          <button
-                            type="button"
-                            className="chain-thought-direction chain-thought-right"
-                            disabled={!ideaSelectedBranch}
-                            onClick={() => moveIdea(ideaRootKey, "right")}
-                            aria-label="Follow linked idea"
-                          >
-                            <ArrowRight size={18} />
-                            <span>
-                              {ideaSelectedBranch
-                                ? ideaNodeLabel(ideaSelectedBranch)
-                                : "Next idea"}
-                            </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            className="chain-thought-direction chain-thought-down"
-                            disabled={ideaBranches.length < 2}
-                            onClick={() => moveIdea(ideaRootKey, "down")}
-                            aria-label="Next linked idea"
-                          >
-                            <ArrowDown size={18} />
-                            <span>
-                              {ideaBranches.length > 1
-                                ? `${ideaBranches.length} linked ideas`
-                                : "Other ideas"}
-                            </span>
-                          </button>
-                        </div>
-                      )}
-
-                      <div className="chain-thought-legend">
-                        <span>← source</span>
-                        <span>↑↓ other ideas</span>
-                        <span>linked idea →</span>
-                      </div>
-                    </section>
-                  )}
-
-                  <div className="margins-actions">
-                    <Link
-                      to={`${link}${link.includes("?") ? "&" : "?"}note=${encodeURIComponent(entry.id)}`}
-                      state={{
-                        book: {
-                          id: entry.bookId,
-                          bookId: entry.bookId,
-                          title: entry.title,
-                          author: entry.author
-                        }
-                      }}
-                      className="margin-action"
-                    >
-                      <BookOpen size={17} />
-                      Read Context
-                    </Link>
-
-                    <button
-                      type="button"
-                      className={replyOpen ? "margin-action active" : "margin-action"}
-                      onClick={() => openReply(entry)}
-                    >
-                      <MessageCircle size={17} />
-                      Reply{replies.length > 0 ? ` (${replies.length})` : ""}
-                    </button>
-
-                    <button
-                      type="button"
-                      className={isSaved ? "margin-action active" : "margin-action"}
-                      onClick={() => handleSave(entry)}
-                    >
-                      <Bookmark size={17} fill={isSaved ? "currentColor" : "none"} />
-                      {isSaved ? "Saved" : "Save"}
-                    </button>
-
-                    <button
-                      type="button"
-                      className="margin-action report"
-                      onClick={() => {
-                        if (requireLogin()) {
-                          setReportEntry(entry);
-                          setReportReason("harassment");
-                          setReportDetails("");
-                        }
-                      }}
-                    >
-                      <Flag size={17} />
-                      Report
-                    </button>
-
-                  </div>
-
-                  {discussEntry?.id === entry.id && (
-                    <form
-                      className="chain-discussion-composer"
-                      onSubmit={handleCreateGroupDiscussion}
-                    >
-                      <div className="margin-reply-heading">
-                        <strong>Discuss in Group</strong>
-                        <button
-                          type="button"
-                          className="margin-close-button"
-                          onClick={() => setDiscussEntry(null)}
-                          aria-label="Close group discussion"
-                        >
-                          <X size={18} />
-                        </button>
-                      </div>
-
-                      <div className="chain-discussion-source">
-                        <small>From The Chain</small>
-                        <strong>{discussEntry.title || "Untitled"}</strong>
-                        {discussEntry.author && <span>{discussEntry.author}</span>}
-                        {discussEntry.paragraphNumber && (
-                          <span>Paragraph {discussEntry.paragraphNumber}</span>
-                        )}
-                        {discussEntry.note && <p>“{discussEntry.note}”</p>}
-                      </div>
-
-                      <label>
-                        Group
-                        <select
-                          value={discussionGroupId}
-                          onChange={(event) =>
-                            setDiscussionGroupId(event.target.value)
-                          }
-                          disabled={groupsLoading}
-                        >
-                          <option value="">
-                            {groupsLoading
-                              ? "Loading groups..."
-                              : "Choose a group..."}
-                          </option>
-                          {myGroups.map((item) => (
-                            <option
-                              key={item.id || item.groupId}
-                              value={item.id || item.groupId}
-                            >
-                              {item.name || "Reading Group"}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      {!groupsLoading && myGroups.length === 0 && (
-                        <p className="muted">
-                          Join or create a group before starting a group discussion.
-                        </p>
-                      )}
-
-                      <label>
-                        Discussion title
-                        <input
-                          value={discussionTitle}
-                          onChange={(event) =>
-                            setDiscussionTitle(event.target.value)
-                          }
-                          maxLength={200}
-                        />
-                      </label>
-
-                      <label>
-                        Your comment
-                        <textarea
-                          rows={4}
-                          value={discussionBody}
-                          onChange={(event) =>
-                            setDiscussionBody(event.target.value)
-                          }
-                          maxLength={2000}
-                          placeholder="What would you like the group to discuss?"
-                        />
-                      </label>
-
-                      <button
-                        className="button primary"
-                        disabled={
-                          discussionPosting ||
-                          groupsLoading ||
-                          !myGroups.length
-                        }
-                      >
-                        {discussionPosting ? "Posting..." : "Start Discussion"}
-                      </button>
-                    </form>
-                  )}
-
-                  {replyOpen && (
-                    <div className="margin-reply-box">
-                      <div className="margin-reply-heading">
-                        <strong>Reply</strong>
-                        <button
-                          type="button"
-                          className="margin-close-button"
-                          onClick={() => {
-                            setOpenReplyId(null);
-                            setReplyText("");
-                          }}
-                          aria-label="Close reply"
-                        >
-                          <X size={18} />
-                        </button>
-                      </div>
-
-                      <textarea
-                        value={replyText}
-                        onChange={(event) => setReplyText(event.target.value)}
-                        rows={4}
-                        maxLength={1000}
-                        placeholder={`Reply to ${reader?.displayName || "this reader"}...`}
-                      />
-
-                      <div className="button-row">
-                        <button
-                          type="button"
-                          className="button primary"
-                          disabled={replying}
-                          onClick={() => handleReply(entry)}
-                        >
-                          <Send size={16} />
-                          {replying ? "Posting..." : "Post Reply"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {replyOpen && repliesLoading[entry.id] && (
-                    <div className="margin-replies">
-                      <p className="muted">Loading replies...</p>
-                    </div>
-                  )}
-
-                  {replyOpen && !repliesLoading[entry.id] && replies.length > 0 && (
-                    <div className="margin-replies">
-                      {replies.map((reply) => (
-                        <div key={reply.id} className="margin-reply">
-                          <div>
-                            <strong>
-                              {reply.reader?.displayName ||
-                                reply.profile?.displayName ||
-                                "Reader"}
-                            </strong>
-                            <small>{formatDate(reply.createdAtISO || reply.createdAt)}</small>
-                          </div>
-                          <p>{reply.note}</p>
-
-                          {reply.canDelete && (
-                            <button
-                              type="button"
-                              className="margin-action report"
-                              onClick={() => handleDeleteReply(entry, reply)}
-                            >
-                              <Trash2 size={15} />
-                              Delete
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </article>
-              );
-            })}
-          </div>
+            <div className="chain-swipe-cue chain-swipe-cue-split">
+              <span><ArrowLeft size={17} /> Swipe left: back</span>
+              <span>Swipe right: follow <ArrowRight size={17} /></span>
+            </div>
+          </section>
         )}
       </div>
 
       {reportEntry && (
-        <div className="modal-backdrop" role="presentation">
-          <form className="modal-card" onSubmit={handleReport}>
+        <div className="modal-backdrop">
+          <section className="modal-card">
             <div className="margin-reply-heading">
-              <strong>Report Chain post</strong>
+              <strong>Report Chain Post</strong>
               <button
                 type="button"
                 className="margin-close-button"
@@ -1251,10 +1222,10 @@ export default function Chain() {
                 onChange={(event) => setReportReason(event.target.value)}
               >
                 <option value="harassment">Harassment</option>
+                <option value="hate">Hate or abuse</option>
                 <option value="spam">Spam</option>
-                <option value="hate">Hate or abusive content</option>
                 <option value="sexual">Sexual content</option>
-                <option value="copyright">Copyright concern</option>
+                <option value="violence">Violence or threats</option>
                 <option value="other">Other</option>
               </select>
             </label>
@@ -1265,14 +1236,18 @@ export default function Chain() {
                 rows={4}
                 value={reportDetails}
                 onChange={(event) => setReportDetails(event.target.value)}
-                maxLength={1000}
               />
             </label>
 
-            <button className="button primary" disabled={reporting}>
+            <button
+              type="button"
+              className="button primary"
+              disabled={reporting}
+              onClick={handleReport}
+            >
               {reporting ? "Submitting..." : "Submit Report"}
             </button>
-          </form>
+          </section>
         </div>
       )}
     </main>
