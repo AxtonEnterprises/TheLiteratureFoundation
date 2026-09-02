@@ -1351,10 +1351,11 @@ function writeChainBranchCache(sourceEntry, value) {
 }
 
 export function prefetchChainBranches(sourceEntry) {
-  if (!sourceEntry?.id) return;
+  if (!sourceEntry?.id) return Promise.resolve(null);
 
-  getChainBranches(sourceEntry).catch((error) => {
+  return getChainBranches(sourceEntry).catch((error) => {
     console.warn("Could not prefetch Chain branches:", error);
+    return null;
   });
 }
 
