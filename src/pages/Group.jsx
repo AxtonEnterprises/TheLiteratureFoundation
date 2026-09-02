@@ -32,7 +32,10 @@ import {
   BookOpen,
   AlertTriangle,
   History,
-  RotateCcw
+  RotateCcw,
+  Link2,
+  Unlink2,
+  Plus
 } from "lucide-react";
 
 import { auth } from "../firebase";
@@ -62,7 +65,9 @@ import {
   deleteGroupForumReply,
   getGroupForumPosts,
   getGroupForumReplies,
+  getMyGroupForumVote,
   replyToGroupForumPost,
+  voteOnGroupForumNode,
   updateGroupForumPost,
   updateGroupProfile
 } from "../services/groupsPhase3A.js";
@@ -391,12 +396,42 @@ export default function Group() {
   const [
     activeTab,
     setActiveTab
-  ] = useState("overview");
+  ] = useState("forum");
 
   const [
-    groupSwipeStartX,
-    setGroupSwipeStartX
+    discussionIndex,
+    setDiscussionIndex
+  ] = useState(0);
+
+  const [
+    spatialSwipeStartX,
+    setSpatialSwipeStartX
   ] = useState(null);
+
+  const [
+    replyModePostId,
+    setReplyModePostId
+  ] = useState(null);
+
+  const [
+    replyLevels,
+    setReplyLevels
+  ] = useState([]);
+
+  const [
+    discussionComposerOpen,
+    setDiscussionComposerOpen
+  ] = useState(false);
+
+  const [
+    replyComposerParentId,
+    setReplyComposerParentId
+  ] = useState(undefined);
+
+  const [
+    forumVotes,
+    setForumVotes
+  ] = useState({});
 
   const [
     loading,
@@ -1399,6 +1434,8 @@ export default function Group() {
 
       setTopicTitle("");
       setTopicBody("");
+      setDiscussionComposerOpen(false);
+      setDiscussionIndex(0);
 
       setForumPosts(
         await getGroupForumPosts(
@@ -1417,97 +1454,336 @@ export default function Group() {
     }
   }
 
-  async function openTopic(post) {
-    if (
-      openTopicId === post.id
-    ) {
-      setOpenTopicId(null);
-      setReplyText("");
+  function replyChildren(replies, parentReplyId) {
+    const replyIds = new Set(
+      replies.map((reply) => String(reply.id))
+    );
+
+    return replies
+      .filter((reply) =>
+        parentReplyId
+          ? String(reply.parentReplyId || "") === String(parentReplyId)
+          : (
+              !reply.parentReplyId
+              || !replyIds.has(String(reply.parentReplyId))
+            )
+      )
+      .sort((a, b) => {
+        const scoreDifference =
+          Number(b.forumScore || 0) - Number(a.forumScore || 0);
+
+        if (scoreDifference !== 0) return scoreDifference;
+
+        const upDifference =
+          Number(b.forumUpCount || 0) - Number(a.forumUpCount || 0);
+
+        if (upDifference !== 0) return upDifference;
+
+        return String(a.createdAtISO || "").localeCompare(
+          String(b.createdAtISO || "")
+        );
+      });
+  }
+
+  async function loadTopicReplies(post) {
+    setBusyTopicId(post.id);
+    setStatus("");
+
+    try {
+      const replies = await getGroupForumReplies(
+        groupId,
+        post.id
+      );
+
+      setForumReplies((current) => ({
+        ...current,
+        [post.id]: replies
+      }));
+
+      return replies;
+    } catch (error) {
+      setStatus(
+        error?.message || "We couldn't load that discussion."
+      );
+      return [];
+    } finally {
+      setBusyTopicId(null);
+    }
+  }
+
+  async function enterTopicReplies(post) {
+    const replies =
+      forumReplies[post.id] || await loadTopicReplies(post);
+    const roots = replyChildren(replies, null);
+
+    if (!roots.length) {
+      setReplyComposerParentId(null);
       return;
     }
 
-    try {
-      setBusyTopicId(
-        post.id
-      );
+    setReplyModePostId(post.id);
+    setReplyLevels([
+      {
+        parentReplyId: null,
+        items: roots,
+        selectedIndex: 0
+      }
+    ]);
+    setReplyText("");
+  }
 
+  function currentReplyItem() {
+    const level = replyLevels[replyLevels.length - 1];
+    return level?.items?.[level.selectedIndex] || null;
+  }
+
+  function enterReplyChildren(post, reply) {
+    const allReplies = forumReplies[post.id] || [];
+    const children = replyChildren(allReplies, reply.id);
+
+    if (!children.length) {
+      setReplyComposerParentId(reply.id);
+      return;
+    }
+
+    setReplyLevels((current) => [
+      ...current,
+      {
+        parentReplyId: reply.id,
+        items: children,
+        selectedIndex: 0
+      }
+    ]);
+  }
+
+  function backReplyDepth() {
+    if (replyLevels.length > 1) {
+      setReplyLevels((current) => current.slice(0, -1));
+      return;
+    }
+
+    setReplyLevels([]);
+    setReplyModePostId(null);
+  }
+
+  async function sendForumReply(
+    post,
+    parentReplyId = null
+  ) {
+    if (!replyText.trim()) return;
+
+    try {
+      setBusyTopicId(post.id);
       setStatus("");
 
-      const replies =
-        await getGroupForumReplies(
-          groupId,
-          post.id
-        );
-
-      setForumReplies(
-        (current) => ({
-          ...current,
-          [post.id]: replies
-        })
+      const created = await replyToGroupForumPost(
+        groupId,
+        post.id,
+        replyText,
+        { parentReplyId }
       );
 
-      setOpenTopicId(
+      const replies = await getGroupForumReplies(
+        groupId,
         post.id
       );
 
+      setForumReplies((current) => ({
+        ...current,
+        [post.id]: replies
+      }));
+
       setReplyText("");
+      setReplyComposerParentId(undefined);
+
+      setForumPosts(
+        await getGroupForumPosts(groupId)
+      );
+
+      if (replyModePostId === post.id) {
+        const nextItems = replyChildren(replies, parentReplyId);
+        setReplyLevels((current) => {
+          if (!current.length) {
+            return [{
+              parentReplyId,
+              items: nextItems,
+              selectedIndex: Math.max(
+                0,
+                nextItems.findIndex((item) => item.id === created.id)
+              )
+            }];
+          }
+
+          const next = [...current];
+          const lastIndex = next.length - 1;
+          if (String(next[lastIndex].parentReplyId || "") === String(parentReplyId || "")) {
+            next[lastIndex] = {
+              ...next[lastIndex],
+              items: nextItems,
+              selectedIndex: Math.max(
+                0,
+                nextItems.findIndex((item) => item.id === created.id)
+              )
+            };
+          }
+          return next;
+        });
+      }
     } catch (error) {
       setStatus(
-        error?.message ||
-          "We couldn't load that discussion."
+        error?.message || "We couldn't post that reply."
       );
     } finally {
       setBusyTopicId(null);
     }
   }
 
-  async function sendForumReply(
-    post
-  ) {
-    if (!replyText.trim()) {
+  function voteKey(targetType, targetId) {
+    return `${targetType}:${targetId}`;
+  }
+
+  async function ensureForumVote(targetType, targetId) {
+    const key = voteKey(targetType, targetId);
+    if (Object.prototype.hasOwnProperty.call(forumVotes, key)) return;
+
+    try {
+      const direction = await getMyGroupForumVote(
+        groupId,
+        { targetType, targetId }
+      );
+      setForumVotes((current) => ({
+        ...current,
+        [key]: direction
+      }));
+    } catch (error) {
+      console.warn("Could not load forum vote:", error);
+    }
+  }
+
+  async function castForumVote(post, reply, direction) {
+    const targetType = reply ? "reply" : "post";
+    const targetId = reply?.id || post.id;
+    const key = voteKey(targetType, targetId);
+
+    try {
+      const result = await voteOnGroupForumNode(
+        groupId,
+        post.id,
+        {
+          replyId: reply?.id || null,
+          direction
+        }
+      );
+
+      setForumVotes((current) => ({
+        ...current,
+        [key]: result.direction
+      }));
+
+      if (reply) {
+        setForumReplies((current) => ({
+          ...current,
+          [post.id]: (current[post.id] || []).map((item) =>
+            item.id === reply.id
+              ? { ...item, ...result }
+              : item
+          )
+        }));
+
+        setReplyLevels((current) =>
+          current.map((level) => ({
+            ...level,
+            items: level.items.map((item) =>
+              item.id === reply.id
+                ? { ...item, ...result }
+                : item
+            )
+          }))
+        );
+      } else {
+        setForumPosts((current) =>
+          current.map((item) =>
+            item.id === post.id
+              ? { ...item, ...result }
+              : item
+          )
+        );
+      }
+    } catch (error) {
+      setStatus(
+        error?.message || "We couldn't update that vote."
+      );
+    }
+  }
+
+  function handleDiscussionScroll(event) {
+    const height = event.currentTarget.clientHeight;
+    if (!height) return;
+    const next = Math.round(event.currentTarget.scrollTop / height);
+    setDiscussionIndex(
+      Math.max(0, Math.min(forumPosts.length - 1, next))
+    );
+  }
+
+  function handleReplyScroll(event) {
+    const levelIndex = replyLevels.length - 1;
+    const height = event.currentTarget.clientHeight;
+    if (levelIndex < 0 || !height) return;
+
+    const nextIndex = Math.round(event.currentTarget.scrollTop / height);
+
+    setReplyLevels((current) => {
+      if (!current[levelIndex]) return current;
+      const next = [...current];
+      next[levelIndex] = {
+        ...next[levelIndex],
+        selectedIndex: Math.max(
+          0,
+          Math.min(next[levelIndex].items.length - 1, nextIndex)
+        )
+      };
+      return next;
+    });
+  }
+
+  function handleSpatialTouchStart(event) {
+    setSpatialSwipeStartX(
+      event.touches?.[0]?.clientX ?? null
+    );
+  }
+
+  async function handleSpatialTouchEnd(event) {
+    if (spatialSwipeStartX === null) return;
+
+    const endX = event.changedTouches?.[0]?.clientX;
+    if (typeof endX !== "number") {
+      setSpatialSwipeStartX(null);
       return;
     }
 
-    try {
-      setBusyTopicId(
-        post.id
-      );
+    const deltaX = endX - spatialSwipeStartX;
+    setSpatialSwipeStartX(null);
 
-      setStatus("");
+    if (Math.abs(deltaX) < 70) return;
 
-      await replyToGroupForumPost(
-        groupId,
-        post.id,
-        replyText
-      );
+    const post = replyModePostId
+      ? forumPosts.find((item) => item.id === replyModePostId)
+      : forumPosts[discussionIndex];
 
-      const replies =
-        await getGroupForumReplies(
-          groupId,
-          post.id
-        );
+    if (!post) return;
 
-      setForumReplies(
-        (current) => ({
-          ...current,
-          [post.id]: replies
-        })
-      );
+    if (deltaX > 0) {
+      if (replyModePostId) {
+        const reply = currentReplyItem();
+        if (reply) enterReplyChildren(post, reply);
+      } else {
+        await enterTopicReplies(post);
+      }
+      return;
+    }
 
-      setReplyText("");
-
-      setForumPosts(
-        await getGroupForumPosts(
-          groupId
-        )
-      );
-    } catch (error) {
-      setStatus(
-        error?.message ||
-          "We couldn't post that reply."
-      );
-    } finally {
-      setBusyTopicId(null);
+    if (replyModePostId) {
+      backReplyDepth();
     }
   }
 
@@ -1830,64 +2106,28 @@ export default function Group() {
     );
   }
 
-  const tabs = [
-    ["overview", "Overview"],
-    ["forum", "Forum"],
-    ["members", "Members"],
-    ...(canModerate
-      ? [["moderation", "Moderation"]]
-      : []),
-    ...(canEditSettings
-      ? [["settings", "Settings"]]
-      : [])
-  ];
+  const selectedDiscussion =
+    forumPosts[discussionIndex] || null;
 
-  const activeDepthIndex = Math.max(
-    0,
-    tabs.findIndex(([value]) => value === activeTab)
-  );
+  const selectedReply = currentReplyItem();
 
-  function moveGroupDepth(direction) {
-    const nextIndex = Math.max(
-      0,
-      Math.min(
-        tabs.length - 1,
-        activeDepthIndex + direction
-      )
-    );
+  useEffect(() => {
+    if (activeTab !== "forum") return;
 
-    if (nextIndex !== activeDepthIndex) {
-      setActiveTab(tabs[nextIndex][0]);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  }
-
-  function handleGroupTouchStart(event) {
-    setGroupSwipeStartX(
-      event.touches?.[0]?.clientX ?? null
-    );
-  }
-
-  function handleGroupTouchEnd(event) {
-    if (groupSwipeStartX === null) return;
-
-    const endX =
-      event.changedTouches?.[0]?.clientX;
-
-    if (typeof endX !== "number") {
-      setGroupSwipeStartX(null);
+    if (replyModePostId && selectedReply) {
+      ensureForumVote("reply", selectedReply.id);
       return;
     }
 
-    const deltaX = endX - groupSwipeStartX;
-    setGroupSwipeStartX(null);
-
-    if (Math.abs(deltaX) < 70) return;
-
-    // Same grammar as The Chain:
-    // left = deeper, right = back.
-    moveGroupDepth(deltaX < 0 ? 1 : -1);
-  }
+    if (selectedDiscussion) {
+      ensureForumVote("post", selectedDiscussion.id);
+    }
+  }, [
+    activeTab,
+    replyModePostId,
+    selectedReply?.id,
+    selectedDiscussion?.id
+  ]);
 
   return (
     <main
@@ -1905,50 +2145,59 @@ export default function Group() {
         noindex
       />
 
-      <div className="stack-lg">
-        <section className="group-spatial-header">
-          <div className="group-spatial-heading">
-            <GroupAvatar
-              group={group}
-              size={68}
-            />
-
-            <div className="group-spatial-heading-copy">
-              <p className="eyebrow">
-                {group.type === "class"
-                  ? "Class"
-                  : "Reading Group"}
-              </p>
-
-              <h1>{group.name}</h1>
-
-              <p className="muted">
-                {members.length} member
-                {members.length === 1 ? "" : "s"}
-                {" · "}
-                <RoleBadge role={myRole} />
-              </p>
-            </div>
-          </div>
-
-          <div
-            className="group-depth-dots"
-            aria-label={`Group level ${activeDepthIndex + 1} of ${tabs.length}`}
+      <div className="stack-lg group-spatial-shell">
+        <section className="group-floating-card">
+          <button
+            type="button"
+            className="group-floating-identity"
+            onClick={() => {
+              setActiveTab("forum");
+              setReplyModePostId(null);
+              setReplyLevels([]);
+            }}
           >
-            {tabs.map(([value, label], index) => (
-              <button
-                key={value}
-                type="button"
-                className={
-                  index === activeDepthIndex
-                    ? "group-depth-dot active"
-                    : "group-depth-dot"
-                }
-                aria-label={label}
-                title={label}
-                onClick={() => setActiveTab(value)}
-              />
-            ))}
+            <GroupAvatar group={group} size={48} />
+
+            <span>
+              <small>
+                {group.type === "class" ? "Class" : "Reading Group"}
+              </small>
+              <strong>{group.name}</strong>
+            </span>
+          </button>
+
+          <div className="group-floating-actions">
+            <button
+              type="button"
+              className={activeTab === "members" ? "active" : ""}
+              onClick={() => setActiveTab("members")}
+              aria-label="Members"
+              title="Members"
+            >
+              <Users size={20} />
+            </button>
+
+            <button
+              type="button"
+              className={
+                activeTab === "settings" || activeTab === "moderation"
+                  ? "active"
+                  : ""
+              }
+              onClick={() =>
+                setActiveTab(
+                  canEditSettings
+                    ? "settings"
+                    : canModerate
+                      ? "moderation"
+                      : "forum"
+                )
+              }
+              aria-label="Settings"
+              title={canModerate ? "Settings & moderation" : "Settings"}
+            >
+              <Settings size={20} />
+            </button>
           </div>
         </section>
 
@@ -1958,111 +2207,356 @@ export default function Group() {
           </p>
         )}
 
-        {activeTab === "overview" && (
-          <section className="group-overview-card">
-            <div className="group-overview-avatar">
-              <GroupAvatar group={group} size={112} />
-            </div>
+        {activeTab === "forum" && (
+          <section
+            className="group-forum-spatial-stage"
+            onTouchStart={handleSpatialTouchStart}
+            onTouchEnd={handleSpatialTouchEnd}
+          >
+            {!replyModePostId ? (
+              <>
+                {forumPosts.length === 0 ? (
+                  <div className="group-discussion-empty">
+                    <MessageCircle size={38} />
+                    <h2>No discussions yet</h2>
+                    <p className="muted">
+                      Start the first discussion for this group.
+                    </p>
+                    <button
+                      type="button"
+                      className="button primary"
+                      onClick={() => setDiscussionComposerOpen(true)}
+                    >
+                      <Plus size={17} />
+                      New Discussion
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    className="group-discussion-reels"
+                    onScroll={handleDiscussionScroll}
+                  >
+                    {forumPosts.map((post) => {
+                      const isAuthor = post.userId === user.uid;
+                      const canModeratePost = canModerateUserContent(post.userId);
+                      const vote = forumVotes[voteKey("post", post.id)] || 0;
 
-            <p className="eyebrow">
-              Level 0
-            </p>
+                      return (
+                        <article
+                          key={post.id}
+                          className="group-discussion-reel"
+                          onMouseEnter={() => ensureForumVote("post", post.id)}
+                        >
+                          <div className="group-discussion-card">
+                            <div className="group-discussion-meta-row">
+                              <span>
+                                {post.authorProfile?.displayName || "Reader"}
+                                {post.createdAtISO
+                                  ? ` · ${formatDate(post.createdAtISO)}`
+                                  : ""}
+                              </span>
 
-            <h2>{group.name}</h2>
+                              <div className="group-discussion-tools">
+                                {canModeratePost && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleTopic(post, "pinned")}
+                                      title={post.pinned ? "Unpin" : "Pin"}
+                                    >
+                                      <Pin size={15} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleTopic(post, "locked")}
+                                      title={post.locked ? "Unlock" : "Lock"}
+                                    >
+                                      <Lock size={15} />
+                                    </button>
+                                  </>
+                                )}
 
-            {group.description && (
-              <p className="group-overview-description">
-                {group.description}
-              </p>
-            )}
+                                {(canModeratePost || isAuthor) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteTopic(post)}
+                                    title="Delete"
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                )}
 
-            <div className="group-overview-meta">
-              <span>
-                <Users size={16} />
-                {members.length} member
-                {members.length === 1 ? "" : "s"}
-              </span>
+                                {!isAuthor && (
+                                  <button
+                                    type="button"
+                                    onClick={() => reportForumPost(post)}
+                                    title="Report"
+                                  >
+                                    <Flag size={15} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
 
-              <span>
-                <RoleBadge role={myRole} />
-              </span>
-            </div>
+                            <div className="group-discussion-copy">
+                              <p className="eyebrow">
+                                {post.pinned ? "Pinned Discussion" : "Discussion"}
+                              </p>
+                              <h1>{post.title}</h1>
+                              <p>{post.body}</p>
 
-            <p className="muted group-overview-role">
-              {groupRoleDescription(myRole)}
-            </p>
+                              {post.sourceChainEntryId && (
+                                <div className="chain-discussion-source">
+                                  <small>From The Chain</small>
+                                  <strong>{post.sourceTitle || "Reading note"}</strong>
+                                  {post.sourceAuthor && <span>{post.sourceAuthor}</span>}
+                                  {post.sourceParagraphPreview && (
+                                    <p>“{post.sourceParagraphPreview}”</p>
+                                  )}
+                                  {post.sourceBookId && (
+                                    <Link
+                                      to={`/read/reader/${post.sourceBookId}?paragraph=${Math.max(
+                                        Number(post.sourceParagraphIndex) || 0,
+                                        0
+                                      )}&note=${encodeURIComponent(post.sourceChainEntryId)}`}
+                                      state={{
+                                        book: {
+                                          id: post.sourceBookId,
+                                          bookId: post.sourceBookId,
+                                          title: post.sourceTitle,
+                                          author: post.sourceAuthor
+                                        }
+                                      }}
+                                      className="button secondary"
+                                    >
+                                      <BookOpen size={15} />
+                                      Read Context
+                                    </Link>
+                                  )}
+                                </div>
+                              )}
+                            </div>
 
-            <button
-              type="button"
-              className="button primary group-enter-forum"
-              onClick={() => setActiveTab("forum")}
-            >
-              Enter Forum
-              <MessageCircle size={17} />
-            </button>
+                            <div className="group-forum-vote-row">
+                              <button
+                                type="button"
+                                className={vote === 1 ? "active" : ""}
+                                onClick={() => castForumVote(post, null, 1)}
+                              >
+                                <Link2 size={18} />
+                                <span>{Number(post.forumUpCount || 0)}</span>
+                              </button>
 
-            <div className="group-overview-actions">
-              <Link
-                to="/read/profile?tab=groups"
-                className="button secondary"
-              >
-                <ArrowLeft size={16} />
-                My Groups
-              </Link>
+                              <strong>{Number(post.forumScore || 0)}</strong>
 
-              {myRole !== "owner" && (
+                              <button
+                                type="button"
+                                className={vote === -1 ? "active" : ""}
+                                onClick={() => castForumVote(post, null, -1)}
+                              >
+                                <Unlink2 size={18} />
+                                <span>{Number(post.forumDownCount || 0)}</span>
+                              </button>
+                            </div>
+
+                            <button
+                              type="button"
+                              className="group-swipe-deeper-cue"
+                              onClick={() => enterTopicReplies(post)}
+                            >
+                              Swipe right for replies
+                              <MessageCircle size={16} />
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {forumPosts.length > 0 && (
+                  <div className="group-discussion-dots">
+                    {forumPosts
+                      .slice(
+                        Math.max(0, discussionIndex - 3),
+                        Math.min(forumPosts.length, discussionIndex + 4)
+                      )
+                      .map((post, localIndex) => {
+                        const start = Math.max(0, discussionIndex - 3);
+                        const index = start + localIndex;
+                        return (
+                          <span
+                            key={post.id}
+                            className={index === discussionIndex ? "active" : ""}
+                          />
+                        );
+                      })}
+                  </div>
+                )}
+
                 <button
                   type="button"
-                  className="button secondary"
-                  onClick={leave}
+                  className="group-new-discussion-fab"
+                  onClick={() => setDiscussionComposerOpen(true)}
+                  aria-label="New discussion"
+                  title="New discussion"
                 >
-                  <LogOut size={16} />
-                  Leave
+                  <Plus size={22} />
                 </button>
-              )}
-            </div>
+              </>
+            ) : (
+              <div className="group-reply-space">
+                <div className="group-reply-depth-header">
+                  <button
+                    type="button"
+                    onClick={backReplyDepth}
+                  >
+                    <ArrowLeft size={17} />
+                    {replyLevels.length > 1 ? "Back" : "Discussion"}
+                  </button>
 
-            <p className="group-depth-hint">
-              Swipe left to go deeper
-            </p>
+                  <div className="group-reply-depth-dots">
+                    <span className="active" />
+                    {replyLevels.map((_, index) => (
+                      <span
+                        key={index}
+                        className={index === replyLevels.length - 1 ? "active" : ""}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div
+                  className="group-reply-reels"
+                  onScroll={handleReplyScroll}
+                >
+                  {(replyLevels[replyLevels.length - 1]?.items || []).map((reply) => {
+                    const post = forumPosts.find((item) => item.id === replyModePostId);
+                    const isReplyAuthor = reply.userId === user.uid;
+                    const canModerateReply = canModerateUserContent(reply.userId);
+                    const vote = forumVotes[voteKey("reply", reply.id)] || 0;
+
+                    return (
+                      <article
+                        key={reply.id}
+                        className="group-reply-reel"
+                        onMouseEnter={() => ensureForumVote("reply", reply.id)}
+                      >
+                        <div className="group-reply-card">
+                          <div className="group-discussion-meta-row">
+                            <span>
+                              {reply.authorProfile?.displayName || "Reader"}
+                              {reply.createdAtISO
+                                ? ` · ${formatDate(reply.createdAtISO)}`
+                                : ""}
+                            </span>
+
+                            <div className="group-discussion-tools">
+                              {(canModerateReply || isReplyAuthor) && (
+                                <button
+                                  type="button"
+                                  onClick={() => deleteForumReply(post, reply)}
+                                  title="Delete"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              )}
+
+                              {!isReplyAuthor && (
+                                <button
+                                  type="button"
+                                  onClick={() => reportForumReply(post, reply)}
+                                  title="Report"
+                                >
+                                  <Flag size={15} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="group-reply-copy">
+                            <p className="eyebrow">
+                              Reply · Level {replyLevels.length}
+                            </p>
+                            <p>{reply.body}</p>
+                          </div>
+
+                          <div className="group-forum-vote-row">
+                            <button
+                              type="button"
+                              className={vote === 1 ? "active" : ""}
+                              onClick={() => castForumVote(post, reply, 1)}
+                            >
+                              <Link2 size={18} />
+                              <span>{Number(reply.forumUpCount || 0)}</span>
+                            </button>
+
+                            <strong>{Number(reply.forumScore || 0)}</strong>
+
+                            <button
+                              type="button"
+                              className={vote === -1 ? "active" : ""}
+                              onClick={() => castForumVote(post, reply, -1)}
+                            >
+                              <Unlink2 size={18} />
+                              <span>{Number(reply.forumDownCount || 0)}</span>
+                            </button>
+                          </div>
+
+                          <div className="group-reply-actions">
+                            <button
+                              type="button"
+                              className="group-swipe-deeper-cue"
+                              onClick={() => enterReplyChildren(post, reply)}
+                            >
+                              Swipe right for replies
+                              <MessageCircle size={16} />
+                            </button>
+
+                            {!post?.locked && (
+                              <button
+                                type="button"
+                                className="group-reply-add-button"
+                                onClick={() => setReplyComposerParentId(reply.id)}
+                              >
+                                <Plus size={15} />
+                                Reply
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </section>
         )}
 
-        {activeTab === "forum" && (
-          <>
-            <section className="group-depth-section-heading">
-              <div>
-                <p className="eyebrow">Level 1</p>
-                <h2>Forum</h2>
+        {discussionComposerOpen && (
+          <div className="margin-modal-backdrop">
+            <section className="margin-report-modal group-compose-modal">
+              <div className="margin-report-heading">
+                <div>
+                  <p className="eyebrow">Group Forum</p>
+                  <h2>New Discussion</h2>
+                </div>
+                <button
+                  type="button"
+                  className="margin-close-button"
+                  onClick={() => setDiscussionComposerOpen(false)}
+                >
+                  <X size={18} />
+                </button>
               </div>
-              <span>Swipe right for overview</span>
-            </section>
 
-            <section className="panel profile-panel">
-              <h2>
-                Start a Discussion
-              </h2>
-
-              <form
-                onSubmit={
-                  createTopic
-                }
-                className="stack-md profile-edit-form"
-              >
+              <form onSubmit={createTopic} className="profile-edit-form">
                 <label>
                   Topic
                   <input
-                    value={
-                      topicTitle
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setTopicTitle(
-                        event.target
-                          .value
-                      )
-                    }
+                    value={topicTitle}
+                    onChange={(event) => setTopicTitle(event.target.value)}
                     placeholder="What should the group discuss?"
                   />
                 </label>
@@ -2070,438 +2564,65 @@ export default function Group() {
                 <label>
                   Message
                   <textarea
-                    value={
-                      topicBody
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setTopicBody(
-                        event.target
-                          .value
-                      )
-                    }
-                    rows={4}
+                    rows={5}
+                    value={topicBody}
+                    onChange={(event) => setTopicBody(event.target.value)}
                     placeholder="Write to the group..."
                   />
                 </label>
 
-                <button
-                  type="submit"
-                  className="button primary"
-                >
-                  <MessageCircle
-                    size={16}
-                  />
+                <button type="submit" className="button primary">
+                  <Send size={16} />
                   Post Discussion
                 </button>
               </form>
             </section>
+          </div>
+        )}
 
-            <section className="panel profile-panel">
-              <h2>Group Forum</h2>
-
-              {forumPosts.length ===
-              0 ? (
-                <p className="muted">
-                  No discussions yet.
-                  Start the first
-                  one.
-                </p>
-              ) : (
-                <div className="public-profile-entry-list">
-                  {forumPosts.map(
-                    (post) => {
-                      const isAuthor =
-                        post.userId ===
-                        user.uid;
-
-                      const canModeratePost =
-                        canModerateUserContent(
-                          post.userId
-                        );
-
-                      const replies =
-                        forumReplies[
-                          post.id
-                        ] || [];
-
-                      const isOpen =
-                        openTopicId ===
-                        post.id;
-
-                      return (
-                        <article
-                          key={
-                            post.id
-                          }
-                          className="public-profile-entry"
-                        >
-                          <div
-                            style={{
-                              display:
-                                "flex",
-                              justifyContent:
-                                "space-between",
-                              gap: "1rem",
-                              alignItems:
-                                "flex-start"
-                            }}
-                          >
-                            <div>
-                              <h3>
-                                {post.pinned && (
-                                  <Pin
-                                    size={
-                                      15
-                                    }
-                                  />
-                                )}{" "}
-                                {
-                                  post.title
-                                }
-                              </h3>
-
-                              <p className="muted">
-                                {post
-                                  .authorProfile
-                                  ?.displayName ||
-                                  "Reader"}
-                                {post.createdAtISO
-                                  ? ` · ${formatDate(
-                                      post.createdAtISO
-                                    )}`
-                                  : ""}
-                                {post.locked
-                                  ? " · Locked"
-                                  : ""}
-                              </p>
-                            </div>
-
-                            <div className="button-row">
-                              {canModeratePost && (
-                                <>
-                                  <button
-                                    type="button"
-                                    className="button secondary"
-                                    disabled={
-                                      busyTopicId ===
-                                      post.id
-                                    }
-                                    onClick={() =>
-                                      toggleTopic(
-                                        post,
-                                        "pinned"
-                                      )
-                                    }
-                                    title={
-                                      post.pinned
-                                        ? "Unpin"
-                                        : "Pin"
-                                    }
-                                  >
-                                    <Pin
-                                      size={
-                                        14
-                                      }
-                                    />
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    className="button secondary"
-                                    disabled={
-                                      busyTopicId ===
-                                      post.id
-                                    }
-                                    onClick={() =>
-                                      toggleTopic(
-                                        post,
-                                        "locked"
-                                      )
-                                    }
-                                    title={
-                                      post.locked
-                                        ? "Unlock"
-                                        : "Lock"
-                                    }
-                                  >
-                                    <Lock
-                                      size={
-                                        14
-                                      }
-                                    />
-                                  </button>
-                                </>
-                              )}
-
-                              {(canModeratePost ||
-                                isAuthor) && (
-                                <button
-                                  type="button"
-                                  className="button secondary"
-                                  disabled={
-                                    busyTopicId ===
-                                    post.id
-                                  }
-                                  onClick={() =>
-                                    deleteTopic(
-                                      post
-                                    )
-                                  }
-                                >
-                                  <Trash2
-                                    size={
-                                      14
-                                    }
-                                  />
-                                </button>
-                              )}
-
-                              {!isAuthor && (
-                                <button
-                                  type="button"
-                                  className="button secondary"
-                                  onClick={() =>
-                                    reportForumPost(
-                                      post
-                                    )
-                                  }
-                                  title="Report discussion"
-                                >
-                                  <Flag
-                                    size={14}
-                                  />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          <p>
-                            {post.body}
-                          </p>
-
-                          {post.sourceChainEntryId && (
-                            <div className="chain-discussion-source">
-                              <small>From The Chain</small>
-                              <strong>{post.sourceTitle || "Reading note"}</strong>
-                              {post.sourceAuthor && <span>{post.sourceAuthor}</span>}
-                              {post.sourceParagraphNumber && (
-                                <span>Paragraph {post.sourceParagraphNumber}</span>
-                              )}
-                              {post.sourceParagraphPreview && (
-                                <p>“{post.sourceParagraphPreview}”</p>
-                              )}
-                              {post.sourceNotePreview && (
-                                <p>{post.sourceNotePreview}</p>
-                              )}
-                              {post.sourceBookId && (
-                                <Link
-                                  to={`/read/reader/${post.sourceBookId}?paragraph=${Math.max(
-                                    Number(post.sourceParagraphIndex) || 0,
-                                    0
-                                  )}&note=${encodeURIComponent(post.sourceChainEntryId)}`}
-                                  state={{
-                                    book: {
-                                      id: post.sourceBookId,
-                                      bookId: post.sourceBookId,
-                                      title: post.sourceTitle,
-                                      author: post.sourceAuthor
-                                    }
-                                  }}
-                                  className="button secondary"
-                                >
-                                  <BookOpen size={15} />
-                                  Read Context
-                                </Link>
-                              )}
-                            </div>
-                          )}
-
-                          <button
-                            type="button"
-                            className="button secondary"
-                            disabled={
-                              busyTopicId ===
-                              post.id
-                            }
-                            onClick={() =>
-                              openTopic(
-                                post
-                              )
-                            }
-                          >
-                            <MessageCircle
-                              size={15}
-                            />
-                            {isOpen
-                              ? "Hide Replies"
-                              : "Replies"}
-                          </button>
-
-                          {isOpen && (
-                            <div
-                              style={{
-                                marginTop:
-                                  "1rem",
-                                paddingTop:
-                                  "1rem",
-                                borderTop:
-                                  "1px solid var(--line)"
-                              }}
-                            >
-                              {replies.map(
-                                (
-                                  reply
-                                ) => {
-                                  const isReplyAuthor =
-                                    reply.userId ===
-                                    user.uid;
-
-                                  const canModerateReply =
-                                    canModerateUserContent(
-                                      reply.userId
-                                    );
-
-                                  return (
-                                    <div
-                                      key={
-                                        reply.id
-                                      }
-                                      style={{
-                                        display:
-                                          "grid",
-                                        gridTemplateColumns:
-                                          "1fr auto",
-                                        gap: "0.75rem"
-                                      }}
-                                    >
-                                      <div>
-                                        <strong>
-                                          {reply
-                                            .authorProfile
-                                            ?.displayName ||
-                                            "Reader"}
-                                        </strong>
-
-                                        <small className="muted">
-                                          {" · "}
-                                          {formatDate(
-                                            reply.createdAtISO
-                                          )}
-                                        </small>
-
-                                        <p>
-                                          {
-                                            reply.body
-                                          }
-                                        </p>
-                                      </div>
-
-                                      <div className="button-row">
-                                        {(canModerateReply ||
-                                          isReplyAuthor) && (
-                                          <button
-                                            type="button"
-                                            className="button secondary"
-                                            onClick={() =>
-                                              deleteForumReply(
-                                                post,
-                                                reply
-                                              )
-                                            }
-                                          >
-                                            <Trash2
-                                              size={14}
-                                            />
-                                          </button>
-                                        )}
-
-                                        {!isReplyAuthor && (
-                                          <button
-                                            type="button"
-                                            className="button secondary"
-                                            onClick={() =>
-                                              reportForumReply(
-                                                post,
-                                                reply
-                                              )
-                                            }
-                                            title="Report reply"
-                                          >
-                                            <Flag
-                                              size={14}
-                                            />
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                }
-                              )}
-
-                              {!post.locked && (
-                                <div
-                                  style={{
-                                    display:
-                                      "flex",
-                                    gap: "0.65rem",
-                                    marginTop:
-                                      "1rem",
-                                    alignItems:
-                                      "flex-end"
-                                  }}
-                                >
-                                  <textarea
-                                    value={
-                                      replyText
-                                    }
-                                    onChange={(
-                                      event
-                                    ) =>
-                                      setReplyText(
-                                        event
-                                          .target
-                                          .value
-                                      )
-                                    }
-                                    rows={
-                                      2
-                                    }
-                                    placeholder="Reply to the group..."
-                                    style={{
-                                      flex: 1
-                                    }}
-                                  />
-
-                                  <button
-                                    type="button"
-                                    className="button primary"
-                                    onClick={() =>
-                                      sendForumReply(
-                                        post
-                                      )
-                                    }
-                                  >
-                                    <Send
-                                      size={
-                                        15
-                                      }
-                                    />
-                                    Reply
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </article>
-                      );
-                    }
-                  )}
+        {replyComposerParentId !== undefined && (
+          <div className="margin-modal-backdrop">
+            <section className="margin-report-modal group-compose-modal">
+              <div className="margin-report-heading">
+                <div>
+                  <p className="eyebrow">Continue the Thread</p>
+                  <h2>Write a Reply</h2>
                 </div>
-              )}
+                <button
+                  type="button"
+                  className="margin-close-button"
+                  onClick={() => {
+                    setReplyComposerParentId(undefined);
+                    setReplyText("");
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <textarea
+                rows={5}
+                value={replyText}
+                onChange={(event) => setReplyText(event.target.value)}
+                placeholder="Reply to this idea..."
+              />
+
+              <button
+                type="button"
+                className="button primary"
+                disabled={busyTopicId === (replyModePostId || selectedDiscussion?.id)}
+                onClick={() => {
+                  const post = replyModePostId
+                    ? forumPosts.find((item) => item.id === replyModePostId)
+                    : selectedDiscussion;
+                  if (post) sendForumReply(post, replyComposerParentId || null);
+                }}
+              >
+                <Send size={16} />
+                Post Reply
+              </button>
             </section>
-          </>
+          </div>
         )}
 
         {activeTab ===
@@ -2846,6 +2967,14 @@ export default function Group() {
           "moderation" &&
           canModerate && (
             <>
+              <button
+                type="button"
+                className="button secondary group-moderation-back"
+                onClick={() => setActiveTab("settings")}
+              >
+                <ArrowLeft size={16} />
+                Settings
+              </button>
               <section className="panel profile-panel">
                 <p className="eyebrow">
                   Group Moderation
@@ -3256,6 +3385,17 @@ export default function Group() {
                 />{" "}
                 Group Settings
               </h2>
+
+              {canModerate && (
+                <button
+                  type="button"
+                  className="button secondary group-settings-moderation-link"
+                  onClick={() => setActiveTab("moderation")}
+                >
+                  <Shield size={16} />
+                  Moderation
+                </button>
+              )}
 
               <form
                 onSubmit={
