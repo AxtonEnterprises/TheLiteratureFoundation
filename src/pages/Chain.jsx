@@ -34,6 +34,7 @@ import {
   getGroupsChainFeed,
   getSavedChainEntries,
   getChainBranches,
+  prefetchChainBranches,
   getMyChainVotes,
   reportChainEntry,
   sortChainEntriesByVote,
@@ -117,8 +118,10 @@ export default function Chain() {
   const [chromeVisible, setChromeVisible] = useState(false);
   const [myVotes, setMyVotes] = useState({});
   const [voteLoadingKey, setVoteLoadingKey] = useState("");
+  const [emptyLinkPrompt, setEmptyLinkPrompt] = useState(null);
   const chainSwipeStartRef = useRef(null);
   const reelsRef = useRef(null);
+  const sourceReelsRef = useRef(null);
 
 
   useEffect(() => onAuthStateChanged(auth, setUser), []);
@@ -487,9 +490,14 @@ export default function Chain() {
 
     return [...byBook.values()]
       .filter((book) => book.linkCount > 0)
-      .sort((a, b) =>
-        String(b.latestAt || "").localeCompare(String(a.latestAt || ""))
-      );
+      .sort((a, b) => {
+        const linkDifference = Number(b.linkCount || 0) - Number(a.linkCount || 0);
+        if (linkDifference !== 0) return linkDifference;
+
+        return String(b.latestAt || "").localeCompare(
+          String(a.latestAt || "")
+        );
+      });
   }, [entries]);
 
   const selectedSourceBook = useMemo(
@@ -498,6 +506,13 @@ export default function Chain() {
       sourceBooks[0] ||
       null,
     [sourceBooks, selectedBookId]
+  );
+
+  const selectedSourceIndex = Math.max(
+    0,
+    sourceBooks.findIndex(
+      (book) => String(book.id) === String(selectedSourceBook?.id)
+    )
   );
 
   useEffect(() => {
@@ -624,6 +639,85 @@ export default function Chain() {
     });
   }
 
+  function goToSourceSibling(index, behavior = "smooth") {
+    if (!sourceBooks.length) return;
+
+    const safeIndex = Math.max(
+      0,
+      Math.min(index, sourceBooks.length - 1)
+    );
+
+    const book = sourceBooks[safeIndex];
+    setSelectedBookId(String(book.id));
+
+    const scroller = sourceReelsRef.current;
+    if (!scroller) return;
+
+    scroller.scrollTo({
+      top: safeIndex * scroller.clientHeight,
+      behavior
+    });
+  }
+
+  function handleSourceReelsScroll(event) {
+    const scroller = event.currentTarget;
+    const pageHeight = scroller.clientHeight || 1;
+    const nextIndex = Math.round(scroller.scrollTop / pageHeight);
+
+    if (
+      nextIndex >= 0 &&
+      nextIndex < sourceBooks.length &&
+      nextIndex !== selectedSourceIndex
+    ) {
+      setSelectedBookId(String(sourceBooks[nextIndex].id));
+    }
+  }
+
+  function orientationDotIndexes(count, selectedIndex, maxDots = 9) {
+    if (count <= maxDots) {
+      return Array.from({ length: count }, (_, index) => index);
+    }
+
+    const half = Math.floor(maxDots / 2);
+    let start = Math.max(0, selectedIndex - half);
+    let end = start + maxDots;
+
+    if (end > count) {
+      end = count;
+      start = Math.max(0, end - maxDots);
+    }
+
+    return Array.from({ length: end - start }, (_, offset) => start + offset);
+  }
+
+  function renderOrientationDots(count, selectedIndex, onSelect, label) {
+    if (count <= 1) return null;
+
+    const indexes = orientationDotIndexes(count, selectedIndex);
+
+    return (
+      <div className="chain-orientation-dots" aria-label={label}>
+        {indexes.map((index) => (
+          <button
+            key={index}
+            type="button"
+            className={
+              index === selectedIndex
+                ? "chain-orientation-dot active"
+                : "chain-orientation-dot"
+            }
+            aria-label={`${label} ${index + 1} of ${count}`}
+            aria-current={index === selectedIndex ? "true" : undefined}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelect(index);
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
+
   async function followSelectedIdea() {
     if (!currentSelectedItem || currentSelectedItem.nodeType === "group") {
       return;
@@ -646,6 +740,11 @@ export default function Chain() {
           nodeType: "group"
         }))
       ];
+
+      if (!nextItems.length) {
+        setEmptyLinkPrompt(currentSelectedItem);
+        return;
+      }
 
       setLevels((current) => [
         ...current,
@@ -698,14 +797,19 @@ export default function Chain() {
       Math.abs(deltaX) > Math.abs(deltaY) * 1.15;
 
     const verticalSwipe =
-      currentDepth > 0 &&
       Math.abs(deltaY) >= 52 &&
       Math.abs(deltaY) > Math.abs(deltaX) * 1.15;
 
     // Reel navigation:
-    // swipe UP = next linked note; swipe DOWN = previous linked note.
+    // swipe UP = next item; swipe DOWN = previous item.
     if (verticalSwipe) {
-      if (deltaY < 0) {
+      if (currentDepth === 0) {
+        if (deltaY < 0) {
+          goToSourceSibling(selectedSourceIndex + 1);
+        } else {
+          goToSourceSibling(selectedSourceIndex - 1);
+        }
+      } else if (deltaY < 0) {
         goToSibling(currentSelectedIndex + 1);
       } else {
         goToSibling(currentSelectedIndex - 1);
@@ -728,6 +832,34 @@ export default function Chain() {
     }
   }
 
+
+  useEffect(() => {
+    if (
+      currentDepth < 1 ||
+      !currentSelectedItem ||
+      currentSelectedItem.nodeType === "group"
+    ) {
+      return;
+    }
+
+    const candidates = [
+      currentSelectedItem,
+      currentItems[currentSelectedIndex + 1],
+      currentItems[currentSelectedIndex - 1]
+    ].filter(
+      (item) => item && item.nodeType !== "group"
+    );
+
+    for (const item of candidates) {
+      prefetchChainBranches(item);
+    }
+  }, [
+    currentDepth,
+    currentSelectedItem?.id,
+    currentSelectedItem?.userId,
+    currentSelectedIndex,
+    currentItems.length
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -1403,16 +1535,21 @@ export default function Chain() {
             <button
               type="button"
               className="chain-edge-link top"
-              aria-label="Scroll to previous source"
-              onClick={() => document.querySelector(".chain-link-body")?.scrollBy({ top: -320, behavior: "smooth" })}
+              aria-label="Previous source book"
+              disabled={selectedSourceIndex <= 0}
+              onClick={() => goToSourceSibling(selectedSourceIndex - 1)}
             >
               <ArrowUp size={20} />
             </button>
             <button
               type="button"
               className="chain-edge-link bottom"
-              aria-label="Scroll to next source"
-              onClick={() => document.querySelector(".chain-link-body")?.scrollBy({ top: 320, behavior: "smooth" })}
+              aria-label="Next source book"
+              disabled={
+                !sourceBooks.length ||
+                selectedSourceIndex >= sourceBooks.length - 1
+              }
+              onClick={() => goToSourceSibling(selectedSourceIndex + 1)}
             >
               <ArrowDown size={20} />
             </button>
@@ -1433,53 +1570,93 @@ export default function Chain() {
             >
               <ArrowRight size={20} />
             </button>
+
             <div className="chain-link-body">
-
-            <div className="chain-level-heading">
-              <div>
-                <p className="eyebrow">Level 0</p>
-                <h2>Lit Chain Source</h2>
+              <div className="chain-level-heading">
+                <div>
+                  <p className="eyebrow">Level 0</p>
+                  <h2>Literature</h2>
+                  <p className="muted">Most linked works first</p>
+                </div>
               </div>
-              <span>{sourceBooks.length} books</span>
-            </div>
 
-            {sourceBooks.length === 0 ? (
-              <div className="panel margins-empty">
-                <p className="muted">
-                  No source-linked notes are available in this view yet.
-                </p>
-              </div>
-            ) : (
-              <div className="chain-source-list">
-                {sourceBooks.map((book) => {
-                  const selected =
-                    String(book.id) === String(selectedSourceBook?.id);
+              {renderOrientationDots(
+                sourceBooks.length,
+                selectedSourceIndex,
+                goToSourceSibling,
+                "Source book"
+              )}
 
-                  return (
-                    <button
+              {sourceBooks.length === 0 ? (
+                <div className="panel margins-empty">
+                  <p className="muted">
+                    No source-linked notes are available in this view yet.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  ref={sourceReelsRef}
+                  className="chain-source-reels"
+                  onScroll={handleSourceReelsScroll}
+                >
+                  {sourceBooks.map((book, index) => (
+                    <article
                       key={book.id}
-                      type="button"
-                      className={selected ? "chain-source-book selected" : "chain-source-book"}
-                      onClick={() => setSelectedBookId(String(book.id))}
-                      onDoubleClick={() => enterSourceBook(book)}
+                      className={[
+                        "chain-source-reel",
+                        index === selectedSourceIndex ? "selected" : ""
+                      ].filter(Boolean).join(" ")}
                     >
-                      <div>
-                        <strong>{book.title}</strong>
-                        {book.author && <span>{book.author}</span>}
-                      </div>
-                      <small>
-                        {book.linkCount} {book.linkCount === 1 ? "link" : "links"}
-                      </small>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+                      <div className="chain-source-timeline-book">
+                        <div className="chain-source-cover">
+                          <div className="timeline-cover-placeholder">
+                            <BookOpen size={34} />
+                          </div>
+                        </div>
 
-            <div className="chain-swipe-cue">
-              <ArrowLeft size={18} />
-              <span>Swipe left to enter the selected book's Chain</span>
-            </div>
+                        <div className="chain-source-content">
+                          <p className="eyebrow">Literature source</p>
+                          <button
+                            type="button"
+                            className="chain-source-title"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              enterSourceBook(book);
+                            }}
+                          >
+                            {book.title}
+                          </button>
+
+                          {book.author && (
+                            <p className="timeline-author">{book.author}</p>
+                          )}
+
+                          <div className="chain-source-link-summary">
+                            <strong>{book.linkCount}</strong>
+                            <span>
+                              {book.linkCount === 1
+                                ? "direct link"
+                                : "direct links"}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="button secondary chain-source-open"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              enterSourceBook(book);
+                            }}
+                          >
+                            Explore this Chain
+                            <ArrowRight size={17} />
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
         )}
@@ -1533,25 +1710,18 @@ export default function Chain() {
                   <p className="muted">{currentLevel.parent.author}</p>
                 )}
               </div>
-              <span>
-                {currentItems.length} {currentItems.length === 1 ? "link" : "links"}
-              </span>
             </div>
+
+            {renderOrientationDots(
+              currentItems.length,
+              currentSelectedIndex,
+              goToSibling,
+              "Linked note"
+            )}
 
             {levelLoading && (
               <div className="panel">
                 <p className="muted">Following the Chain…</p>
-              </div>
-            )}
-
-            {!levelLoading && currentItems.length === 0 && (
-              <div className="panel margins-empty">
-                <p className="muted">
-                  This thought does not have another visible link yet.
-                </p>
-                <p className="muted">
-                  Swipe left or use Back to return to the previous level.
-                </p>
               </div>
             )}
 
@@ -1577,6 +1747,63 @@ export default function Chain() {
           </section>
         )}
       </div>
+
+      {emptyLinkPrompt && (
+        <div
+          className="modal-backdrop chain-empty-link-backdrop"
+          onClick={() => setEmptyLinkPrompt(null)}
+        >
+          <section
+            className="modal-card chain-empty-link-card"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="margin-reply-heading">
+              <div>
+                <p className="eyebrow">End of this branch</p>
+                <strong>No one has linked another idea here yet.</strong>
+              </div>
+              <button
+                type="button"
+                className="margin-close-button"
+                onClick={() => setEmptyLinkPrompt(null)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="muted">
+              Add a note from this link to create the next level of the Chain.
+            </p>
+
+            <Link
+              to={readingLink(emptyLinkPrompt)}
+              state={{
+                book: {
+                  id: emptyLinkPrompt.bookId,
+                  bookId: emptyLinkPrompt.bookId,
+                  title: emptyLinkPrompt.title,
+                  author: emptyLinkPrompt.author
+                },
+                addFromChain: true,
+                sourceChainEntry: emptyLinkPrompt
+              }}
+              className="button primary"
+              onClick={(event) => {
+                if (!user) {
+                  event.preventDefault();
+                  requireLogin();
+                  return;
+                }
+                setEmptyLinkPrompt(null);
+              }}
+            >
+              <Link2 size={17} />
+              Create the first linked note
+            </Link>
+          </section>
+        </div>
+      )}
 
       {reportEntry && (
         <div className="modal-backdrop">
