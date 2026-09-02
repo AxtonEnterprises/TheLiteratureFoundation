@@ -112,11 +112,13 @@ export default function Chain() {
   const [discussionPosting, setDiscussionPosting] = useState(false);
   const [selectedBookId, setSelectedBookId] = useState("");
   const [levels, setLevels] = useState([]);
+  const [initialChainSeeded, setInitialChainSeeded] = useState(false);
   const [levelLoading, setLevelLoading] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(false);
   const [myVotes, setMyVotes] = useState({});
   const [voteLoadingKey, setVoteLoadingKey] = useState("");
   const chainSwipeStartRef = useRef(null);
+  const reelsRef = useRef(null);
 
 
   useEffect(() => onAuthStateChanged(auth, setUser), []);
@@ -498,6 +500,54 @@ export default function Chain() {
     [sourceBooks, selectedBookId]
   );
 
+  useEffect(() => {
+    if (loading || initialChainSeeded || !entries.length) return;
+
+    const levelOneEntries = entries.filter(
+      (entry) => entry?.bookId && !entry.sourceChainEntryId
+    );
+
+    if (!levelOneEntries.length) {
+      setInitialChainSeeded(true);
+      return;
+    }
+
+    const randomEntry =
+      levelOneEntries[Math.floor(Math.random() * levelOneEntries.length)];
+
+    const siblings = sortChainEntriesByVote(
+      levelOneEntries.filter(
+        (entry) =>
+          String(entry.bookId || "") === String(randomEntry.bookId)
+      )
+    );
+
+    const selectedIndex = Math.max(
+      0,
+      siblings.findIndex(
+        (entry) =>
+          entry.id === randomEntry.id &&
+          entry.userId === randomEntry.userId
+      )
+    );
+
+    setSelectedBookId(String(randomEntry.bookId));
+    setLevels([
+      {
+        parent: {
+          nodeType: "book",
+          id: String(randomEntry.bookId),
+          bookId: String(randomEntry.bookId),
+          title: randomEntry.title || "Untitled",
+          author: randomEntry.author || ""
+        },
+        items: siblings,
+        selectedIndex
+      }
+    ]);
+    setInitialChainSeeded(true);
+  }, [loading, entries, initialChainSeeded]);
+
   const currentLevel = levels.length ? levels[levels.length - 1] : null;
   const currentDepth = levels.length;
   const currentItems = currentLevel?.items || [];
@@ -704,6 +754,20 @@ export default function Chain() {
       setStatus(error?.message || "We couldn't save your Chain vote.");
     } finally {
       setVoteLoadingKey("");
+    }
+  }
+
+  function handleReelsScroll(event) {
+    const scroller = event.currentTarget;
+    const pageHeight = scroller.clientHeight || 1;
+    const nextIndex = Math.round(scroller.scrollTop / pageHeight);
+
+    if (
+      nextIndex >= 0 &&
+      nextIndex < currentItems.length &&
+      nextIndex !== currentSelectedIndex
+    ) {
+      selectLevelItem(nextIndex);
     }
   }
 
@@ -1170,7 +1234,7 @@ export default function Chain() {
       onClick={(event) => {
         if (
           event.target.closest(
-            "button, a, input, textarea, select, .chain-level-card, .chain-source-book"
+            "button, a, input, textarea, select, .chain-share-menu, .chain-discussion-composer, .margin-reply-box"
           )
         ) {
           return;
@@ -1183,15 +1247,14 @@ export default function Chain() {
     >
       <button
         type="button"
-        className={chromeVisible ? "chain-chrome-toggle active" : "chain-chrome-toggle"}
-        onClick={() => setChromeVisible((current) => !current)}
+        className="chain-chrome-tap-target"
+        onClick={(event) => {
+          event.stopPropagation();
+          setChromeVisible((current) => !current);
+        }}
         aria-label={chromeVisible ? "Hide Lit Chain controls" : "Show Lit Chain controls"}
         aria-expanded={chromeVisible}
-      >
-        <span className="chain-mini-link">
-          <ArrowDown size={18} />
-        </span>
-      </button>
+      />
       <SEO
         title="Lit Chain"
         description="Follow ideas outward from literature through connected reader notes and discussions."
@@ -1214,6 +1277,7 @@ export default function Chain() {
                 onClick={() => {
                   setFilter(value);
                   setLevels([]);
+                  setInitialChainSeeded(false);
                 }}
               >
                 {value.charAt(0).toUpperCase() + value.slice(1)}
@@ -1292,18 +1356,18 @@ export default function Chain() {
             </button>
             <button
               type="button"
-              className="chain-edge-link left follow"
-              aria-label="Follow selected source"
-              disabled={!selectedSourceBook}
-              onClick={() => enterSourceBook()}
+              className="chain-edge-link left back"
+              aria-label="Source level"
+              disabled
             >
               <ArrowLeft size={20} />
             </button>
             <button
               type="button"
-              className="chain-edge-link right back"
-              aria-label="No previous level"
-              disabled
+              className="chain-edge-link right follow"
+              aria-label="Open selected source"
+              disabled={!selectedSourceBook}
+              onClick={() => enterSourceBook()}
             >
               <ArrowRight size={20} />
             </button>
@@ -1378,18 +1442,18 @@ export default function Chain() {
             </button>
             <button
               type="button"
-              className="chain-edge-link left follow"
-              aria-label="Follow selected Chain link"
-              disabled={levelLoading || !currentSelectedItem || currentSelectedItem.nodeType === "group"}
-              onClick={followSelectedIdea}
+              className="chain-edge-link left back"
+              aria-label="Return to previous Chain level"
+              onClick={goBackOneLevel}
             >
               <ArrowLeft size={20} />
             </button>
             <button
               type="button"
-              className="chain-edge-link right back"
-              aria-label="Return to previous Chain level"
-              onClick={goBackOneLevel}
+              className="chain-edge-link right follow"
+              aria-label="Follow selected Chain link"
+              disabled={levelLoading || !currentSelectedItem || currentSelectedItem.nodeType === "group"}
+              onClick={followSelectedIdea}
             >
               <ArrowRight size={20} />
             </button>
@@ -1430,7 +1494,11 @@ export default function Chain() {
             )}
 
             {!levelLoading && currentItems.length > 0 && (
-              <div className="margins-feed chain-level-list chain-reels">
+              <div
+                ref={reelsRef}
+                className="margins-feed chain-level-list chain-reels"
+                onScroll={handleReelsScroll}
+              >
                 {currentItems.map((item, index) =>
                   item.nodeType === "group"
                     ? renderGroupDiscussionCard(item, index)
