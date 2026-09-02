@@ -2075,9 +2075,18 @@ match /noteLinks/{linkId} {
  * entry, so voter identities never need to be listed.
  */
 match /chainVotes/{voteId} {
+  /*
+   * A first vote reads its vote document before creating it.
+   * When that document does not exist yet, resource.data cannot be
+   * used to authorize the read. The vote ID always ends in the
+   * authenticated voter's UID, so this permits only that user's
+   * own direct vote-document reads, including a missing document.
+   */
   allow get:
     if signedIn()
-    && resource.data.voterUserId == request.auth.uid;
+    && voteId.matches(
+      ".*_" + request.auth.uid + "$"
+    );
 
   allow list:
     if false;
