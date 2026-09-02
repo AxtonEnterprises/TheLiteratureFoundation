@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Bell, Ban, Compass, Library, LogIn, Link2, Users } from "lucide-react";
+import {
+  AlertTriangle,
+  Bell,
+  Ban,
+  BookOpen,
+  Compass,
+  Library,
+  LogIn,
+  Users
+} from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -14,10 +23,7 @@ function formatEnforcementDate(value) {
   if (!value) return "";
 
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
+  if (Number.isNaN(date.getTime())) return "";
 
   return date.toLocaleString();
 }
@@ -42,7 +48,6 @@ export default function Header() {
       setUnreadCount(0);
       return undefined;
     }
-
     return subscribeToUnreadNotifications(setUnreadCount);
   }, [user]);
 
@@ -51,18 +56,14 @@ export default function Header() {
       setEnforcement(null);
       return undefined;
     }
-
     return subscribeToMyPlatformEnforcement(setEnforcement);
   }, [user]);
 
-  const navClass = ({ isActive }) =>
-    isActive ? "nav-link active" : "nav-link";
+  const bottomNavClass = ({ isActive }) =>
+    isActive ? "lit-bottom-nav-link active" : "lit-bottom-nav-link";
 
   async function handleAppeal() {
-    if (
-      !enforcement ||
-      !["suspended", "banned"].includes(enforcement.status)
-    ) {
+    if (!enforcement || !["suspended", "banned"].includes(enforcement.status)) {
       return;
     }
 
@@ -70,12 +71,7 @@ export default function Header() {
       "Explain why you believe this suspension or ban should be reviewed:"
     );
 
-    if (
-      explanation === null ||
-      !String(explanation).trim()
-    ) {
-      return;
-    }
+    if (explanation === null || !String(explanation).trim()) return;
 
     try {
       setAppealSubmitting(true);
@@ -88,8 +84,7 @@ export default function Header() {
       );
     } catch (error) {
       setAppealStatus(
-        error?.message ||
-        "We couldn't submit your appeal."
+        error?.message || "We couldn't submit your appeal."
       );
     } finally {
       setAppealSubmitting(false);
@@ -98,33 +93,30 @@ export default function Header() {
 
   return (
     <>
-      <header className="site-header rr-header lit-chain-topbar">
-        <NavLink
-          to="/read"
-          end
-          className="chain-logo-link"
-          aria-label="Lit Chain home"
-          title="Lit Chain"
-        >
-          <img
-            className="chain-logo-image"
-            src="/branding/lit-chain-logo-horizontal.png"
-            alt="Lit Chain"
-          />
-        </NavLink>
+      <header className="lit-top-header">
+        <div className="lit-top-header-inner">
+          <span className="lit-top-header-side" aria-hidden="true" />
 
-        <div className="lit-chain-top-actions">
-          {!authLoading && !user && (
-            <NavLink to="/read/login" className="lit-chain-top-action">
-              <LogIn size={20} />
-              <span>Log In</span>
-            </NavLink>
-          )}
+          <NavLink
+            to="/read"
+            end
+            className="lit-top-logo"
+            aria-label="Lit Chain home"
+          >
+            <img
+              src="/branding/lit-chain-logo-horizontal.png"
+              alt="Lit Chain"
+            />
+          </NavLink>
 
-          {!authLoading && user && (
+          {!authLoading && user ? (
             <NavLink
               to="/read/notifications"
-              className="lit-chain-top-action"
+              className={({ isActive }) =>
+                isActive
+                  ? "lit-top-action active"
+                  : "lit-top-action"
+              }
               aria-label={
                 unreadCount
                   ? `Notifications, ${unreadCount} unread`
@@ -141,34 +133,20 @@ export default function Header() {
                 )}
               </span>
             </NavLink>
+          ) : !authLoading ? (
+            <NavLink
+              to="/read/login"
+              className="lit-top-action"
+              aria-label="Log in"
+              title="Log in"
+            >
+              <LogIn size={20} />
+            </NavLink>
+          ) : (
+            <span className="lit-top-header-side" aria-hidden="true" />
           )}
         </div>
       </header>
-
-      <nav className="lit-chain-bottom-nav" aria-label="Primary Lit Chain navigation">
-        <NavLink to="/read/discover" className={navClass}>
-          <Compass size={21} />
-          <span>Discover</span>
-        </NavLink>
-
-        <NavLink to="/read" end className={navClass}>
-          <Link2 size={22} />
-          <span>Chain</span>
-        </NavLink>
-
-        <NavLink to="/read/groups" className={navClass}>
-          <Users size={21} />
-          <span>Groups</span>
-        </NavLink>
-
-        <NavLink
-          to={user ? "/read/profile" : "/read/login"}
-          className={navClass}
-        >
-          <Library size={21} />
-          <span>{user ? "Library" : "Log In"}</span>
-        </NavLink>
-      </nav>
 
       {user && enforcement && (
         <section
@@ -179,12 +157,7 @@ export default function Header() {
             padding: "0.75rem 1rem"
           }}
         >
-          <div
-            className="panel"
-            style={{
-              padding: "0.9rem 1rem"
-            }}
-          >
+          <div className="panel" style={{ padding: "0.9rem 1rem" }}>
             <div
               style={{
                 display: "flex",
@@ -208,7 +181,8 @@ export default function Header() {
                 </strong>
 
                 <p style={{ margin: "0.35rem 0 0" }}>
-                  {enforcement.reason || "A platform moderation action has been applied to your account."}
+                  {enforcement.reason ||
+                    "A platform moderation action has been applied to your account."}
                 </p>
 
                 {enforcement.details && (
@@ -254,6 +228,35 @@ export default function Header() {
           </div>
         </section>
       )}
+
+      <nav className="lit-bottom-nav" aria-label="Primary navigation">
+        <NavLink to="/read/discover" className={bottomNavClass}>
+          <Compass size={21} />
+          <span>Discover</span>
+        </NavLink>
+
+        <NavLink to="/read" end className={bottomNavClass}>
+          <BookOpen size={21} />
+          <span>Chain</span>
+        </NavLink>
+
+        <NavLink to="/read/groups" className={bottomNavClass}>
+          <Users size={21} />
+          <span>Groups</span>
+        </NavLink>
+
+        {user ? (
+          <NavLink to="/read/profile" className={bottomNavClass}>
+            <Library size={21} />
+            <span>Library</span>
+          </NavLink>
+        ) : (
+          <NavLink to="/read/login" className={bottomNavClass}>
+            <LogIn size={21} />
+            <span>Log In</span>
+          </NavLink>
+        )}
+      </nav>
     </>
   );
 }
