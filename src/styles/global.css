@@ -7467,3 +7467,48 @@ body.reader-mode .random-reads-app {
     max-height: calc(100dvh - 56px - 66px - env(safe-area-inset-bottom)) !important;
   }
 }
+
+/* ==================================================
+   LIT CHAIN — COMPACT CHAIN FILTER
+   ================================================== */
+
+.chain-fixed-filter {
+  padding: 0.3rem 0.55rem !important;
+}
+
+.chain-fixed-filter .margins-filter-bar,
+.chain-fixed-filter .chain-filter-bar {
+  width: auto !important;
+  min-height: 38px !important;
+  padding: 0.2rem !important;
+  gap: 0.15rem !important;
+  border-radius: 999px !important;
+}
+
+.chain-fixed-filter .margins-filter,
+.chain-fixed-filter button {
+  min-height: 32px !important;
+  padding: 0.3rem 0.8rem !important;
+  font-size: 0.78rem !important;
+  line-height: 1 !important;
+  border-radius: 999px !important;
+}
+
+@media (max-width: 560px) {
+  .chain-fixed-filter {
+    padding-top: 0.22rem !important;
+    padding-bottom: 0.22rem !important;
+  }
+
+  .chain-fixed-filter .margins-filter-bar,
+  .chain-fixed-filter .chain-filter-bar {
+    min-height: 36px !important;
+  }
+
+  .chain-fixed-filter .margins-filter,
+  .chain-fixed-filter button {
+    min-height: 30px !important;
+    padding: 0.25rem 0.7rem !important;
+    font-size: 0.74rem !important;
+  }
+}
