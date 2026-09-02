@@ -591,12 +591,36 @@ export default function Chain() {
   function selectLevelItem(index) {
     setLevels((current) => {
       if (!current.length) return current;
+
+      const lastLevel = current[current.length - 1];
+      const maxIndex = Math.max((lastLevel.items?.length || 1) - 1, 0);
+      const safeIndex = Math.max(0, Math.min(index, maxIndex));
+
       const next = [...current];
       next[next.length - 1] = {
-        ...next[next.length - 1],
-        selectedIndex: index
+        ...lastLevel,
+        selectedIndex: safeIndex
       };
       return next;
+    });
+  }
+
+  function goToSibling(index, behavior = "smooth") {
+    if (!currentItems.length) return;
+
+    const safeIndex = Math.max(
+      0,
+      Math.min(index, currentItems.length - 1)
+    );
+
+    selectLevelItem(safeIndex);
+
+    const scroller = reelsRef.current;
+    if (!scroller) return;
+
+    scroller.scrollTo({
+      top: safeIndex * scroller.clientHeight,
+      behavior
     });
   }
 
@@ -667,8 +691,29 @@ export default function Chain() {
     const deltaY = touch.clientY - start.y;
     const elapsed = Date.now() - start.time;
 
-    if (elapsed > 900 || Math.abs(deltaX) < 58) return;
-    if (Math.abs(deltaX) <= Math.abs(deltaY) * 1.2) return;
+    if (elapsed > 1000) return;
+
+    const horizontalSwipe =
+      Math.abs(deltaX) >= 58 &&
+      Math.abs(deltaX) > Math.abs(deltaY) * 1.15;
+
+    const verticalSwipe =
+      currentDepth > 0 &&
+      Math.abs(deltaY) >= 52 &&
+      Math.abs(deltaY) > Math.abs(deltaX) * 1.15;
+
+    // Reel navigation:
+    // swipe UP = next linked note; swipe DOWN = previous linked note.
+    if (verticalSwipe) {
+      if (deltaY < 0) {
+        goToSibling(currentSelectedIndex + 1);
+      } else {
+        goToSibling(currentSelectedIndex - 1);
+      }
+      return;
+    }
+
+    if (!horizontalSwipe) return;
 
     // Depth navigation:
     // swipe LEFT = move deeper; swipe RIGHT = move back.
@@ -751,7 +796,24 @@ export default function Chain() {
       );
     } catch (error) {
       console.error("Could not save Chain vote:", error);
-      setStatus(error?.message || "We couldn't save your Chain vote.");
+
+      const code = String(error?.code || "");
+      const message = String(error?.message || "");
+
+      if (
+        code.includes("permission-denied") ||
+        message.toLowerCase().includes("insufficient permissions")
+      ) {
+        setStatus(
+          "We couldn't record that Chain vote. Please refresh and try again."
+        );
+      } else if (code.includes("unavailable")) {
+        setStatus(
+          "Voting is temporarily unavailable. Please try again in a moment."
+        );
+      } else {
+        setStatus("We couldn't record that Chain vote. Please try again.");
+      }
     } finally {
       setVoteLoadingKey("");
     }
@@ -1428,7 +1490,7 @@ export default function Chain() {
               type="button"
               className="chain-edge-link top"
               aria-label="Scroll to previous linked idea"
-              onClick={() => document.querySelector(".chain-link-level .chain-link-body")?.scrollBy({ top: -360, behavior: "smooth" })}
+              onClick={() => goToSibling(currentSelectedIndex - 1)}
             >
               <ArrowUp size={20} />
             </button>
@@ -1436,7 +1498,7 @@ export default function Chain() {
               type="button"
               className="chain-edge-link bottom"
               aria-label="Scroll to next linked idea"
-              onClick={() => document.querySelector(".chain-link-level .chain-link-body")?.scrollBy({ top: 360, behavior: "smooth" })}
+              onClick={() => goToSibling(currentSelectedIndex + 1)}
             >
               <ArrowDown size={20} />
             </button>
