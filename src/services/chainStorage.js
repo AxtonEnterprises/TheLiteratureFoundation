@@ -1147,118 +1147,187 @@ export async function getChainBranches(sourceEntry) {
     };
   }
 
+  const sourceId = String(sourceEntry.id);
   const viewer = auth.currentUser;
 
-  const journalSnapshot = await getDocs(
-    query(
-      collectionGroup(db, "journal"),
-      where(
-        "sourceChainEntryId",
-        "==",
-        String(sourceEntry.id)
-      )
-    )
-  );
-
-  const derivedNotes = journalSnapshot.docs
-    .map((entryDoc) =>
-      normalizeChainEntry({
-        id: entryDoc.id,
-        ...entryDoc.data()
-      })
-    )
-    .filter(Boolean)
-    .filter((entry) => !sameEntry(
-      entry,
-      sourceEntry.userId,
-      sourceEntry.id
-    ))
-    .filter((entry) => isDerivedFrom(entry, sourceEntry));
-
-  const visibleNotes = [];
-
-  for (const entry of derivedNotes) {
-    if (entry.visibility === "public") {
-      visibleNotes.push(entry);
-      continue;
-    }
-
-    if (
-      viewer &&
-      String(entry.userId || "") === String(viewer.uid)
-    ) {
-      visibleNotes.push(entry);
-      continue;
-    }
-
-    if (
-      viewer &&
-      entry.visibility === "group" &&
-      entry.groupId
-    ) {
-      const membership = await getGroupMemberRecord(
-        entry.groupId,
-        viewer.uid
-      );
-
-      if (
-        membership &&
-        !["removed", "suspended"].includes(membership.status)
-      ) {
-        visibleNotes.push(entry);
-      }
-    }
-  }
-
-  const enrichedNotes = await enrichChainEntries(visibleNotes);
-
   /*
-   * Group discussions live under groups/{groupId}/forumPosts.
-   * A collection-group query lets us discover branches without
-   * duplicating the forum system. Firestore may request an index
-   * the first time this query is deployed.
+   * Firestore security rules are not post-query filters.
+   * We therefore query only datasets the viewer is already
+   * authorized to read instead of querying every matching
+   * sourceChainEntryId across all journal documents.
    */
-  let groupDiscussions = [];
 
+  const visibleNotesByKey = new Map();
+
+  // Public branches: this query shape is already authorized by
+  // the public collection-group journal rule.
   try {
-    const forumSnapshot = await getDocs(
+    const publicSnapshot = await getDocs(
       query(
-        collectionGroup(db, "forumPosts"),
-        where(
-          "sourceChainEntryId",
-          "==",
-          String(sourceEntry.id)
-        )
+        collectionGroup(db, "journal"),
+        where("visibility", "==", "public")
       )
     );
 
-    const candidates = forumSnapshot.docs.map((postDoc) => ({
-      id: postDoc.id,
-      ...postDoc.data()
-    }));
+    for (const entryDoc of publicSnapshot.docs) {
+      const entry = normalizeChainEntry({
+        id: entryDoc.id,
+        ...entryDoc.data()
+      });
 
-    if (viewer) {
-      for (const post of candidates) {
-        if (!post.groupId) continue;
-
-        const membership = await getGroupMemberRecord(
-          post.groupId,
-          viewer.uid
+      if (
+        entry &&
+        String(entry.sourceChainEntryId || "") === sourceId &&
+        !sameEntry(entry, sourceEntry.userId, sourceEntry.id) &&
+        isDerivedFrom(entry, sourceEntry)
+      ) {
+        visibleNotesByKey.set(
+          `${entry.userId || ""}_${entry.id}`,
+          entry
         );
-
-        if (
-          membership &&
-          !["removed", "suspended"].includes(membership.status)
-        ) {
-          groupDiscussions.push(post);
-        }
       }
     }
   } catch (error) {
-    console.warn(
-      "Could not load Chain group-discussion branches:",
-      error
-    );
+    console.warn("Could not load public Chain branches:", error);
+  }
+
+  if (viewer) {
+    // The viewer's own journal can be queried directly and safely,
+    // including private notes.
+    try {
+      const ownSnapshot = await getDocs(
+        query(
+          collection(db, "users", viewer.uid, "journal"),
+          where("sourceChainEntryId", "==", sourceId)
+        )
+      );
+
+      for (const entryDoc of ownSnapshot.docs) {
+        const entry = normalizeChainEntry({
+          id: entryDoc.id,
+          ...entryDoc.data()
+        });
+
+        if (
+          entry &&
+          !sameEntry(entry, sourceEntry.userId, sourceEntry.id) &&
+          isDerivedFrom(entry, sourceEntry)
+        ) {
+          visibleNotesByKey.set(
+            `${entry.userId || viewer.uid}_${entry.id}`,
+            entry
+          );
+        }
+      }
+    } catch (error) {
+      console.warn("Could not load personal Chain branches:", error);
+    }
+
+    // Group visibility is resolved one known membership at a time,
+    // so a query can never expose a group the viewer does not belong to.
+    try {
+      const groups = await getMyGroups();
+
+      for (const group of groups) {
+        const groupId = String(group.id || group.groupId || "");
+        if (!groupId) continue;
+
+        try {
+          const groupJournalSnapshot = await getDocs(
+            query(
+              collectionGroup(db, "journal"),
+              where("groupId", "==", groupId),
+              where("visibility", "==", "group")
+            )
+          );
+
+          for (const entryDoc of groupJournalSnapshot.docs) {
+            const entry = normalizeChainEntry({
+              id: entryDoc.id,
+              ...entryDoc.data()
+            });
+
+            if (
+              entry &&
+              String(entry.sourceChainEntryId || "") === sourceId &&
+              !sameEntry(entry, sourceEntry.userId, sourceEntry.id) &&
+              isDerivedFrom(entry, sourceEntry)
+            ) {
+              visibleNotesByKey.set(
+                `${entry.userId || ""}_${entry.id}`,
+                {
+                  ...entry,
+                  group: {
+                    id: groupId,
+                    name: group.name || "Reading Group",
+                    type: group.type || "group",
+                    avatar: group.avatar || "",
+                    membership: group.membership || null
+                  }
+                }
+              );
+            }
+          }
+
+          // Forum posts are read from the specific group path rather
+          // than through an unrestricted collection-group query.
+        } catch (error) {
+          console.warn(`Could not load Chain branches for group ${groupId}:`, error);
+        }
+      }
+    } catch (error) {
+      console.warn("Could not load Chain group memberships:", error);
+    }
+  }
+
+  const enrichedNotes = await enrichChainEntries(
+    [...visibleNotesByKey.values()]
+  );
+
+  const groupDiscussions = [];
+
+  if (viewer) {
+    try {
+      const groups = await getMyGroups();
+
+      for (const group of groups) {
+        const groupId = String(group.id || group.groupId || "");
+        if (!groupId) continue;
+
+        try {
+          const forumSnapshot = await getDocs(
+            query(
+              collection(db, "groups", groupId, "forumPosts"),
+              where("sourceChainEntryId", "==", sourceId)
+            )
+          );
+
+          for (const postDoc of forumSnapshot.docs) {
+            const post = {
+              id: postDoc.id,
+              ...postDoc.data(),
+              nodeType: "group",
+              groupId,
+              group: {
+                id: groupId,
+                name: group.name || "Reading Group",
+                type: group.type || "group",
+                avatar: group.avatar || ""
+              }
+            };
+
+            groupDiscussions.push(post);
+          }
+        } catch (error) {
+          console.warn(
+            `Could not load Chain discussion branches for group ${groupId}:`,
+            error
+          );
+        }
+      }
+    } catch (error) {
+      console.warn("Could not load Chain discussion memberships:", error);
+    }
   }
 
   return {
