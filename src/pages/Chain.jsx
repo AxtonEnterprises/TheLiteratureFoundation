@@ -14,6 +14,8 @@ import {
   MessageCircle,
   Send,
   Share2,
+  Shuffle,
+  Search,
   Trash2,
   Users,
   X
@@ -133,7 +135,6 @@ export default function Chain() {
   const [levelLoading, setLevelLoading] = useState(false);
   const [chromeVisible] = useState(true);
   const [depthMotion, setDepthMotion] = useState("");
-  const [knownForwardDepth, setKnownForwardDepth] = useState({});
   const [myVotes, setMyVotes] = useState({});
   const [voteLoadingKey, setVoteLoadingKey] = useState("");
   const [emptyLinkPrompt, setEmptyLinkPrompt] = useState(null);
@@ -545,52 +546,21 @@ export default function Chain() {
   );
 
   useEffect(() => {
-    if (loading || initialChainSeeded || !entries.length) return;
+    if (loading || initialChainSeeded) return;
 
-    const levelOneEntries = entries.filter(
-      (entry) => entry?.bookId && !entry.sourceChainEntryId
-    );
-
-    if (!levelOneEntries.length) {
-      setInitialChainSeeded(true);
-      return;
+    if (sourceBooks.length && !selectedBookId) {
+      setSelectedBookId(String(sourceBooks[0].id));
     }
 
-    const randomEntry =
-      levelOneEntries[Math.floor(Math.random() * levelOneEntries.length)];
-
-    const siblings = sortChainEntriesByVote(
-      levelOneEntries.filter(
-        (entry) =>
-          String(entry.bookId || "") === String(randomEntry.bookId)
-      )
-    );
-
-    const selectedIndex = Math.max(
-      0,
-      siblings.findIndex(
-        (entry) =>
-          entry.id === randomEntry.id &&
-          entry.userId === randomEntry.userId
-      )
-    );
-
-    setSelectedBookId(String(randomEntry.bookId));
-    setLevels([
-      {
-        parent: {
-          nodeType: "book",
-          id: String(randomEntry.bookId),
-          bookId: String(randomEntry.bookId),
-          title: randomEntry.title || "Untitled",
-          author: randomEntry.author || ""
-        },
-        items: siblings,
-        selectedIndex
-      }
-    ]);
+    // Lit Chain now opens at Level 0: literature first.
+    setLevels([]);
     setInitialChainSeeded(true);
-  }, [loading, entries, initialChainSeeded]);
+  }, [
+    loading,
+    initialChainSeeded,
+    sourceBooks,
+    selectedBookId
+  ]);
 
   const currentLevel = levels.length ? levels[levels.length - 1] : null;
   const currentDepth = levels.length;
@@ -745,6 +715,23 @@ export default function Chain() {
     });
   }
 
+  function showRandomSourceBook() {
+    if (!sourceBooks.length) return;
+
+    if (sourceBooks.length === 1) {
+      goToSourceSibling(0);
+      return;
+    }
+
+    let nextIndex = selectedSourceIndex;
+
+    while (nextIndex === selectedSourceIndex) {
+      nextIndex = Math.floor(Math.random() * sourceBooks.length);
+    }
+
+    goToSourceSibling(nextIndex);
+  }
+
   function handleSourceReelsScroll(event) {
     const scroller = event.currentTarget;
     const pageHeight = scroller.clientHeight || 1;
@@ -804,34 +791,16 @@ export default function Chain() {
     );
   }
 
-  function chainDepthKey(item) {
-    if (!item) return "";
-    if (item.nodeType === "book") return `book:${item.id}`;
-    return `${item.userId || item.nodeType || "entry"}:${item.id}`;
-  }
-
   function renderLevelDots() {
-    const selectedKey =
-      currentDepth === 0
-        ? chainDepthKey(selectedSourceBook)
-        : chainDepthKey(currentSelectedItem);
-
-    const knownAhead = Number(knownForwardDepth[selectedKey] || 0);
-    const guaranteedLevelOne = currentDepth === 0 && selectedSourceBook ? 1 : 0;
-    const furthestKnownDepth = Math.max(
-      currentDepth,
-      currentDepth + knownAhead,
-      guaranteedLevelOne
-    );
-    const count = furthestKnownDepth + 1;
+    const count = levels.length + 1;
 
     return (
       <nav className="chain-level-dots" aria-label="Chain levels">
         {Array.from({ length: count }, (_, depth) => {
           const level = depth === 0 ? null : levels[depth - 1];
-          const selectedItem = level?.items?.[level.selectedIndex || 0] || null;
-          const isAddLevel = selectedItem?.nodeType === "add-link";
-          const isFuture = depth > currentDepth;
+          const isAddLevel =
+            depth > 0 &&
+            level?.items?.[level.selectedIndex || 0]?.nodeType === "add-link";
 
           return (
             <button
@@ -840,15 +809,20 @@ export default function Chain() {
               className={[
                 "chain-level-dot",
                 depth === currentDepth ? "active" : "",
-                isFuture ? "future" : "",
                 isAddLevel ? "add" : ""
               ].filter(Boolean).join(" ")}
-              aria-label={depth === 0 ? "Literature source" : `Level ${depth}`}
+              aria-label={
+                isAddLevel
+                  ? `Add link at level ${depth}`
+                  : depth === 0
+                    ? "Literature source"
+                    : `Level ${depth}`
+              }
               aria-current={depth === currentDepth ? "true" : undefined}
-              disabled={isFuture}
+              disabled={depth > currentDepth}
               onClick={(event) => {
                 event.stopPropagation();
-                if (!isFuture) jumpToDepth(depth);
+                jumpToDepth(depth);
               }}
             >
               {isAddLevel ? <span>+</span> : null}
@@ -885,11 +859,6 @@ export default function Chain() {
           nodeType: "group"
         }))
       ];
-
-      setKnownForwardDepth((current) => ({
-        ...current,
-        [chainDepthKey(currentSelectedItem)]: nextItems.length ? 1 : 0
-      }));
 
       const itemsToOpen = nextItems.length
         ? nextItems
@@ -1008,17 +977,7 @@ export default function Chain() {
     );
 
     for (const item of candidates) {
-      prefetchChainBranches(item).then((branches) => {
-        if (!branches) return;
-        const hasNext =
-          (branches.notes?.length || 0) +
-          (branches.groupDiscussions?.length || 0) > 0;
-
-        setKnownForwardDepth((current) => ({
-          ...current,
-          [chainDepthKey(item)]: hasNext ? 1 : 0
-        }));
-      });
+      prefetchChainBranches(item);
     }
   }, [
     currentDepth,
@@ -1717,6 +1676,25 @@ export default function Chain() {
                           Explore this Chain
                           <ArrowRight size={17} />
                         </button>
+
+                        <div className="chain-source-discovery-actions">
+                          <button
+                            type="button"
+                            className="chain-source-discovery-button"
+                            onClick={showRandomSourceBook}
+                          >
+                            <Shuffle size={15} />
+                            Random
+                          </button>
+
+                          <Link
+                            to="/read/search"
+                            className="chain-source-discovery-button"
+                          >
+                            <Search size={15} />
+                            Search
+                          </Link>
+                        </div>
                       </div>
                     </article>
                   ))}
