@@ -1821,7 +1821,9 @@ export default function Chain() {
                 {currentItems.map((item, index) =>
                   item.nodeType === "group"
                     ? renderGroupDiscussionCard(item, index)
-                    : renderNoteCard(item, index)
+                    : item.nodeType === "add-link"
+                      ? renderAddLinkCard(item, index)
+                      : renderNoteCard(item, index)
                 )}
               </div>
             )}
@@ -1833,7 +1835,6 @@ export default function Chain() {
             </div>
           </section>
         )}
-      </div>
 
         {renderLevelDots()}
       </div>
