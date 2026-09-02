@@ -4,7 +4,8 @@ import {
   ArrowLeft,
   BookOpen,
   CalendarDays,
-  Check,
+  ChevronLeft,
+  ChevronRight,
   GraduationCap,
   MessageCircle,
   Pencil,
@@ -155,6 +156,8 @@ export default function Classroom({ initialGroup }) {
 
   const [group, setGroup] = useState(initialGroup);
   const [activeTab, setActiveTab] = useState("assignments");
+  const [spatialIndex, setSpatialIndex] = useState(0);
+  const [spatialSwipeStart, setSpatialSwipeStart] = useState(null);
 
   const [members, setMembers] = useState([]);
   const [friends, setFriends] = useState([]);
@@ -741,6 +744,75 @@ export default function Classroom({ initialGroup }) {
     }
   }
 
+  const spatialSections = [
+    { value: "assignments", label: "Assignments" },
+    { value: "discussion", label: "Discussion" },
+    { value: "students", label: isTeacher ? "Students" : "Classmates" },
+    ...(isTeacher ? [{ value: "settings", label: "Settings" }] : [])
+  ];
+
+  useEffect(() => {
+    const nextIndex = spatialSections.findIndex(
+      (section) => section.value === activeTab
+    );
+
+    if (nextIndex >= 0 && nextIndex !== spatialIndex) {
+      setSpatialIndex(nextIndex);
+    }
+  }, [activeTab, isTeacher]);
+
+  function moveSpatialSection(direction) {
+    const nextIndex = Math.max(
+      0,
+      Math.min(
+        spatialSections.length - 1,
+        spatialIndex + direction
+      )
+    );
+
+    if (nextIndex === spatialIndex) return;
+
+    setSpatialIndex(nextIndex);
+    setActiveTab(spatialSections[nextIndex].value);
+  }
+
+  function handleClassTouchStart(event) {
+    const touch = event.touches?.[0];
+    if (!touch) return;
+
+    setSpatialSwipeStart({
+      x: touch.clientX,
+      y: touch.clientY
+    });
+  }
+
+  function handleClassTouchEnd(event) {
+    if (!spatialSwipeStart) return;
+
+    const touch = event.changedTouches?.[0];
+    setSpatialSwipeStart(null);
+
+    if (!touch) return;
+
+    const deltaX = touch.clientX - spatialSwipeStart.x;
+    const deltaY = touch.clientY - spatialSwipeStart.y;
+
+    if (
+      Math.abs(deltaX) < 70 ||
+      Math.abs(deltaX) <= Math.abs(deltaY)
+    ) {
+      return;
+    }
+
+    // Same spatial grammar as The Chain and Groups:
+    // left = deeper/next, right = back/previous.
+    if (deltaX < 0) {
+      moveSpatialSection(1);
+    } else {
+      moveSpatialSection(-1);
+    }
+  }
+
   if (loading) {
     return (
       <main className="page-wrap">
@@ -751,15 +823,12 @@ export default function Classroom({ initialGroup }) {
     );
   }
 
-  const tabs = [
-    ["assignments", "Assignments"],
-    ["discussion", "Discussion"],
-    ["students", isTeacher ? "Students" : "Classmates"],
-    ...(isTeacher ? [["settings", "Settings"]] : [])
-  ];
-
   return (
-    <main className="page-wrap">
+    <main
+      className="page-wrap classroom-spatial-page"
+      onTouchStart={handleClassTouchStart}
+      onTouchEnd={handleClassTouchEnd}
+    >
       <SEO
         title={`${group?.name || "Class"} | Lit Chain`}
         description={`Assignments and reading progress for ${
@@ -768,77 +837,128 @@ export default function Classroom({ initialGroup }) {
         path={`/read/groups/${groupId}`}
       />
 
-      <div className="stack-lg">
-        <Link
-          to="/read/profile?tab=groups"
-          className="button secondary"
-          style={{ width: "fit-content" }}
-        >
-          <ArrowLeft size={16} />
-          My Library
-        </Link>
+      <div className="classroom-spatial-shell">
+        <header className="classroom-floating-card">
+          <Link
+            to="/read/profile?tab=groups"
+            className="classroom-floating-back"
+            aria-label="Back to classes"
+          >
+            <ArrowLeft size={18} />
+          </Link>
 
-        <section className="hero-card small">
-          {getGroupAvatar(group?.avatar) && (
-            <img
-              src={getGroupAvatar(group.avatar).image}
-              alt=""
-              style={{
-                width: 88,
-                height: 88,
-                borderRadius: "50%",
-                objectFit: "cover",
-                border: "1px solid var(--line)",
-                marginBottom: "1rem"
+          <button
+            type="button"
+            className="classroom-floating-identity"
+            onClick={() => {
+              setSpatialIndex(0);
+              setActiveTab("assignments");
+            }}
+          >
+            {getGroupAvatar(group?.avatar) && (
+              <img
+                src={getGroupAvatar(group.avatar).image}
+                alt=""
+              />
+            )}
+            <span>
+              <small>Class</small>
+              <strong>{group?.name || "Classroom"}</strong>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className="classroom-floating-members"
+            onClick={() => {
+              const index = spatialSections.findIndex(
+                (section) => section.value === "students"
+              );
+              if (index >= 0) {
+                setSpatialIndex(index);
+                setActiveTab("students");
+              }
+            }}
+            aria-label="Class members"
+          >
+            <Users size={18} />
+          </button>
+
+          {isTeacher && (
+            <button
+              type="button"
+              className="classroom-floating-settings"
+              onClick={() => {
+                const index = spatialSections.findIndex(
+                  (section) => section.value === "settings"
+                );
+                if (index >= 0) {
+                  setSpatialIndex(index);
+                  setActiveTab("settings");
+                }
               }}
-            />
+              aria-label="Class settings"
+            >
+              <Settings size={18} />
+            </button>
           )}
-          <p className="eyebrow">Class</p>
-          <h1>{group?.name || "Classroom"}</h1>
-          <p className="muted">
-            {group?.description ||
-              "Assignments, discussion, and reading progress."}
-          </p>
+        </header>
 
-          <div className="chip-row">
-            <span className="chip">
-              <GraduationCap size={13} /> {teacherCount}{" "}
-              {teacherCount === 1 ? "teacher" : "teachers"}
-            </span>
-            <span className="chip">
-              <Users size={13} /> {studentCount}{" "}
-              {studentCount === 1 ? "student" : "students"}
-            </span>
-            <span className="chip">
-              {classRoleLabel(myRole)}
-            </span>
+        <section className="classroom-section-header">
+          <button
+            type="button"
+            className="icon-link"
+            onClick={() => moveSpatialSection(-1)}
+            disabled={spatialIndex === 0}
+            aria-label="Previous class section"
+          >
+            <ChevronLeft size={18} />
+          </button>
+
+          <div>
+            <p className="eyebrow">
+              {spatialSections[spatialIndex]?.label || "Class"}
+            </p>
+            <div
+              className="classroom-depth-dots"
+              aria-label={`Class section ${spatialIndex + 1} of ${spatialSections.length}`}
+            >
+              {spatialSections.map((section, index) => (
+                <span
+                  key={section.value}
+                  className={index === spatialIndex ? "active" : ""}
+                />
+              ))}
+            </div>
           </div>
+
+          <button
+            type="button"
+            className="icon-link"
+            onClick={() => moveSpatialSection(1)}
+            disabled={spatialIndex === spatialSections.length - 1}
+            aria-label="Next class section"
+          >
+            <ChevronRight size={18} />
+          </button>
         </section>
 
-        <nav
-          className="margins-filter-bar"
-          aria-label="Class sections"
-        >
-          {tabs.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={
-                activeTab === value
-                  ? "margins-filter active"
-                  : "margins-filter"
-              }
-              onClick={() => setActiveTab(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
+        <section className="classroom-overview-strip">
+          <span>
+            <GraduationCap size={13} />
+            {teacherCount} {teacherCount === 1 ? "teacher" : "teachers"}
+          </span>
+          <span>
+            <Users size={13} />
+            {studentCount} {studentCount === 1 ? "student" : "students"}
+          </span>
+          <span>{classRoleLabel(myRole)}</span>
+        </section>
 
         {status && <p className="status">{status}</p>}
 
         {activeTab === "assignments" && (
-          <section className="panel" style={{ padding: "1.25rem" }}>
+          <section className="panel classroom-spatial-section classroom-assignments-section" style={{ padding: "1.25rem" }}>
             <div
               style={{
                 display: "flex",
@@ -851,6 +971,9 @@ export default function Classroom({ initialGroup }) {
               <div>
                 <p className="eyebrow">Assigned Reading</p>
                 <h2>Assignments</h2>
+                <small className="classroom-swipe-cue">
+                  Swipe left for Discussion
+                </small>
               </div>
 
               {isTeacher && (
@@ -1359,9 +1482,12 @@ export default function Classroom({ initialGroup }) {
         )}
 
         {activeTab === "discussion" && (
-          <section className="panel" style={{ padding: "1.25rem" }}>
+          <section className="panel classroom-spatial-section classroom-discussion-section" style={{ padding: "1.25rem" }}>
             <p className="eyebrow">Class Discussion</p>
             <h2>Discussion</h2>
+            <small className="classroom-swipe-cue">
+              Swipe left for {isTeacher ? "Students" : "Classmates"} · right for Assignments
+            </small>
 
             <form
               className="stack-md"
@@ -1542,11 +1668,16 @@ export default function Classroom({ initialGroup }) {
         )}
 
         {activeTab === "students" && (
-          <section className="panel" style={{ padding: "1.25rem" }}>
+          <section className="panel classroom-spatial-section classroom-students-section" style={{ padding: "1.25rem" }}>
             <p className="eyebrow">
               {isTeacher ? "Class Roster" : "Classmates"}
             </p>
             <h2>{isTeacher ? "Students & Teachers" : "Classmates"}</h2>
+            <small className="classroom-swipe-cue">
+              {isTeacher
+                ? "Swipe left for Settings · right for Discussion"
+                : "Swipe right for Discussion"}
+            </small>
 
             <div className="stack-md">
               {members.map((member) => (
@@ -1668,9 +1799,12 @@ export default function Classroom({ initialGroup }) {
         )}
 
         {activeTab === "settings" && isTeacher && (
-          <section className="panel" style={{ padding: "1.25rem" }}>
+          <section className="panel classroom-spatial-section classroom-settings-section" style={{ padding: "1.25rem" }}>
             <p className="eyebrow">Class Management</p>
             <h2>Settings</h2>
+            <small className="classroom-swipe-cue">
+              Swipe right for Students
+            </small>
 
             <form
               className="stack-md"
