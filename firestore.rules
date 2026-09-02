@@ -1353,6 +1353,124 @@ allow update:
      && canPlatformDiscipline(userId);
 }
 
+/* ========================================================
+   GROUP FORUM VOTE HELPERS
+   ======================================================== */
+
+function groupForumCount(data, key) {
+  return data.keys().hasAll([key]) ? data[key] : 0;
+}
+
+function groupForumVoteId(targetType, targetId, voterUserId) {
+  return targetType + "_" + targetId + "_" + voterUserId;
+}
+
+function groupForumVotePath(groupId, targetType, targetId, voterUserId) {
+  return /databases/$(database)/documents/groups/$(groupId)/forumVotes/$(groupForumVoteId(
+    targetType,
+    targetId,
+    voterUserId
+  ));
+}
+
+function oldGroupForumVoteDirection(groupId, targetType, targetId) {
+  return exists(
+    groupForumVotePath(groupId, targetType, targetId, request.auth.uid)
+  )
+    ? get(
+        groupForumVotePath(groupId, targetType, targetId, request.auth.uid)
+      ).data.direction
+    : 0;
+}
+
+function newGroupForumVoteDirection(groupId, targetType, targetId) {
+  return existsAfter(
+    groupForumVotePath(groupId, targetType, targetId, request.auth.uid)
+  )
+    ? getAfter(
+        groupForumVotePath(groupId, targetType, targetId, request.auth.uid)
+      ).data.direction
+    : 0;
+}
+
+function validGroupForumVoteAggregateUpdate(groupId, targetType, targetId) {
+  let oldDirection = oldGroupForumVoteDirection(
+    groupId,
+    targetType,
+    targetId
+  );
+  let newDirection = newGroupForumVoteDirection(
+    groupId,
+    targetType,
+    targetId
+  );
+  let oldUp = groupForumCount(resource.data, "forumUpCount");
+  let oldDown = groupForumCount(resource.data, "forumDownCount");
+  let oldScore = groupForumCount(resource.data, "forumScore");
+
+  return signedIn()
+    && isGroupMember(groupId)
+    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+      "forumUpCount",
+      "forumDownCount",
+      "forumScore"
+    ])
+    && request.resource.data.forumUpCount is int
+    && request.resource.data.forumDownCount is int
+    && request.resource.data.forumScore is int
+    && request.resource.data.forumUpCount >= 0
+    && request.resource.data.forumDownCount >= 0
+    && (
+      (
+        oldDirection == 0
+        && newDirection == 1
+        && request.resource.data.forumUpCount == oldUp + 1
+        && request.resource.data.forumDownCount == oldDown
+        && request.resource.data.forumScore == oldScore + 1
+      )
+      ||
+      (
+        oldDirection == 0
+        && newDirection == -1
+        && request.resource.data.forumUpCount == oldUp
+        && request.resource.data.forumDownCount == oldDown + 1
+        && request.resource.data.forumScore == oldScore - 1
+      )
+      ||
+      (
+        oldDirection == 1
+        && newDirection == 0
+        && request.resource.data.forumUpCount == oldUp - 1
+        && request.resource.data.forumDownCount == oldDown
+        && request.resource.data.forumScore == oldScore - 1
+      )
+      ||
+      (
+        oldDirection == -1
+        && newDirection == 0
+        && request.resource.data.forumUpCount == oldUp
+        && request.resource.data.forumDownCount == oldDown - 1
+        && request.resource.data.forumScore == oldScore + 1
+      )
+      ||
+      (
+        oldDirection == 1
+        && newDirection == -1
+        && request.resource.data.forumUpCount == oldUp - 1
+        && request.resource.data.forumDownCount == oldDown + 1
+        && request.resource.data.forumScore == oldScore - 2
+      )
+      ||
+      (
+        oldDirection == -1
+        && newDirection == 1
+        && request.resource.data.forumUpCount == oldUp + 1
+        && request.resource.data.forumDownCount == oldDown - 1
+        && request.resource.data.forumScore == oldScore + 2
+      )
+    );
+}
+
     /* ========================================================
     GROUPS / CLASSES
     ======================================================== */
@@ -1828,87 +1946,182 @@ match /forumPosts/{postId} {
  allow read:
   if isGroupMember(groupId);
 
-    allow create:
-     if platformWriteAllowed()
-     && isGroupMember(groupId)
-     && request.resource.data.userId == request.auth.uid
-     && request.resource.data.groupId == groupId
-     && request.resource.data.title is string
-     && request.resource.data.title.size() >= 2
-     && request.resource.data.title.size() <= 200
-     && request.resource.data.body is string
-     && request.resource.data.body.size() > 0
-     && request.resource.data.body.size() <= 10000
-     && request.resource.data.pinned == false
-     && request.resource.data.locked == false;
-allow update:
- if platformWriteAllowed()
- && isGroupMember(groupId)
- && (
-   (
-      resource.data.userId == request.auth.uid
-      && request.resource.data.userId == resource.data.userId
-      && request.resource.data.groupId == resource.data.groupId
-      && request.resource.data.pinned == resource.data.pinned
-      && request.resource.data.locked == resource.data.locked
-   )
-   ||
-   canDiscipline(
-      groupId,
-      resource.data.userId
-   )
-   ||
-   request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-      "lastReplyAtISO",
-      "lastReplyAt",
-      "updatedAtISO",
-      "updatedAt"
-   ])
- );
-
-allow delete:
- if platformWriteAllowed()
- && isGroupMember(groupId)
- && (
-   resource.data.userId == request.auth.uid
-   || canDiscipline(
-     groupId,
-     resource.data.userId
-   )
- );
-
-match /replies/{replyId} {
- allow read:
-  if isGroupMember(groupId);
-
  allow create:
   if platformWriteAllowed()
   && isGroupMember(groupId)
   && request.resource.data.userId == request.auth.uid
   && request.resource.data.groupId == groupId
-  && request.resource.data.postId == postId
+  && request.resource.data.title is string
+  && request.resource.data.title.size() >= 2
+  && request.resource.data.title.size() <= 200
   && request.resource.data.body is string
   && request.resource.data.body.size() > 0
-  && request.resource.data.body.size() <= 5000;
-             allow update:
-              if platformWriteAllowed()
-              && isGroupMember(groupId)
-              && resource.data.userId == request.auth.uid
-              && request.resource.data.userId == request.auth.uid;
+  && request.resource.data.body.size() <= 10000
+  && request.resource.data.pinned == false
+  && request.resource.data.locked == false
+  && request.resource.data.forumUpCount == 0
+  && request.resource.data.forumDownCount == 0
+  && request.resource.data.forumScore == 0;
 
-             allow delete:
-              if platformWriteAllowed()
-              && isGroupMember(groupId)
-              && (
-                resource.data.userId == request.auth.uid
-                || canDiscipline(
-                  groupId,
-                  resource.data.userId
-                )
-              );
-         }
-     }
+ allow update:
+  if platformWriteAllowed()
+  && isGroupMember(groupId)
+  && (
+    validGroupForumVoteAggregateUpdate(
+      groupId,
+      "post",
+      postId
+    )
+    ||
+    (
+      resource.data.userId == request.auth.uid
+      && request.resource.data.userId == resource.data.userId
+      && request.resource.data.groupId == resource.data.groupId
+      && request.resource.data.pinned == resource.data.pinned
+      && request.resource.data.locked == resource.data.locked
+      && request.resource.data.forumUpCount == resource.data.forumUpCount
+      && request.resource.data.forumDownCount == resource.data.forumDownCount
+      && request.resource.data.forumScore == resource.data.forumScore
+    )
+    ||
+    canDiscipline(
+      groupId,
+      resource.data.userId
+    )
+    ||
+    request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+      "lastReplyAtISO",
+      "lastReplyAt",
+      "updatedAtISO",
+      "updatedAt"
+    ])
+  );
+
+ allow delete:
+  if platformWriteAllowed()
+  && isGroupMember(groupId)
+  && (
+    resource.data.userId == request.auth.uid
+    || canDiscipline(
+      groupId,
+      resource.data.userId
+    )
+  );
+
+ match /replies/{replyId} {
+  allow read:
+   if isGroupMember(groupId);
+
+  allow create:
+   if platformWriteAllowed()
+   && isGroupMember(groupId)
+   && request.resource.data.userId == request.auth.uid
+   && request.resource.data.groupId == groupId
+   && request.resource.data.postId == postId
+   && request.resource.data.body is string
+   && request.resource.data.body.size() > 0
+   && request.resource.data.body.size() <= 5000
+   && request.resource.data.forumUpCount == 0
+   && request.resource.data.forumDownCount == 0
+   && request.resource.data.forumScore == 0
+   && (
+     request.resource.data.parentReplyId == null
+     || (
+       request.resource.data.parentReplyId is string
+       && request.resource.data.parentReplyId.size() > 0
+       && exists(
+         /databases/$(database)/documents/groups/$(groupId)/forumPosts/$(postId)/replies/$(request.resource.data.parentReplyId)
+       )
+     )
+   );
+
+  allow update:
+   if platformWriteAllowed()
+   && isGroupMember(groupId)
+   && (
+     validGroupForumVoteAggregateUpdate(
+       groupId,
+       "reply",
+       replyId
+     )
+     ||
+     (
+       resource.data.userId == request.auth.uid
+       && request.resource.data.userId == resource.data.userId
+       && request.resource.data.groupId == resource.data.groupId
+       && request.resource.data.postId == resource.data.postId
+       && request.resource.data.parentReplyId == resource.data.parentReplyId
+       && request.resource.data.forumUpCount == resource.data.forumUpCount
+       && request.resource.data.forumDownCount == resource.data.forumDownCount
+       && request.resource.data.forumScore == resource.data.forumScore
+     )
+   );
+
+  allow delete:
+   if platformWriteAllowed()
+   && isGroupMember(groupId)
+   && (
+     resource.data.userId == request.auth.uid
+     || canDiscipline(
+       groupId,
+       resource.data.userId
+     )
+   );
  }
+}
+
+/* ======================================================
+   GROUP FORUM VOTES
+   ====================================================== */
+
+match /forumVotes/{voteId} {
+ allow get:
+  if signedIn()
+  && isGroupMember(groupId)
+  && voteId.matches(
+    ".*_" + request.auth.uid + "$"
+  );
+
+ allow list:
+  if false;
+
+ allow create:
+  if platformWriteAllowed()
+  && isGroupMember(groupId)
+  && request.resource.data.id == voteId
+  && request.resource.data.groupId == groupId
+  && request.resource.data.voterUserId == request.auth.uid
+  && request.resource.data.targetType in ["post", "reply"]
+  && request.resource.data.targetId is string
+  && request.resource.data.targetId.size() > 0
+  && request.resource.data.postId is string
+  && request.resource.data.postId.size() > 0
+  && request.resource.data.direction in [-1, 1]
+  && voteId == groupForumVoteId(
+    request.resource.data.targetType,
+    request.resource.data.targetId,
+    request.auth.uid
+  );
+
+ allow update:
+  if platformWriteAllowed()
+  && isGroupMember(groupId)
+  && resource.data.voterUserId == request.auth.uid
+  && request.resource.data.id == resource.data.id
+  && request.resource.data.groupId == resource.data.groupId
+  && request.resource.data.voterUserId == resource.data.voterUserId
+  && request.resource.data.targetType == resource.data.targetType
+  && request.resource.data.targetId == resource.data.targetId
+  && request.resource.data.postId == resource.data.postId
+  && request.resource.data.replyId == resource.data.replyId
+  && request.resource.data.direction in [-1, 1];
+
+ allow delete:
+  if platformWriteAllowed()
+  && isGroupMember(groupId)
+  && resource.data.voterUserId == request.auth.uid;
+}
+}
 
 /* ========================================================
      GROUP MEMBER COLLECTION-GROUP READS
