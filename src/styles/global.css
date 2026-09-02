@@ -5945,8 +5945,53 @@ body.reader-mode.reader-dark-mode {
   }
 }
 
+/* ========================================================
+   PHASE 5C — REEL NAVIGATION + VIEWPORT FIT FIXES
+   ======================================================== */
 
-/* Phase 5C navigation fixes */
+.chain-browser-page,
+.chain-immersive-stage,
+.chain-link-shell,
+.chain-link-body,
+.chain-level-list.chain-reels,
+.chain-reel-page {
+  box-sizing: border-box;
+}
+
+.chain-browser-page {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.chain-immersive-stage {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.chain-link-shell {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+  overflow: visible;
+}
+
+.chain-link-body {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+}
+
+/* The old visible drop-arrow is no longer used. */
 .chain-chrome-toggle,
 .chain-mini-link {
   display: none !important;
@@ -5957,29 +6002,143 @@ body.reader-mode.reader-dark-mode {
   top: 0;
   left: 50%;
   z-index: 70;
+
   width: 84px;
   height: 30px;
+
   transform: translateX(-50%);
+
+  padding: 0;
   border: 0;
+
   background: transparent;
+
   opacity: 0;
 }
 
-.chain-level-list.chain-reels {
-  display: grid;
-  grid-auto-rows: 100%;
-  height: 100%;
-  min-height: 0;
-  overflow-y: auto;
-  scroll-snap-type: y mandatory;
-  overscroll-behavior-y: contain;
-  touch-action: pan-y;
+/*
+ * The reel list owns vertical pagination.
+ * Every row is exactly one available Chain viewport.
+ */
+.chain-link-level .chain-link-body {
+  display: block;
+  overflow: hidden;
 }
 
-.chain-reel-page {
+.chain-level-list.chain-reels {
+  width: 100%;
   height: 100%;
-  min-height: 100%;
-  overflow: hidden;
+  min-height: 0;
+  max-height: 100%;
+
+  display: grid;
+  grid-auto-flow: row;
+  grid-auto-rows: 100%;
+
+  overflow-x: hidden;
+  overflow-y: auto;
+
+  overscroll-behavior-y: contain;
+
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+
+  touch-action: pan-y;
+
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chain-level-list.chain-reels::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * A card can never become taller than the reel viewport.
+ * Long notes scroll inside their page instead of pushing the
+ * next reel below the screen.
+ */
+.chain-reel-page,
+.chain-reels .margins-entry {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+
+  margin: 0;
+
+  overflow-x: hidden;
+  overflow-y: auto;
+
+  overscroll-behavior: contain;
+
   scroll-snap-align: start;
   scroll-snap-stop: always;
+
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent feed styles from adding extra vertical space between reels. */
+.chain-level-list.chain-reels {
+  gap: 0;
+}
+
+.chain-reel-page + .chain-reel-page,
+.chain-reels .margins-entry + .margins-entry {
+  margin-top: 0;
+}
+
+/* Keep the thin Chain outline and arrows inside the device viewport. */
+@media (max-width: 560px) {
+  .chain-browser-page {
+    padding: 0;
+  }
+
+  .chain-immersive-stage {
+    padding:
+      max(4px, env(safe-area-inset-top))
+      max(4px, env(safe-area-inset-right))
+      max(4px, env(safe-area-inset-bottom))
+      max(4px, env(safe-area-inset-left));
+  }
+
+  .chain-link-shell {
+    padding: 7px;
+  }
+
+  .chain-link-body {
+    border-radius: 28px;
+  }
+
+  .chain-link-level .chain-link-body {
+    padding: 0.35rem;
+  }
+
+  .chain-reel-page,
+  .chain-reels .margins-entry {
+    padding: 0.85rem;
+    border-radius: 22px;
+  }
+
+  .chain-edge-link.left {
+    left: -1px;
+  }
+
+  .chain-edge-link.right {
+    right: -1px;
+  }
+
+  .chain-edge-link.top {
+    top: -1px;
+  }
+
+  .chain-edge-link.bottom {
+    bottom: -1px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chain-level-list.chain-reels {
+    scroll-behavior: auto;
+  }
 }
