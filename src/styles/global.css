@@ -7559,3 +7559,18 @@ body.reader-mode .random-reads-app {
     font-size: 0.72rem;
   }
 }
+
+/* ==================================================
+   LIT CHAIN — FILTER CLEARANCE
+   Keep Chain content completely below the fixed filter.
+   ================================================== */
+
+.chain-immersive-stage {
+  padding-top: 58px !important;
+}
+
+@media (max-width: 560px) {
+  .chain-immersive-stage {
+    padding-top: 54px !important;
+  }
+}
