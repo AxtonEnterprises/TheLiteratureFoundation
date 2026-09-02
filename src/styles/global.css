@@ -7242,3 +7242,24 @@ body.reader-mode.reader-dark-mode {
     );
   }
 }
+
+
+/* PHASE 5C — TOP-ANCHORED COVER + POTENTIAL PATH DOTS */
+.chain-source-cover-screen {
+  align-items: start;
+  justify-items: center;
+}
+.chain-source-cover-screen img {
+  object-fit: contain;
+  object-position: center top;
+}
+.chain-level-dot.future {
+  width: 7px;
+  height: 7px;
+  opacity: 0.52;
+  background: rgba(255, 255, 255, 0.72);
+}
+.chain-level-dot.future:disabled {
+  opacity: 0.52;
+  cursor: default;
+}
