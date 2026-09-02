@@ -511,6 +511,125 @@ function validOptionalNullableString(data, key, maxSize) {
     );
 }
 
+
+function chainVoteCount(data, key) {
+  return data.keys().hasAll([key])
+    ? data[key]
+    : 0;
+}
+
+function chainVoteId(targetUserId, targetEntryId, voterUserId) {
+  return targetUserId + "_" + targetEntryId + "_" + voterUserId;
+}
+
+function chainVotePath(targetUserId, targetEntryId, voterUserId) {
+  return /databases/$(database)/documents/chainVotes/$(chainVoteId(
+    targetUserId,
+    targetEntryId,
+    voterUserId
+  ));
+}
+
+function oldChainVoteDirection(targetUserId, targetEntryId) {
+  return exists(
+    chainVotePath(targetUserId, targetEntryId, request.auth.uid)
+  )
+    ? get(
+        chainVotePath(targetUserId, targetEntryId, request.auth.uid)
+      ).data.direction
+    : 0;
+}
+
+function newChainVoteDirection(targetUserId, targetEntryId) {
+  return existsAfter(
+    chainVotePath(targetUserId, targetEntryId, request.auth.uid)
+  )
+    ? getAfter(
+        chainVotePath(targetUserId, targetEntryId, request.auth.uid)
+      ).data.direction
+    : 0;
+}
+
+function canViewJournalForVoting(data) {
+  return data.visibility == "public"
+    || (
+      data.visibility == "group"
+      && data.groupId is string
+      && isGroupMember(data.groupId)
+    );
+}
+
+function validChainVoteJournalUpdate(userId, entryId) {
+  let oldDirection = oldChainVoteDirection(userId, entryId);
+  let newDirection = newChainVoteDirection(userId, entryId);
+  let oldUp = chainVoteCount(resource.data, "chainUpCount");
+  let oldDown = chainVoteCount(resource.data, "chainDownCount");
+  let oldScore = chainVoteCount(resource.data, "chainScore");
+
+  return signedIn()
+    && resource.data.userId == userId
+    && canViewJournalForVoting(resource.data)
+    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+      "chainUpCount",
+      "chainDownCount",
+      "chainScore"
+    ])
+    && request.resource.data.chainUpCount is int
+    && request.resource.data.chainDownCount is int
+    && request.resource.data.chainScore is int
+    && request.resource.data.chainUpCount >= 0
+    && request.resource.data.chainDownCount >= 0
+    && (
+      (
+        oldDirection == 0
+        && newDirection == 1
+        && request.resource.data.chainUpCount == oldUp + 1
+        && request.resource.data.chainDownCount == oldDown
+        && request.resource.data.chainScore == oldScore + 1
+      )
+      ||
+      (
+        oldDirection == 0
+        && newDirection == -1
+        && request.resource.data.chainUpCount == oldUp
+        && request.resource.data.chainDownCount == oldDown + 1
+        && request.resource.data.chainScore == oldScore - 1
+      )
+      ||
+      (
+        oldDirection == 1
+        && newDirection == 0
+        && request.resource.data.chainUpCount == oldUp - 1
+        && request.resource.data.chainDownCount == oldDown
+        && request.resource.data.chainScore == oldScore - 1
+      )
+      ||
+      (
+        oldDirection == -1
+        && newDirection == 0
+        && request.resource.data.chainUpCount == oldUp
+        && request.resource.data.chainDownCount == oldDown - 1
+        && request.resource.data.chainScore == oldScore + 1
+      )
+      ||
+      (
+        oldDirection == 1
+        && newDirection == -1
+        && request.resource.data.chainUpCount == oldUp - 1
+        && request.resource.data.chainDownCount == oldDown + 1
+        && request.resource.data.chainScore == oldScore - 2
+      )
+      ||
+      (
+        oldDirection == -1
+        && newDirection == 1
+        && request.resource.data.chainUpCount == oldUp + 1
+        && request.resource.data.chainDownCount == oldDown - 1
+        && request.resource.data.chainScore == oldScore + 2
+      )
+    );
+}
+
 function validJournalContent(entryId, data) {
   return data.id == entryId
     && data.note is string
@@ -627,6 +746,13 @@ match /users/{userId} {
    && validJournalContent(
      entryId,
      request.resource.data
+   );
+
+  allow update:
+   if platformWriteAllowed()
+   && validChainVoteJournalUpdate(
+     userId,
+     entryId
    );
 
   allow update:
@@ -1936,6 +2062,53 @@ match /noteLinks/{linkId} {
   allow delete:
     if platformWriteAllowed()
     && resource.data.createdBy == request.auth.uid;
+}
+
+
+/* ========================================================
+   PHASE 5C CHAIN VOTES
+   ======================================================== */
+
+/*
+ * Vote documents are private to the voter. Public ranking
+ * comes from the aggregate counts stored on the journal
+ * entry, so voter identities never need to be listed.
+ */
+match /chainVotes/{voteId} {
+  allow get:
+    if signedIn()
+    && resource.data.voterUserId == request.auth.uid;
+
+  allow list:
+    if false;
+
+  allow create:
+    if platformWriteAllowed()
+    && request.resource.data.id == voteId
+    && request.resource.data.voterUserId == request.auth.uid
+    && request.resource.data.targetUserId is string
+    && request.resource.data.targetUserId.size() > 0
+    && request.resource.data.targetEntryId is string
+    && request.resource.data.targetEntryId.size() > 0
+    && request.resource.data.direction in [-1, 1]
+    && voteId == chainVoteId(
+      request.resource.data.targetUserId,
+      request.resource.data.targetEntryId,
+      request.auth.uid
+    );
+
+  allow update:
+    if platformWriteAllowed()
+    && resource.data.voterUserId == request.auth.uid
+    && request.resource.data.voterUserId == resource.data.voterUserId
+    && request.resource.data.targetUserId == resource.data.targetUserId
+    && request.resource.data.targetEntryId == resource.data.targetEntryId
+    && request.resource.data.id == resource.data.id
+    && request.resource.data.direction in [-1, 1];
+
+  allow delete:
+    if platformWriteAllowed()
+    && resource.data.voterUserId == request.auth.uid;
 }
 
 
