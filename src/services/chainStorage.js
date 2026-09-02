@@ -1316,6 +1316,48 @@ export async function getChainEntry(userId, entryId) {
   return enriched || null;
 }
 
+const CHAIN_BRANCH_CACHE_TTL_MS = 90_000;
+const chainBranchCache = new Map();
+const chainBranchInFlight = new Map();
+
+function chainBranchCacheKey(sourceEntry) {
+  return [
+    auth.currentUser?.uid || "guest",
+    sourceEntry?.userId || "",
+    sourceEntry?.id || ""
+  ].join("_");
+}
+
+function readChainBranchCache(sourceEntry) {
+  const key = chainBranchCacheKey(sourceEntry);
+  const cached = chainBranchCache.get(key);
+
+  if (!cached) return null;
+
+  if (Date.now() - cached.savedAt > CHAIN_BRANCH_CACHE_TTL_MS) {
+    chainBranchCache.delete(key);
+    return null;
+  }
+
+  return cached.value;
+}
+
+function writeChainBranchCache(sourceEntry, value) {
+  chainBranchCache.set(chainBranchCacheKey(sourceEntry), {
+    savedAt: Date.now(),
+    value
+  });
+  return value;
+}
+
+export function prefetchChainBranches(sourceEntry) {
+  if (!sourceEntry?.id) return;
+
+  getChainBranches(sourceEntry).catch((error) => {
+    console.warn("Could not prefetch Chain branches:", error);
+  });
+}
+
 export async function getChainBranches(sourceEntry) {
   if (!sourceEntry?.id) {
     return {
@@ -1326,6 +1368,15 @@ export async function getChainBranches(sourceEntry) {
     };
   }
 
+  const cached = readChainBranchCache(sourceEntry);
+  if (cached) return cached;
+
+  const cacheKey = chainBranchCacheKey(sourceEntry);
+  if (chainBranchInFlight.has(cacheKey)) {
+    return chainBranchInFlight.get(cacheKey);
+  }
+
+  const loadPromise = (async () => {
   const sourceId = String(sourceEntry.id);
   const viewer = auth.currentUser;
 
@@ -1370,7 +1421,16 @@ export async function getChainBranches(sourceEntry) {
     console.warn("Could not load public Chain branches:", error);
   }
 
+  let viewerGroups = [];
+
   if (viewer) {
+    try {
+      viewerGroups = await getMyGroups();
+    } catch (error) {
+      console.warn("Could not load Chain group memberships:", error);
+      viewerGroups = [];
+    }
+
     // The viewer's own journal can be queried directly and safely,
     // including private notes.
     try {
@@ -1402,14 +1462,11 @@ export async function getChainBranches(sourceEntry) {
       console.warn("Could not load personal Chain branches:", error);
     }
 
-    // Group visibility is resolved one known membership at a time,
-    // so a query can never expose a group the viewer does not belong to.
-    try {
-      const groups = await getMyGroups();
-
-      for (const group of groups) {
+    // Resolve visible group branches in parallel across known memberships.
+    await Promise.all(
+      viewerGroups.map(async (group) => {
         const groupId = String(group.id || group.groupId || "");
-        if (!groupId) continue;
+        if (!groupId) return;
 
         try {
           const groupJournalSnapshot = await getDocs(
@@ -1447,16 +1504,14 @@ export async function getChainBranches(sourceEntry) {
               );
             }
           }
-
-          // Forum posts are read from the specific group path rather
-          // than through an unrestricted collection-group query.
         } catch (error) {
-          console.warn(`Could not load Chain branches for group ${groupId}:`, error);
+          console.warn(
+            `Could not load Chain branches for group ${groupId}:`,
+            error
+          );
         }
-      }
-    } catch (error) {
-      console.warn("Could not load Chain group memberships:", error);
-    }
+      })
+    );
   }
 
   const enrichedNotes = sortChainEntriesByVote(
@@ -1468,12 +1523,10 @@ export async function getChainBranches(sourceEntry) {
   const groupDiscussions = [];
 
   if (viewer) {
-    try {
-      const groups = await getMyGroups();
-
-      for (const group of groups) {
+    await Promise.all(
+      viewerGroups.map(async (group) => {
         const groupId = String(group.id || group.groupId || "");
-        if (!groupId) continue;
+        if (!groupId) return;
 
         try {
           const forumSnapshot = await getDocs(
@@ -1484,7 +1537,7 @@ export async function getChainBranches(sourceEntry) {
           );
 
           for (const postDoc of forumSnapshot.docs) {
-            const post = {
+            groupDiscussions.push({
               id: postDoc.id,
               ...postDoc.data(),
               nodeType: "group",
@@ -1495,9 +1548,7 @@ export async function getChainBranches(sourceEntry) {
                 type: group.type || "group",
                 avatar: group.avatar || ""
               }
-            };
-
-            groupDiscussions.push(post);
+            });
           }
         } catch (error) {
           console.warn(
@@ -1505,18 +1556,27 @@ export async function getChainBranches(sourceEntry) {
             error
           );
         }
-      }
-    } catch (error) {
-      console.warn("Could not load Chain discussion memberships:", error);
-    }
+      })
+    );
   }
 
-  return {
+  const result = {
     notes: enrichedNotes,
     noteCount: enrichedNotes.length,
     groupDiscussions,
     groupDiscussionCount: groupDiscussions.length
   };
+
+  return writeChainBranchCache(sourceEntry, result);
+  })();
+
+  chainBranchInFlight.set(cacheKey, loadPromise);
+
+  try {
+    return await loadPromise;
+  } finally {
+    chainBranchInFlight.delete(cacheKey);
+  }
 }
 
 export async function getChainProvenance(entry) {
