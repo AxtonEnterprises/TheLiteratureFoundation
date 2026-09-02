@@ -6883,3 +6883,231 @@ body.reader-mode.reader-dark-mode {
     animation: none;
   }
 }
+
+
+/* ========================================================
+   PHASE 5C — LEVEL 0 FULL VIEWPORT + REPLY MODAL FIX
+   ======================================================== */
+
+/*
+ * The original immersive stage used three grid rows for the old
+ * hidden chrome. Once the filter moved to fixed positioning, Level 0
+ * was still being auto-placed into the first "auto" row, which
+ * compressed it to its content height.
+ *
+ * The Chain now has one actual content row. The fixed filter sits
+ * above it without participating in layout.
+ */
+.chain-immersive-stage {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+
+  box-sizing: border-box;
+
+  padding:
+    44px
+    0
+    0;
+
+  overflow: hidden;
+}
+
+.chain-link-shell.chain-source-level,
+.chain-link-shell.chain-link-level {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+
+  align-self: stretch;
+}
+
+/*
+ * Level 0 is a true full-screen reel. There is no heading occupying
+ * space above the cover; title/author/link information lives in the
+ * floating overlay card.
+ */
+.chain-source-level .chain-link-body {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+
+  padding: 0;
+
+  overflow: hidden;
+}
+
+.chain-source-reels {
+  position: absolute;
+  inset: 0;
+
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+}
+
+.chain-source-reel {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  max-height: 100%;
+
+  overflow: hidden;
+}
+
+.chain-source-cover-screen {
+  inset: 0;
+}
+
+.chain-source-cover-screen img {
+  width: 100%;
+  height: 100%;
+
+  object-fit: cover;
+}
+
+/*
+ * Preserve the thin outside Chain oval while allowing the artwork to
+ * occupy the entire inner viewport.
+ */
+.chain-source-level .chain-link-body {
+  border-radius: 38px;
+}
+
+/* Keep orientation dots above the full-screen cover. */
+.chain-source-level .chain-orientation-dots {
+  z-index: 32;
+}
+
+/* --------------------------------------------------------
+   REPLIES — actual viewport modal
+   -------------------------------------------------------- */
+
+.chain-reply-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+
+  display: grid;
+  place-items: center;
+
+  padding:
+    max(1rem, env(safe-area-inset-top))
+    max(1rem, env(safe-area-inset-right))
+    max(1rem, env(safe-area-inset-bottom))
+    max(1rem, env(safe-area-inset-left));
+
+  overflow: hidden;
+
+  background: rgba(11, 45, 69, 0.52);
+}
+
+.chain-reply-modal {
+  width: min(540px, 100%);
+  height: auto;
+  max-height: min(86dvh, 720px);
+
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 0.75rem;
+
+  box-sizing: border-box;
+
+  padding: 1rem;
+
+  overflow: hidden;
+
+  background: var(--background, #ffffff);
+
+  border: 1px solid var(--line);
+  border-radius: 24px;
+
+  box-shadow:
+    0 24px 70px
+    rgba(11, 45, 69, 0.26);
+}
+
+.chain-reply-modal-scroll {
+  min-height: 0;
+  max-height: 100%;
+
+  overflow-x: hidden;
+  overflow-y: auto;
+
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chain-reply-modal-compose {
+  min-width: 0;
+}
+
+.chain-reply-modal-compose textarea {
+  display: block;
+
+  width: 100%;
+  max-width: 100%;
+  min-height: 84px;
+  max-height: 22dvh;
+
+  box-sizing: border-box;
+}
+
+/*
+ * The Chain page itself deliberately clips overflow. The reply modal
+ * is fixed to the viewport and uses a higher stacking context so it
+ * is never trapped below the reel.
+ */
+.chain-browser-page .chain-reply-modal-backdrop {
+  isolation: isolate;
+}
+
+@media (max-width: 560px) {
+  .chain-immersive-stage {
+    padding-top: 42px;
+  }
+
+  .chain-link-shell.chain-source-level,
+  .chain-link-shell.chain-link-level {
+    padding:
+      7px
+      max(4px, env(safe-area-inset-right))
+      max(4px, env(safe-area-inset-bottom))
+      max(4px, env(safe-area-inset-left));
+  }
+
+  .chain-source-level .chain-link-body {
+    border-radius: 28px;
+  }
+
+  .chain-source-overlay-card {
+    left: 0.85rem;
+    right: 0.85rem;
+    bottom: max(
+      3.2rem,
+      calc(env(safe-area-inset-bottom) + 2.5rem)
+    );
+  }
+
+  .chain-reply-modal-backdrop {
+    padding:
+      max(0.65rem, env(safe-area-inset-top))
+      0.65rem
+      max(0.65rem, env(safe-area-inset-bottom));
+  }
+
+  .chain-reply-modal {
+    width: 100%;
+    max-height: 88dvh;
+
+    padding: 0.9rem;
+
+    border-radius: 20px;
+  }
+}
