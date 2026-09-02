@@ -5596,3 +5596,238 @@ body.reader-mode.reader-dark-mode {
     gap: 0.8rem;
   }
 }
+/* ========================================================
+   PHASE 5C — DEPTH-BASED LIT CHAIN BROWSER
+   Level 0 = literature
+   Vertical = sibling links
+   Swipe right = deeper
+   Swipe left = back
+   ======================================================== */
+
+.chain-browser-page {
+  touch-action: pan-y;
+}
+
+.chain-depth-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card, #fff);
+}
+
+.chain-depth-back,
+.chain-depth-forward {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.45rem 0.55rem;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chain-depth-back:disabled,
+.chain-depth-forward:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.chain-depth-path {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  opacity: 0.68;
+}
+
+.chain-depth-path span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.chain-depth-path span.active {
+  opacity: 1;
+  font-weight: 800;
+}
+
+.chain-source-level,
+.chain-link-level {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.chain-level-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.chain-level-heading h2,
+.chain-level-heading p {
+  margin-bottom: 0;
+}
+
+.chain-level-heading > span {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  opacity: 0.68;
+}
+
+.chain-source-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.chain-source-book {
+  width: 100%;
+  min-height: 74px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card, #fff);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chain-source-book > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.chain-source-book strong,
+.chain-source-book span {
+  overflow-wrap: anywhere;
+}
+
+.chain-source-book span,
+.chain-source-book small {
+  opacity: 0.68;
+}
+
+.chain-source-book.selected {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+
+.chain-level-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.chain-level-card {
+  transition: transform 150ms ease, outline-color 150ms ease;
+  cursor: pointer;
+}
+
+.chain-level-card.selected {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.chain-level-selection {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.45rem 0 0.1rem;
+  font-size: 0.74rem;
+  opacity: 0.62;
+}
+
+.chain-level-group-avatar {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--card, #fff);
+}
+
+.chain-level-group-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chain-level-discussion {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.chain-swipe-cue {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.75rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.8rem;
+  opacity: 0.68;
+}
+
+.chain-swipe-cue-split {
+  justify-content: space-between;
+}
+
+.chain-swipe-cue-split span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+@media (max-width: 480px) {
+  .chain-depth-bar {
+    grid-template-columns: 44px minmax(0, 1fr) 58px;
+    gap: 0.25rem;
+  }
+
+  .chain-depth-back,
+  .chain-depth-forward {
+    padding-inline: 0.25rem;
+    font-size: 0.74rem;
+  }
+
+  .chain-depth-path {
+    font-size: 0.72rem;
+  }
+
+  .chain-source-book {
+    padding: 0.8rem;
+  }
+
+  .chain-swipe-cue-split {
+    font-size: 0.72rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chain-level-card {
+    transition: none;
+  }
+}
