@@ -1772,7 +1772,8 @@ export default function Group() {
 
     if (!post) return;
 
-    if (deltaX > 0) {
+    // Match The Chain: swipe left goes deeper; swipe right goes back.
+    if (deltaX < 0) {
       if (replyModePostId) {
         const reply = currentReplyItem();
         if (reply) enterReplyChildren(post, reply);

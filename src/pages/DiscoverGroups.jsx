@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search, Users } from "lucide-react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import {
   cancelGroupJoinRequest,
@@ -19,6 +19,7 @@ function joinPolicyLabel(group) {
 }
 
 export default function DiscoverGroups() {
+  const navigate = useNavigate();
   const [myGroups, setMyGroups] = useState([]);
   const [discoverGroups, setDiscoverGroups] = useState([]);
   const [view, setView] = useState("mine");
@@ -28,6 +29,7 @@ export default function DiscoverGroups() {
   const [busyId, setBusyId] = useState(null);
   const [status, setStatus] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [groupSwipeStart, setGroupSwipeStart] = useState(null);
 
   async function load() {
     try {
@@ -117,6 +119,50 @@ export default function DiscoverGroups() {
     );
   }
 
+  function handleGroupSwipeStart(event, group) {
+    if (!group?.membership) return;
+
+    const touch = event.touches?.[0];
+    if (!touch) return;
+
+    setGroupSwipeStart({
+      groupId: group.id,
+      x: touch.clientX,
+      y: touch.clientY
+    });
+  }
+
+  function handleGroupSwipeEnd(event, group) {
+    if (
+      !group?.membership ||
+      !groupSwipeStart ||
+      groupSwipeStart.groupId !== group.id
+    ) {
+      setGroupSwipeStart(null);
+      return;
+    }
+
+    const touch = event.changedTouches?.[0];
+    if (!touch) {
+      setGroupSwipeStart(null);
+      return;
+    }
+
+    const deltaX = touch.clientX - groupSwipeStart.x;
+    const deltaY = touch.clientY - groupSwipeStart.y;
+    setGroupSwipeStart(null);
+
+    // Do not interfere with the vertical group reel.
+    if (Math.abs(deltaX) < 70 || Math.abs(deltaX) <= Math.abs(deltaY)) {
+      return;
+    }
+
+    // Same spatial grammar as The Chain: left = deeper/open.
+    if (deltaX < 0) {
+      navigate(`/read/groups/${group.id}`);
+    }
+  }
+
   return (
     <main className="groups-home-page">
       <SEO
@@ -202,7 +248,12 @@ export default function DiscoverGroups() {
               const pending = group.joinRequest?.status === "pending";
 
               return (
-                <article key={group.id} className="groups-home-reel">
+                <article
+                  key={group.id}
+                  className="groups-home-reel"
+                  onTouchStart={(event) => handleGroupSwipeStart(event, group)}
+                  onTouchEnd={(event) => handleGroupSwipeEnd(event, group)}
+                >
                   <div className="groups-home-card">
                     <div className="groups-home-avatar">
                       {avatar ? (
@@ -230,16 +281,13 @@ export default function DiscoverGroups() {
                       </p>
                     )}
 
-                    <div className="groups-home-actions">
-                      {isMember && (
-                        <Link
-                          to={`/read/groups/${group.id}`}
-                          className="button primary"
-                        >
-                          Open Group
-                        </Link>
-                      )}
+                    {isMember && (
+                      <p className="groups-home-swipe-hint">
+                        Swipe left to open
+                      </p>
+                    )}
 
+                    <div className="groups-home-actions">
                       {!isMember && pending && (
                         <button
                           type="button"
