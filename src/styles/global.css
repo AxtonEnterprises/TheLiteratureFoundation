@@ -5831,3 +5831,561 @@ body.reader-mode.reader-dark-mode {
     transition: none;
   }
 }
+/* ========================================================
+   PHASE 5C — IMMERSIVE CHAIN-LINK BROWSER
+   ======================================================== */
+
+.chain-immersive .site-header {
+  transform: translateY(-115%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.chain-immersive.chain-chrome-visible .site-header {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.chain-browser-page {
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
+  padding: 0.65rem;
+  background: #f3f4f4;
+  touch-action: pan-y;
+}
+
+.chain-immersive-stage {
+  position: relative;
+  height: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0.45rem;
+}
+
+/* Small link at the top reveals/hides navigation + filters */
+
+.chain-chrome-toggle {
+  position: fixed;
+  top: 0.35rem;
+  left: 50%;
+  z-index: 60;
+  transform: translateX(-50%);
+  width: 54px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #61686b;
+}
+
+.chain-mini-link,
+.chain-edge-link {
+  border: 3px solid #aeb4b6;
+  background: #dfe2e3;
+  color: #656c6f;
+  box-shadow: inset 0 0 0 5px #f3f4f4;
+}
+
+.chain-mini-link {
+  width: 46px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+}
+
+/* ========================================================
+   HIDDEN / EXPANDED CHROME
+   ======================================================== */
+
+.chain-chrome-controls,
+.chain-depth-bar {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  margin: 0;
+  padding-block: 0;
+  transition:
+    max-height 180ms ease,
+    opacity 180ms ease,
+    padding 180ms ease;
+}
+
+.chain-chrome-controls.visible,
+.chain-depth-bar.visible {
+  max-height: 180px;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.chain-chrome-controls.visible {
+  display: grid;
+  gap: 0.45rem;
+  padding-top: 2.3rem;
+}
+
+.chain-compact-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0 0.35rem;
+}
+
+.chain-compact-title p {
+  margin: 0;
+}
+
+.chain-compact-title strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.15rem;
+}
+
+/* ========================================================
+   DEPTH / LEVEL NAVIGATION
+   ======================================================== */
+
+.chain-depth-bar {
+  position: relative;
+  z-index: 25;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem;
+  border: 0;
+  border-radius: 999px;
+  background: #e7e9e9;
+}
+
+.chain-depth-bar.visible {
+  padding: 0.35rem 0.45rem;
+}
+
+.chain-depth-back,
+.chain-depth-forward {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.35rem 0.45rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+}
+
+.chain-depth-back:disabled,
+.chain-depth-forward:disabled {
+  opacity: 0.3;
+}
+
+.chain-depth-path {
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.15rem;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.76rem;
+  color: #697174;
+}
+
+.chain-depth-path span {
+  display: inline-flex;
+  align-items: center;
+}
+
+.chain-depth-path .active {
+  font-weight: 800;
+  color: #27383e;
+}
+
+/* ========================================================
+   LARGE CENTRAL CHAIN LINK
+   ======================================================== */
+
+.chain-link-shell {
+  position: relative;
+  min-height: 0;
+  height: 100%;
+  padding: 28px 42px;
+  overflow: visible;
+}
+
+.chain-link-body {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding: 1.15rem;
+
+  border: 7px solid #aeb4b6;
+  border-radius: 48% / 13%;
+
+  background: #fafafa;
+
+  box-shadow:
+    inset 0 0 0 7px #e1e4e4,
+    0 10px 30px rgba(35, 45, 50, 0.08);
+}
+
+.chain-link-body::-webkit-scrollbar {
+  display: none;
+}
+
+/* ========================================================
+   SMALL DIRECTIONAL CHAIN LINKS
+   ======================================================== */
+
+.chain-edge-link {
+  position: absolute;
+  z-index: 30;
+  width: 50px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+}
+
+.chain-edge-link.top,
+.chain-edge-link.bottom {
+  left: 50%;
+  transform: translateX(-50%) rotate(90deg);
+}
+
+.chain-edge-link.top {
+  top: 3px;
+}
+
+.chain-edge-link.bottom {
+  bottom: 3px;
+}
+
+.chain-edge-link.top svg,
+.chain-edge-link.bottom svg {
+  transform: rotate(-90deg);
+}
+
+.chain-edge-link.left,
+.chain-edge-link.right {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.chain-edge-link.left {
+  left: 2px;
+}
+
+.chain-edge-link.right {
+  right: 2px;
+}
+
+.chain-edge-link:disabled {
+  opacity: 0.35;
+}
+
+.chain-edge-link:not(:disabled):active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.chain-edge-link.top:not(:disabled):active,
+.chain-edge-link.bottom:not(:disabled):active {
+  transform:
+    translateX(-50%)
+    rotate(90deg)
+    scale(0.95);
+}
+
+/* ========================================================
+   LEVEL CONTENT
+   ======================================================== */
+
+.chain-level-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.8rem;
+}
+
+.chain-level-heading h2,
+.chain-level-heading p {
+  margin-bottom: 0;
+}
+
+.chain-level-heading > span {
+  font-size: 0.75rem;
+  color: #747c7f;
+}
+
+.chain-source-list,
+.chain-level-list {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.chain-source-book {
+  width: 100%;
+  min-height: 68px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 0.85rem;
+  padding: 0.8rem 0.9rem;
+
+  border: 1px solid #d6dada;
+  border-radius: 18px;
+
+  background: #fff;
+  color: inherit;
+
+  font: inherit;
+  text-align: left;
+}
+
+.chain-source-book > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.1rem;
+}
+
+.chain-source-book span,
+.chain-source-book small {
+  color: #737b7e;
+}
+
+.chain-source-book.selected {
+  outline: 3px solid #8f989b;
+  outline-offset: -3px;
+}
+
+/* ========================================================
+   CHAIN CARDS
+   ======================================================== */
+
+.chain-level-card {
+  cursor: pointer;
+  border-radius: 24px;
+
+  transition:
+    transform 140ms ease,
+    outline-color 140ms ease;
+}
+
+.chain-level-card.selected {
+  outline: 3px solid #959da0;
+  outline-offset: 2px;
+}
+
+.chain-level-selection {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 0.35rem;
+
+  font-size: 0.73rem;
+  color: #747c7f;
+}
+
+/* ========================================================
+   UP CHAIN / DOWN CHAIN VOTING
+   ======================================================== */
+
+.chain-vote-row {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    auto
+    minmax(0, 1fr);
+
+  align-items: center;
+  gap: 0.5rem;
+
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+
+  border-top: 1px solid #dde0e0;
+}
+
+.chain-vote-button {
+  min-height: 42px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 0.35rem;
+
+  border: 1px solid #d7dada;
+  border-radius: 999px;
+
+  background: #f1f2f2;
+  color: #687073;
+
+  font: inherit;
+  font-weight: 700;
+}
+
+.chain-vote-button strong {
+  min-width: 1.2em;
+}
+
+/* Bold chain = Up Chain */
+
+.chain-vote-button.up svg {
+  stroke-width: 3.2;
+}
+
+/* Broken chain = Down Chain */
+
+.chain-vote-button.down svg {
+  stroke-width: 1.8;
+}
+
+.chain-vote-button.active {
+  background: #d9dddd;
+  border-color: #858e91;
+  color: #26383e;
+}
+
+.chain-vote-score {
+  min-width: 34px;
+  text-align: center;
+
+  font-weight: 900;
+  color: #34464c;
+}
+
+/* ========================================================
+   SWIPE DIRECTIONS
+   LEFT = deeper
+   RIGHT = back
+   ======================================================== */
+
+.chain-swipe-cue {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 0.35rem;
+  padding: 0.65rem 0 0.15rem;
+
+  font-size: 0.75rem;
+  color: #747c7f;
+}
+
+.chain-swipe-cue-split {
+  justify-content: space-between;
+}
+
+.chain-swipe-cue-split span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+/* ========================================================
+   GROUP DISCUSSION NODES
+   ======================================================== */
+
+.chain-level-group-avatar {
+  width: 30px;
+  height: 30px;
+
+  display: grid;
+  place-items: center;
+
+  overflow: hidden;
+  border-radius: 50%;
+
+  background: #fff;
+}
+
+.chain-level-group-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chain-level-discussion {
+  display: grid;
+  gap: 0.65rem;
+}
+
+/* ========================================================
+   MOBILE
+   ======================================================== */
+
+@media (max-width: 560px) {
+  .chain-browser-page {
+    padding: 0.3rem;
+  }
+
+  .chain-link-shell {
+    padding: 25px 31px;
+  }
+
+  .chain-link-body {
+    padding: 0.8rem;
+
+    border-width: 6px;
+    border-radius: 46% / 9%;
+
+    box-shadow:
+      inset 0 0 0 5px #e1e4e4;
+  }
+
+  .chain-edge-link {
+    width: 44px;
+    height: 27px;
+  }
+
+  .chain-edge-link.left {
+    left: -1px;
+  }
+
+  .chain-edge-link.right {
+    right: -1px;
+  }
+
+  .chain-vote-button span {
+    display: none;
+  }
+
+  .chain-vote-row {
+    grid-template-columns:
+      1fr
+      36px
+      1fr;
+  }
+
+  .chain-swipe-cue-split {
+    font-size: 0.7rem;
+  }
+}
+
+/* ========================================================
+   ACCESSIBILITY
+   ======================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .chain-immersive .site-header,
+  .chain-chrome-controls,
+  .chain-depth-bar,
+  .chain-level-card {
+    transition: none;
+  }
+}
