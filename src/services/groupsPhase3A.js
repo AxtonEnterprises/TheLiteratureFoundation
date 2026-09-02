@@ -6,6 +6,7 @@ import {
   getDocs,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc
@@ -197,6 +198,20 @@ export async function getGroupForumPosts(groupId) {
       return a.pinned ? -1 : 1;
     }
 
+    const scoreDifference =
+      Number(b.forumScore || 0) - Number(a.forumScore || 0);
+
+    if (scoreDifference !== 0) {
+      return scoreDifference;
+    }
+
+    const upDifference =
+      Number(b.forumUpCount || 0) - Number(a.forumUpCount || 0);
+
+    if (upDifference !== 0) {
+      return upDifference;
+    }
+
     return String(b.createdAtISO || "").localeCompare(
       String(a.createdAtISO || "")
     );
@@ -243,6 +258,9 @@ export async function createGroupForumPost(
     body: cleanBody,
     pinned: false,
     locked: false,
+    forumUpCount: 0,
+    forumDownCount: 0,
+    forumScore: 0,
 
     /*
      * Optional provenance for discussions created
@@ -562,33 +580,60 @@ export async function getGroupForumReplies(
       )
     );
   } catch {
-    snapshot =
-      await getDocs(repliesRef);
+    snapshot = await getDocs(repliesRef);
   }
 
-  return Promise.all(
+  const replies = await Promise.all(
     snapshot.docs.map(
       async (replyDoc) => {
-        const data =
-          replyDoc.data();
+        const data = replyDoc.data();
 
         return {
           id: replyDoc.id,
           ...data,
+          parentReplyId:
+            data.parentReplyId || null,
+          forumUpCount:
+            Number(data.forumUpCount || 0),
+          forumDownCount:
+            Number(data.forumDownCount || 0),
+          forumScore:
+            Number(data.forumScore || 0),
           authorProfile:
-            await publicProfile(
-              data.userId
-            )
+            await publicProfile(data.userId)
         };
       }
     )
   );
+
+  return replies.sort((a, b) => {
+    const scoreDifference =
+      Number(b.forumScore || 0) - Number(a.forumScore || 0);
+
+    if (scoreDifference !== 0) {
+      return scoreDifference;
+    }
+
+    const upDifference =
+      Number(b.forumUpCount || 0) - Number(a.forumUpCount || 0);
+
+    if (upDifference !== 0) {
+      return upDifference;
+    }
+
+    return String(a.createdAtISO || "").localeCompare(
+      String(b.createdAtISO || "")
+    );
+  });
 }
 
 export async function replyToGroupForumPost(
   groupId,
   postId,
-  body
+  body,
+  {
+    parentReplyId = null
+  } = {}
 ) {
   const { user } =
     await requireMembership(groupId);
@@ -610,9 +655,7 @@ export async function replyToGroupForumPost(
     );
   }
 
-  if (
-    postSnapshot.data()?.locked
-  ) {
+  if (postSnapshot.data()?.locked) {
     throw new Error(
       "This topic is locked."
     );
@@ -625,6 +668,31 @@ export async function replyToGroupForumPost(
     throw new Error(
       "Write a reply first."
     );
+  }
+
+  let parentReply = null;
+
+  if (parentReplyId) {
+    const parentSnapshot = await getDoc(
+      doc(
+        db,
+        "groups",
+        String(groupId),
+        "forumPosts",
+        String(postId),
+        "replies",
+        String(parentReplyId)
+      )
+    );
+
+    if (!parentSnapshot.exists()) {
+      throw new Error("That reply is no longer available.");
+    }
+
+    parentReply = {
+      id: parentSnapshot.id,
+      ...parentSnapshot.data()
+    };
   }
 
   const replyRef = doc(
@@ -647,13 +715,15 @@ export async function replyToGroupForumPost(
     postId: String(postId),
     userId: user.uid,
     body: cleanBody,
+    parentReplyId:
+      parentReplyId ? String(parentReplyId) : null,
+    forumUpCount: 0,
+    forumDownCount: 0,
+    forumScore: 0,
     createdAtISO: now,
     updatedAtISO: now
   };
 
-  /*
-   * The reply itself is the only required write.
-   */
   await setDoc(
     replyRef,
     {
@@ -663,10 +733,6 @@ export async function replyToGroupForumPost(
     }
   );
 
-  /*
-   * Activity metadata is useful but must not
-   * turn a successful reply into a false error.
-   */
   Promise.allSettled([
     setDoc(
       postRef,
@@ -694,10 +760,7 @@ export async function replyToGroupForumPost(
   ]).then((results) => {
     results.forEach(
       (result) => {
-        if (
-          result.status ===
-          "rejected"
-        ) {
+        if (result.status === "rejected") {
           console.warn(
             "Forum reply metadata update failed:",
             result.reason
@@ -707,53 +770,30 @@ export async function replyToGroupForumPost(
     );
   });
 
-  /*
-   * Notifications are best-effort.
-   * Notification permissions must not make a
-   * successfully posted reply appear to fail.
-   */
-  const postData =
-    postSnapshot.data();
+  const postData = postSnapshot.data();
+  const notificationRecipient =
+    parentReply?.userId || postData?.userId || null;
 
   if (
-    postData?.userId &&
-    postData.userId !== user.uid
+    notificationRecipient &&
+    notificationRecipient !== user.uid
   ) {
     (async () => {
       try {
-        const groupSnapshot =
-          await getDoc(
-            doc(
-              db,
-              "groups",
-              String(groupId)
-            )
-          );
+        const groupSnapshot = await getDoc(
+          doc(db, "groups", String(groupId))
+        );
 
         await createNotification({
-          recipientUserId:
-            postData.userId,
-
-          type:
-            "forum_reply",
-
-          actorUserId:
-            user.uid,
-
-          groupId:
-            String(groupId),
-
-          groupName:
-            groupSnapshot.exists()
-              ? groupSnapshot.data()
-                  ?.name || ""
-              : "",
-
-          postId:
-            String(postId),
-
-          targetPath:
-            `/read/groups/${groupId}`
+          recipientUserId: notificationRecipient,
+          type: "forum_reply",
+          actorUserId: user.uid,
+          groupId: String(groupId),
+          groupName: groupSnapshot.exists()
+            ? groupSnapshot.data()?.name || ""
+            : "",
+          postId: String(postId),
+          targetPath: `/read/groups/${groupId}`
         });
       } catch (error) {
         console.warn(
@@ -766,3 +806,162 @@ export async function replyToGroupForumPost(
 
   return reply;
 }
+
+function groupForumVoteId(targetType, targetId, voterUserId) {
+  return `${targetType}_${targetId}_${voterUserId}`;
+}
+
+export async function getMyGroupForumVote(
+  groupId,
+  {
+    targetType,
+    targetId
+  }
+) {
+  const { user } = await requireMembership(groupId);
+
+  const cleanType = targetType === "reply" ? "reply" : "post";
+  const voteId = groupForumVoteId(
+    cleanType,
+    String(targetId),
+    user.uid
+  );
+
+  const snapshot = await getDoc(
+    doc(
+      db,
+      "groups",
+      String(groupId),
+      "forumVotes",
+      voteId
+    )
+  );
+
+  return snapshot.exists()
+    ? Number(snapshot.data()?.direction || 0)
+    : 0;
+}
+
+export async function voteOnGroupForumNode(
+  groupId,
+  postId,
+  {
+    replyId = null,
+    direction
+  }
+) {
+  const { user } = await requireMembership(groupId);
+
+  const requestedDirection =
+    direction === -1 ? -1 : 1;
+
+  const targetType = replyId ? "reply" : "post";
+  const targetId = String(replyId || postId);
+  const voteId = groupForumVoteId(
+    targetType,
+    targetId,
+    user.uid
+  );
+
+  const targetRef = replyId
+    ? doc(
+        db,
+        "groups",
+        String(groupId),
+        "forumPosts",
+        String(postId),
+        "replies",
+        String(replyId)
+      )
+    : doc(
+        db,
+        "groups",
+        String(groupId),
+        "forumPosts",
+        String(postId)
+      );
+
+  const voteRef = doc(
+    db,
+    "groups",
+    String(groupId),
+    "forumVotes",
+    voteId
+  );
+
+  const result = await runTransaction(
+    db,
+    async (transaction) => {
+      const [targetSnapshot, voteSnapshot] = await Promise.all([
+        transaction.get(targetRef),
+        transaction.get(voteRef)
+      ]);
+
+      if (!targetSnapshot.exists()) {
+        throw new Error("That discussion item is no longer available.");
+      }
+
+      const target = targetSnapshot.data();
+      const oldDirection = voteSnapshot.exists()
+        ? Number(voteSnapshot.data()?.direction || 0)
+        : 0;
+      const newDirection =
+        oldDirection === requestedDirection
+          ? 0
+          : requestedDirection;
+
+      let up = Number(target.forumUpCount || 0);
+      let down = Number(target.forumDownCount || 0);
+
+      if (oldDirection === 1) up -= 1;
+      if (oldDirection === -1) down -= 1;
+      if (newDirection === 1) up += 1;
+      if (newDirection === -1) down += 1;
+
+      up = Math.max(0, up);
+      down = Math.max(0, down);
+      const score = up - down;
+
+      transaction.update(targetRef, {
+        forumUpCount: up,
+        forumDownCount: down,
+        forumScore: score
+      });
+
+      if (newDirection === 0) {
+        transaction.delete(voteRef);
+      } else if (voteSnapshot.exists()) {
+        transaction.update(voteRef, {
+          direction: newDirection,
+          updatedAtISO: new Date().toISOString(),
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        transaction.set(voteRef, {
+          id: voteId,
+          groupId: String(groupId),
+          postId: String(postId),
+          replyId: replyId ? String(replyId) : null,
+          targetType,
+          targetId,
+          voterUserId: user.uid,
+          direction: newDirection,
+          createdAtISO: new Date().toISOString(),
+          createdAt: serverTimestamp(),
+          updatedAtISO: new Date().toISOString(),
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      return {
+        direction: newDirection,
+        forumUpCount: up,
+        forumDownCount: down,
+        forumScore: score
+      };
+    }
+  );
+
+  return result;
+}
+
