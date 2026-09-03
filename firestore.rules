@@ -1,6 +1,351 @@
-*** firestore.rules — Aides + class-only discussion creation ***
+rules_version = '2';
 
-1) Replace classTeacher() with:
+service cloud.firestore {
+ match /databases/{database}/documents {
+
+  /* ========================================================
+     HELPERS
+     ======================================================== */
+
+  function signedIn() {
+    return request.auth != null;
+  }
+
+  function isOwner(userId) {
+    return signedIn()
+     && request.auth.uid == userId;
+  }
+
+  function validVisibility(data) {
+    return data.visibility == "private"
+     || data.visibility == "public"
+     || data.visibility == "group";
+  }
+
+  function membershipIsActive(groupId, userId) {
+    return groupId is string
+     && userId is string
+     && exists(
+       /databases/$(database)/documents/groups/$(groupId)/members/$(userId)
+     )
+     && !(
+       get(
+         /databases/$(database)/documents/groups/$(groupId)/members/$(userId)
+       ).data.keys().hasAll(["status"])
+       && get(
+         /databases/$(database)/documents/groups/$(groupId)/members/$(userId)
+       ).data.status in ["removed", "suspended"]
+     );
+  }
+
+  function isGroupMember(groupId) {
+    return signedIn()
+     && membershipIsActive(groupId, request.auth.uid);
+  }
+
+  function validGroupVisibility(data) {
+    return data.visibility != "group"
+     || (
+       data.groupId is string
+       && data.groupId.size() > 0
+       && isGroupMember(data.groupId)
+     );
+  }
+
+  function groupMemberRole(groupId) {
+   return get(
+    /databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)
+    ).data.role;
+}
+
+function isGroupAdmin(groupId) {
+  return isGroupMember(groupId)
+   && (
+     groupMemberRole(groupId) == "owner"
+     || groupMemberRole(groupId) == "admin"
+   );
+}
+
+function isGroupModerator(groupId) {
+  return isGroupMember(groupId)
+   && (
+     groupMemberRole(groupId) == "owner"
+     || groupMemberRole(groupId) == "admin"
+     || groupMemberRole(groupId) == "moderator"
+   );
+}
+
+function canModerateForum(groupId) {
+  return isGroupOwner(groupId)
+   || isGroupAdmin(groupId)
+   || isGroupModerator(groupId);
+}
+
+function isGroupOwner(groupId) {
+  return signedIn()
+   && groupId is string
+   && exists(
+     /databases/$(database)/documents/groups/$(groupId)
+   )
+   && get(
+     /databases/$(database)/documents/groups/$(groupId)
+   ).data.ownerId == request.auth.uid;
+}
+
+
+/* ========================================================
+ PHASE 4.2 GROUP MODERATION HELPERS
+ ======================================================== */
+
+function groupRoleForModeration(groupId, userId) {
+  return get(
+    /databases/$(database)/documents/groups/$(groupId)/members/$(userId)
+  ).data.role;
+}
+
+function moderationTargetRole(groupId, userId) {
+  return exists(
+    /databases/$(database)/documents/groups/$(groupId)/members/$(userId)
+  )
+    ? groupRoleForModeration(groupId, userId)
+    : "member";
+}
+
+function canDiscipline(groupId, targetUserId) {
+ return isGroupMember(groupId)
+  && (
+    (
+       isGroupOwner(groupId)
+       && moderationTargetRole(groupId, targetUserId) != "owner"
+    )
+    ||
+    (
+       isGroupAdmin(groupId)
+       && moderationTargetRole(groupId, targetUserId) in [
+         "moderator",
+         "member"
+       ]
+    )
+    ||
+    (
+       isGroupModerator(groupId)
+       && moderationTargetRole(groupId, targetUserId) == "member"
+    )
+  );
+}
+
+function canDisciplineStoredRole(groupId, targetRole) {
+  return (
+     isGroupOwner(groupId)
+     && targetRole != "owner"
+  )
+  ||
+  (
+     isGroupAdmin(groupId)
+     && targetRole in [
+       "moderator",
+       "member"
+     ]
+  )
+  ||
+  (
+     isGroupModerator(groupId)
+     && targetRole == "member"
+  );
+}
+
+function isBanned(groupId, userId) {
+  return exists(
+    /databases/$(database)/documents/groups/$(groupId)/bans/$(userId)
+  );
+}
+
+
+/* ========================================================
+   PHASE 4.3A PLATFORM MODERATION HELPERS
+   ======================================================== */
+
+/*
+ * Platform roles are stored at:
+ *
+ * platformRoles/{userId}
+ *
+ * role:
+ * - platform_moderator
+ * - platform_admin
+* - foundation_admin
+*
+* These roles are intentionally separate from group roles.
+*/
+
+function hasPlatformRoleDocument(userId) {
+  return signedIn()
+   && exists(
+     /databases/$(database)/documents/platformRoles/$(userId)
+   );
+}
+
+function platformRoleFor(userId) {
+  return get(
+    /databases/$(database)/documents/platformRoles/$(userId)
+  ).data.role;
+}
+
+function isPlatformModerator() {
+  return signedIn()
+   && hasPlatformRoleDocument(request.auth.uid)
+   && platformRoleFor(request.auth.uid) in [
+     "platform_moderator",
+     "platform_admin",
+     "foundation_admin"
+   ];
+}
+
+function isPlatformAdmin() {
+  return signedIn()
+   && hasPlatformRoleDocument(request.auth.uid)
+   && platformRoleFor(request.auth.uid) in [
+     "platform_admin",
+     "foundation_admin"
+   ];
+}
+
+function isFoundationAdmin() {
+  return signedIn()
+   && hasPlatformRoleDocument(request.auth.uid)
+   && platformRoleFor(request.auth.uid) == "foundation_admin";
+}
+
+/*
+* Numeric hierarchy:
+*
+* foundation_admin = 3
+* platform_admin = 2
+* platform_moderator = 1
+* ordinary user   =0
+*/
+
+function platformRoleRank(role) {
+  return role == "foundation_admin"
+   ?3
+   : role == "platform_admin"
+     ?2
+     : role == "platform_moderator"
+       ?1
+       : 0;
+}
+
+function platformTargetRole(userId) {
+  return exists(
+    /databases/$(database)/documents/platformRoles/$(userId)
+  )
+    ? get(
+        /databases/$(database)/documents/platformRoles/$(userId)
+      ).data.role
+    : "user";
+}
+
+function canPlatformDiscipline(targetUserId) {
+  return isPlatformModerator()
+   && targetUserId is string
+   && targetUserId != request.auth.uid
+   && platformRoleRank(
+     platformRoleFor(request.auth.uid)
+   ) > platformRoleRank(
+     platformTargetRole(targetUserId)
+   );
+}
+
+/*
+ * Account enforcement documents live at:
+ *
+ * platformEnforcement/{userId}
+ *
+* Only platform admins/foundation admins may create
+* suspensions or bans.
+*/
+
+function validPlatformEnforcementStatus(status) {
+  return status in [
+    "warning",
+    "suspended",
+    "banned",
+    "cleared"
+  ];
+}
+
+function isPlatformSuspendedOrBanned(userId) {
+  return exists(
+    /databases/$(database)/documents/platformEnforcement/$(userId)
+  )
+  && (
+    get(
+      /databases/$(database)/documents/platformEnforcement/$(userId)
+    ).data.status == "banned"
+    ||
+    (
+      get(
+        /databases/$(database)/documents/platformEnforcement/$(userId)
+      ).data.status == "suspended"
+      &&
+      !(
+        get(
+          /databases/$(database)/documents/platformEnforcement/$(userId)
+        ).data.keys().hasAll(["endsAt"])
+        &&
+        get(
+          /databases/$(database)/documents/platformEnforcement/$(userId)
+        ).data.endsAt is timestamp
+        &&
+        request.time >= get(
+          /databases/$(database)/documents/platformEnforcement/$(userId)
+        ).data.endsAt
+      )
+    )
+  );
+}
+
+/*
+ * Central Phase 4.3C.2 platform write gate.
+ *
+ * - warning: writes remain allowed
+ * - cleared: writes remain allowed
+ * - active suspension: writes are blocked
+ * - expired suspension: writes resume automatically
+ * - ban: writes remain blocked until cleared
+ *
+ * Legacy suspension records without a Firestore Timestamp
+ * are treated as active (secure-by-default) until cleared
+ * or re-applied with the new schema.
+ */
+function platformWriteAllowed() {
+  return signedIn()
+    && !isPlatformSuspendedOrBanned(request.auth.uid);
+}
+
+
+/* ========================================================
+   CLASSROOM HELPERS
+   ======================================================== */
+
+function classMember(groupId) {
+  return isGroupMember(groupId);
+}
+
+function classMemberAfter(groupId) {
+  return signedIn()
+   && existsAfter(
+     /databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)
+   )
+   && !(
+     getAfter(
+       /databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)
+     ).data.keys().hasAll(["status"])
+     && getAfter(
+       /databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)
+     ).data.status in ["removed", "suspended"]
+   );
+}
 
 function classTeacher(groupId) {
  return isGroupMember(groupId)
@@ -13,124 +358,2371 @@ function classTeacher(groupId) {
      ];
 }
 
-This makes the existing `moderator` storage role the classroom Aide role
-for assignment create/update/delete and teacher-visible progress.
-
-2) Replace canModerateForum() with:
-
-function canModerateForum(groupId) {
-  return isGroupOwner(groupId)
-   || isGroupAdmin(groupId)
-   || isGroupModerator(groupId);
+function validStudentProgressCreate(progressId, data) {
+  return data.keys().hasOnly([
+      "userId",
+      "bookId",
+      "title",
+      "author",
+      "paragraphIndex",
+      "furthestParagraphIndex",
+      "totalParagraphs",
+      "percentComplete",
+      "updatedAtISO",
+      "updatedAt"
+    ])
+    && data.userId == request.auth.uid
+    && data.bookId is string
+    && data.bookId.size() > 0
+    && data.bookId.size() <= 100
+    && progressId == request.auth.uid + "_" + data.bookId
+    && data.title is string
+    && data.title.size() <= 500
+    && data.author is string
+    && data.author.size() <= 300
+    && data.paragraphIndex is int
+    && data.paragraphIndex >= 0
+    && data.furthestParagraphIndex is int
+    && data.furthestParagraphIndex >= data.paragraphIndex
+    && data.totalParagraphs is int
+    && data.totalParagraphs > 0
+    && data.paragraphIndex < data.totalParagraphs
+    && data.furthestParagraphIndex < data.totalParagraphs
+    && data.percentComplete is int
+    && data.percentComplete >= 0
+    && data.percentComplete <= 100
+    && data.updatedAtISO is string
+    && data.updatedAtISO.size() <= 64
+    && data.updatedAt is timestamp;
 }
 
-The role hierarchy is now:
-- owner: Primary Teacher / group owner
-- admin: Teacher / group admin
-- moderator: Aide / group moderator
-- member: Student / group member
+function validStudentProgressUpdate(progressId, oldData, newData) {
+  return validStudentProgressCreate(progressId, newData)
+    && newData.userId == oldData.userId
+    && newData.bookId == oldData.bookId
+    && newData.furthestParagraphIndex >= oldData.furthestParagraphIndex
+    && newData.totalParagraphs >= oldData.totalParagraphs
+    && newData.percentComplete >= oldData.percentComplete;
+}
 
-3) In canDiscipline(), replace the moderator branch:
+match /groups/{groupId}/assignments/{assignmentId} {
+ allow read:
+  if classMember(groupId);
 
-    (
-       get(
-         /databases/$(database)/documents/groups/$(groupId)
-       ).data.type != "class"
-       && isGroupModerator(groupId)
-       && moderationTargetRole(groupId, targetUserId) == "member"
-    )
+    allow create, update, delete:
+     if platformWriteAllowed()
+     && classTeacher(groupId);
+}
 
-with:
-
-    (
-       isGroupModerator(groupId)
-       && moderationTargetRole(groupId, targetUserId) == "member"
-    )
-
-4) Make the same replacement in canDisciplineStoredRole():
-
-  (
-     isGroupModerator(groupId)
-     && targetRole == "member"
-  )
-
-This allows Aides to moderate Students, but not Teachers/Aides.
-
-5) In /groups/{groupId}/forumPosts/{postId}, REPLACE the create rule:
+match /groups/{groupId}/studentProgress/{progressId} {
+ allow read:
+  if classTeacher(groupId)
+  || (
+    request.auth != null
+    && resource.data.userId == request.auth.uid
+  );
 
     allow create:
      if platformWriteAllowed()
-     && isGroupMember(groupId)
-     ...
+     && classMember(groupId)
+     && validStudentProgressCreate(
+       progressId,
+       request.resource.data
+     );
 
-with:
-
-    allow create:
+    allow update:
      if platformWriteAllowed()
-     && isGroupMember(groupId)
+     && classMember(groupId)
+     && resource.data.userId == request.auth.uid
+     && validStudentProgressUpdate(
+       progressId,
+       resource.data,
+       request.resource.data
+     );
+
+    allow delete:
+     if platformWriteAllowed()
      && (
-       get(
-         /databases/$(database)/documents/groups/$(groupId)
-       ).data.type != "class"
-       || classTeacher(groupId)
+       classTeacher(groupId)
+       || (
+       request.auth != null
+       && resource.data.userId == request.auth.uid
+       )
+     );
+}
+
+
+/* ========================================================
+   FRIEND HELPERS
+   ======================================================== */
+function validFriendshipUsers(data) {
+  return data.users is list
+   && data.users.size() == 2
+   && data.users[0] is string
+   && data.users[1] is string
+   && data.users[0] != data.users[1];
+}
+
+function validFriendRequest(data) {
+  return validFriendshipUsers(data)
+   && data.requestedBy is string
+   && data.requestedTo is string
+   && data.requestedBy != data.requestedTo
+   && data.requestedBy in data.users
+   && data.requestedTo in data.users
+   && data.status == "pending";
+}
+
+function currentUserInFriendship(data) {
+  return signedIn()
+   && (
+     request.auth.uid == data.requestedBy
+     || request.auth.uid == data.requestedTo
+   );
+}
+
+
+/* ========================================================
+   USERNAME HELPERS
+   ======================================================== */
+
+function validUsernameReservation(username, data) {
+  return signedIn()
+   && username is string
+   && username.matches('^[a-z0-9_]{3,24}$')
+   && data.userId == request.auth.uid
+   && data.username == username;
+}
+
+
+/* ========================================================
+   USER CONTENT VALIDATION
+   ======================================================== */
+
+function validOptionalString(data, key, maxSize) {
+  return !data.keys().hasAll([key])
+    || (
+      data[key] is string
+      && data[key].size() <= maxSize
+    );
+}
+
+function validOptionalNullableString(data, key, maxSize) {
+  return !data.keys().hasAll([key])
+    || data[key] == null
+    || (
+      data[key] is string
+      && data[key].size() <= maxSize
+    );
+}
+
+
+function chainVoteCount(data, key) {
+  return data.keys().hasAll([key])
+    ? data[key]
+    : 0;
+}
+
+function chainVoteId(targetUserId, targetEntryId, voterUserId) {
+  return targetUserId + "_" + targetEntryId + "_" + voterUserId;
+}
+
+function chainVotePath(targetUserId, targetEntryId, voterUserId) {
+  return /databases/$(database)/documents/chainVotes/$(chainVoteId(
+    targetUserId,
+    targetEntryId,
+    voterUserId
+  ));
+}
+
+function oldChainVoteDirection(targetUserId, targetEntryId) {
+  return exists(
+    chainVotePath(targetUserId, targetEntryId, request.auth.uid)
+  )
+    ? get(
+        chainVotePath(targetUserId, targetEntryId, request.auth.uid)
+      ).data.direction
+    : 0;
+}
+
+function newChainVoteDirection(targetUserId, targetEntryId) {
+  return existsAfter(
+    chainVotePath(targetUserId, targetEntryId, request.auth.uid)
+  )
+    ? getAfter(
+        chainVotePath(targetUserId, targetEntryId, request.auth.uid)
+      ).data.direction
+    : 0;
+}
+
+function canViewJournalForVoting(data) {
+  return data.visibility == "public"
+    || (
+      data.visibility == "group"
+      && data.groupId is string
+      && isGroupMember(data.groupId)
+    );
+}
+
+function validChainVoteJournalUpdate(userId, entryId) {
+  let oldDirection = oldChainVoteDirection(userId, entryId);
+  let newDirection = newChainVoteDirection(userId, entryId);
+  let oldUp = chainVoteCount(resource.data, "chainUpCount");
+  let oldDown = chainVoteCount(resource.data, "chainDownCount");
+  let oldScore = chainVoteCount(resource.data, "chainScore");
+
+  return signedIn()
+    && resource.data.userId == userId
+    && canViewJournalForVoting(resource.data)
+    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+      "chainUpCount",
+      "chainDownCount",
+      "chainScore"
+    ])
+    && request.resource.data.chainUpCount is int
+    && request.resource.data.chainDownCount is int
+    && request.resource.data.chainScore is int
+    && request.resource.data.chainUpCount >= 0
+    && request.resource.data.chainDownCount >= 0
+    && (
+      (
+        oldDirection == 0
+        && newDirection == 1
+        && request.resource.data.chainUpCount == oldUp + 1
+        && request.resource.data.chainDownCount == oldDown
+        && request.resource.data.chainScore == oldScore + 1
+      )
+      ||
+      (
+        oldDirection == 0
+        && newDirection == -1
+        && request.resource.data.chainUpCount == oldUp
+        && request.resource.data.chainDownCount == oldDown + 1
+        && request.resource.data.chainScore == oldScore - 1
+      )
+      ||
+      (
+        oldDirection == 1
+        && newDirection == 0
+        && request.resource.data.chainUpCount == oldUp - 1
+        && request.resource.data.chainDownCount == oldDown
+        && request.resource.data.chainScore == oldScore - 1
+      )
+      ||
+      (
+        oldDirection == -1
+        && newDirection == 0
+        && request.resource.data.chainUpCount == oldUp
+        && request.resource.data.chainDownCount == oldDown - 1
+        && request.resource.data.chainScore == oldScore + 1
+      )
+      ||
+      (
+        oldDirection == 1
+        && newDirection == -1
+        && request.resource.data.chainUpCount == oldUp - 1
+        && request.resource.data.chainDownCount == oldDown + 1
+        && request.resource.data.chainScore == oldScore - 2
+      )
+      ||
+      (
+        oldDirection == -1
+        && newDirection == 1
+        && request.resource.data.chainUpCount == oldUp + 1
+        && request.resource.data.chainDownCount == oldDown - 1
+        && request.resource.data.chainScore == oldScore + 2
+      )
+    );
+}
+
+function validJournalContent(entryId, data) {
+  return data.id == entryId
+    && data.note is string
+    && data.note.size() > 0
+    && data.note.size() <= 3000
+    && validOptionalString(data, "title", 500)
+    && validOptionalString(data, "author", 300)
+    && validOptionalString(data, "paragraphPreview", 1200)
+    && (
+      !data.keys().hasAll(["paragraphIndex"])
+      || (
+        data.paragraphIndex is int
+        && data.paragraphIndex >= 0
+      )
+    )
+    && (
+      !data.keys().hasAll(["paragraphNumber"])
+      || data.paragraphNumber == null
+      || (
+        data.paragraphNumber is int
+        && data.paragraphNumber >= 1
+      )
+    )
+    && validOptionalNullableString(data, "groupId", 160);
+}
+
+/* ========================================================
+   CHAIN REPLY HELPERS
+   ======================================================== */
+  function parentJournalExists(data) {
+   return data.parentUserId is string
+    && data.parentEntryId is string
+    && exists(
+
+/databases/$(database)/documents/users/$(data.parentUserId)/journal/$(data.parentEntryId)
+     );
+  }
+
+  function parentJournal(data) {
+   return get(
+
+/databases/$(database)/documents/users/$(data.parentUserId)/journal/$(data.parentEntryId)
+    );
+  }
+
+  function validChainReplyVisibility(data) {
+    return parentJournalExists(data)
+     && validVisibility(data)
+     && (
+       (
+          parentJournal(data).data.visibility == "public"
+          && data.visibility == "public"
+       )
+       ||
+       (
+          parentJournal(data).data.visibility == "group"
+          && data.visibility == "group"
+          && data.groupId is string
+          && data.groupId == parentJournal(data).data.groupId
+          && isGroupMember(data.groupId)
+       )
+       ||
+       (
+          parentJournal(data).data.visibility == "private"
+          && data.visibility == "private"
+          && data.parentUserId == request.auth.uid
+       )
+     );
+  }
+
+    /* ========================================================
+    PRIVATE USER PROFILE
+    ======================================================== */
+match /users/{userId} {
+ allow read, create, update, delete:
+  if isOwner(userId);
+
+ match /savedBooks/{bookId} {
+   allow read, create, update, delete:
+    if isOwner(userId);
+ }
+
+ match /savedChainEntries/{savedChainEntryId} {
+   allow read, create, update, delete:
+    if isOwner(userId);
+ }
+
+ match /readingProgress/{bookId} {
+   allow read, create, update, delete:
+    if isOwner(userId);
+ }
+
+ match /journal/{entryId} {
+  allow read:
+   if isOwner(userId)
+   || resource.data.visibility == "public"
+   || (
+     resource.data.visibility == "group"
+     && isGroupMember(
+       resource.data.groupId
      )
-     && request.resource.data.userId == request.auth.uid
-     && request.resource.data.groupId == groupId
-     && request.resource.data.title is string
-     && request.resource.data.title.size() >= 2
-     && request.resource.data.title.size() <= 200
-     && request.resource.data.body is string
-     && request.resource.data.body.size() > 0
-     && request.resource.data.body.size() <= 10000
-     && request.resource.data.pinned == false
-     && request.resource.data.locked == false;
+   );
 
-Result:
-- Ordinary groups: any active member may start a topic, unchanged.
-- Classes: only Primary Teacher / Teacher / Aide may start a topic.
-- Students may still reply.
+  allow create:
+   if platformWriteAllowed()
+   && isOwner(userId)
+   && request.resource.data.userId == userId
+   && validVisibility(
+     request.resource.data
+   )
+   && validGroupVisibility(
+     request.resource.data
+   )
+   && validJournalContent(
+     entryId,
+     request.resource.data
+   );
 
-6) In moderationReports read access, replace the class-excluding moderator
-branch with direct isGroupModerator(groupId):
+  allow update:
+   if platformWriteAllowed()
+   && validChainVoteJournalUpdate(
+     userId,
+     entryId
+   );
 
-     if isGroupOwner(groupId)
-     || isGroupAdmin(groupId)
-     || isGroupModerator(groupId);
-
-Do the same for moderationActions read/create access.
-
-This lets Aides see and act on class moderation reports against Students.
-
-7) In bans read access, replace the class-excluding moderator branch with:
-
-       || isGroupModerator(groupId)
-
-Aide ban creation remains controlled by canDiscipline(), which only permits
-them to act against Students.
-
-8) In the nested /members delete rule, replace the comment and moderator
-branch so moderators can remove members in a class too.
-
-Replace:
-
-         (
-              get(
-                /databases/$(database)/documents/groups/$(groupId)
-              ).data.type != "class"
-              && isGroupModerator(groupId)
-              && resource.data.role == "member"
+  allow update:
+   if platformWriteAllowed()
+   && isOwner(userId)
+   && resource.data.userId == userId
+         && request.resource.data.userId == userId
+         && validVisibility(
+           request.resource.data
          )
+         && validGroupVisibility(
+           request.resource.data
+         )
+         && validJournalContent(
+           entryId,
+           request.resource.data
+         );
 
-with:
+        /*
+         * Existing group moderation remains intact.
+         *
+         * Platform moderation is intentionally NOT given
+         * direct delete permission here. Public content
+         * removal will be implemented through the platform
+         * moderation architecture rather than giving
+         * moderators blanket access to private user paths.
+         */
+        allow delete:
+          if platformWriteAllowed()
+          && (
+            isOwner(userId)
+            || (
+            resource.data.visibility == "group"
+            && resource.data.groupId is string
+            && isGroupModerator(
+              resource.data.groupId
+            )
+          )
+          );
+    }
+}
 
+
+/* ========================================================
+   JOURNAL COLLECTION-GROUP READS
+   ======================================================== */
+
+match /{path=**}/journal/{entryId} {
+  allow read:
+   if (
+     signedIn()
+     && resource.data.userId == request.auth.uid
+   )
+   || resource.data.visibility == "public"
+   || (
+     resource.data.visibility == "group"
+     && isGroupMember(
+       resource.data.groupId
+     )
+   );
+}
+
+
+/* ========================================================
+   PHASE 5C GROUP FORUM COLLECTION-GROUP READS
+   ======================================================== */
+
+/*
+ * Allows the Idea Chain to discover group discussions
+ * branching from a Chain note.
+ *
+ * A forum post remains visible only to an active member
+ * of the group it belongs to.
+ */
+match /{path=**}/forumPosts/{postId} {
+  allow read:
+   if signedIn()
+   && resource.data.groupId is string
+   && isGroupMember(
+     resource.data.groupId
+   );
+}
+/* ========================================================
+   UNIQUE USERNAMES
+   ======================================================== */
+
+match /usernames/{username} {
+ allow get:
+  if signedIn();
+
+    allow list:
+     if false;
+
+    allow create:
+     if platformWriteAllowed()
+     && validUsernameReservation(
+       username,
+       request.resource.data
+     );
+
+    allow update:
+     if false;
+
+    allow delete:
+     if platformWriteAllowed()
+     && resource.data.userId == request.auth.uid;
+}
+
+
+/* ========================================================
+   PUBLIC READER PROFILES
+   ======================================================== */
+
+match /publicProfiles/{userId} {
+ allow read:
+  if true;
+
+    allow create:
+     if platformWriteAllowed()
+     && isOwner(userId)
+     && request.resource.data.userId == userId;
+
+    /*
+     * Users continue to own their public profiles.
+     *
+     * Platform moderators do NOT receive direct profile
+    * editing privileges. This prevents a moderator from
+    * impersonating a user or rewriting profile content.
+    */
+    allow update:
+     if platformWriteAllowed()
+     && isOwner(userId)
+     && resource.data.userId == userId
+     && request.resource.data.userId == userId;
+
+    allow delete:
+     if platformWriteAllowed()
+     && isOwner(userId);
+}
+
+
+/* ========================================================
+   FRIENDSHIPS
+   ======================================================== */
+
+match /friendships/{friendshipId} {
+ allow get:
+  if signedIn()
+  && (
+    !exists(
+      /databases/$(database)/documents/friendships/$(friendshipId)
+    )
+    || currentUserInFriendship(
+      resource.data
+    )
+  );
+
+    allow list:
+     if currentUserInFriendship(
+       resource.data
+     );
+
+    allow create:
+     if platformWriteAllowed()
+     && validFriendRequest(
+       request.resource.data
+     )
+     && request.resource.data.requestedBy == request.auth.uid;
+
+    allow update:
+     if platformWriteAllowed()
+     && currentUserInFriendship(
+      resource.data
+     )
+     && request.resource.data.users == resource.data.users
+     && request.resource.data.requestedBy == resource.data.requestedBy
+     && request.resource.data.requestedTo == resource.data.requestedTo
+     && resource.data.status == "pending"
+     && request.resource.data.status == "accepted"
+     && request.auth.uid == resource.data.requestedTo;
+
+    allow delete:
+     if platformWriteAllowed()
+     && currentUserInFriendship(
+       resource.data
+     );
+}
+
+
+/* ========================================================
+   PHASE 4.3A PLATFORM ROLES
+   ======================================================== */
+
+match /platformRoles/{userId} {
+
+    /*
+     * A user may read their own role.
+     *
+     * Platform moderators/admins need role visibility for
+     * hierarchy checks and the future moderation dashboard.
+     */
+    allow read:
+      if signedIn()
+      && (
+        request.auth.uid == userId
+        || isPlatformModerator()
+      );
+
+    /*
+     * Foundation admins control assignment of platform
+     * moderation authority.
+     *
+     * A foundation admin may assign:
+     * - platform_moderator
+     * - platform_admin
+     *
+     * foundation_admin cannot be created from the client.
+    * Bootstrap/foundation-admin assignment should therefore
+    * be performed through Firebase Admin/server tooling.
+    */
+    allow create:
+     if isFoundationAdmin()
+     && request.resource.data.userId == userId
+     && request.resource.data.role in [
+       "platform_moderator",
+       "platform_admin"
+     ]
+     && request.resource.data.assignedBy == request.auth.uid;
+
+    /*
+     * Foundation admins may change moderator/admin roles,
+     * but cannot use client rules to manufacture another
+     * foundation_admin.
+     */
+    allow update:
+      if isFoundationAdmin()
+      && resource.data.userId == userId
+      && request.resource.data.userId == userId
+      && resource.data.role != "foundation_admin"
+      && request.resource.data.role in [
+        "platform_moderator",
+        "platform_admin"
+      ]
+      && request.resource.data.assignedBy == request.auth.uid;
+
+    /*
+     * Foundation admins may remove moderator/admin authority.
+     * The foundation_admin role itself remains protected
+     * from client-side deletion.
+     */
+    allow delete:
+      if isFoundationAdmin()
+      && resource.data.role != "foundation_admin";
+}
+
+
+/* ========================================================
+   PHASE 4.3A GLOBAL MODERATION REPORTS
+   ======================================================== */
+
+match /moderationReports/{reportId} {
+/*
+ * Reporters may see their own reports.
+ * Platform moderation staff may see the full queue.
+ */
+allow read:
+  if signedIn()
+  && (
+    resource.data.reporterUserId == request.auth.uid
+    || isPlatformModerator()
+  );
+
+/*
+ * Standardized global report schema.
+ *
+ * targetType currently supports:
+ * - profile
+ * - chain_entry
+ * - chain_reply
+ * - group
+ * - group_forum_post
+ * - group_forum_reply
+ *
+ * Group reports can continue using their existing
+ * group-local system during migration. This global
+ * collection gives us the system-wide destination.
+ */
+allow create:
+  if signedIn()
+  && request.resource.data.reporterUserId == request.auth.uid
+  && request.resource.data.reporterUserId is string
+  && request.resource.data.targetType is string
+  && request.resource.data.targetType in [
+    "profile",
+    "chain_entry",
+    "chain_reply",
+    "group",
+    "group_forum_post",
+    "group_forum_reply"
+  ]
+  && request.resource.data.targetId is string
+  && request.resource.data.targetId.size() > 0
+  && request.resource.data.targetUserId is string
+  && request.resource.data.targetUserId.size() > 0
+     && request.resource.data.reason is string
+     && request.resource.data.reason.size() > 0
+     && request.resource.data.status == "open";
+
+    /*
+     * Moderators may resolve/dismiss reports concerning
+     * users below them in the platform hierarchy.
+     *
+     * The target/report identity cannot be rewritten during
+     * resolution.
+     */
+    allow update:
+      if canPlatformDiscipline(
+        resource.data.targetUserId
+      )
+      && resource.data.status == "open"
+      && request.resource.data.reporterUserId ==
+        resource.data.reporterUserId
+      && request.resource.data.targetType ==
+        resource.data.targetType
+      && request.resource.data.targetId ==
+        resource.data.targetId
+      && request.resource.data.targetUserId ==
+        resource.data.targetUserId
+      && request.resource.data.reason ==
+        resource.data.reason
+      && request.resource.data.status in [
+        "resolved",
+        "dismissed"
+      ];
+
+    /*
+     * Reports form part of the audit history and are never
+     * deleted from the client.
+     */
+    allow delete:
+      if false;
+}
+
+
+
+/* ========================================================
+   PHASE 4.3C.3 MODERATION APPEALS
+   ======================================================== */
+
+/*
+ * Appeals are stored in moderationAppeals/{appealId}.
+ *
+ * A separate moderationAppealLocks/{userId} document
+ * guarantees that an account can have only one open
+ * appeal at a time while preserving all prior appeal
+ * documents as history.
+ */
+
+match /moderationAppeals/{appealId} {
+
+  allow read:
+    if signedIn()
+    && (
+      resource.data.appellantUserId == request.auth.uid
+      || isPlatformModerator()
+    );
+
+  /*
+   * Suspended/banned users are explicitly allowed to appeal
+   * even though normal platform writes are blocked.
+   */
+  allow create:
+    if signedIn()
+    && request.resource.data.id == appealId
+    && request.resource.data.appellantUserId == request.auth.uid
+    && request.resource.data.enforcementStatus in [
+      "suspended",
+      "banned"
+    ]
+    && request.resource.data.status == "open"
+    && request.resource.data.explanation is string
+    && request.resource.data.explanation.size() > 0
+    && exists(
+      /databases/$(database)/documents/platformEnforcement/$(request.auth.uid)
+    )
+    && get(
+      /databases/$(database)/documents/platformEnforcement/$(request.auth.uid)
+    ).data.status == request.resource.data.enforcementStatus
+    && !exists(
+      /databases/$(database)/documents/moderationAppealLocks/$(request.auth.uid)
+    )
+    && existsAfter(
+      /databases/$(database)/documents/moderationAppealLocks/$(request.auth.uid)
+    )
+    && getAfter(
+      /databases/$(database)/documents/moderationAppealLocks/$(request.auth.uid)
+    ).data.appealId == appealId;
+
+  /*
+   * Appeal decisions are an administrator power because
+   * approval may lift an account suspension or ban.
+   */
+  allow update:
+    if isPlatformAdmin()
+    && canPlatformDiscipline(resource.data.appellantUserId)
+    && resource.data.status == "open"
+    && request.resource.data.id == resource.data.id
+    && request.resource.data.appellantUserId == resource.data.appellantUserId
+    && request.resource.data.enforcementStatus == resource.data.enforcementStatus
+    && request.resource.data.explanation == resource.data.explanation
+    && request.resource.data.status in [
+      "approved",
+      "denied"
+    ]
+    && request.resource.data.reviewedBy == request.auth.uid
+    && request.resource.data.reviewReason is string
+    && request.resource.data.reviewReason.size() > 0
+    && (
+      request.resource.data.status == "denied"
+      ||
+      (
+        existsAfter(
+          /databases/$(database)/documents/platformEnforcement/$(resource.data.appellantUserId)
+        )
+        && getAfter(
+          /databases/$(database)/documents/platformEnforcement/$(resource.data.appellantUserId)
+        ).data.status == "cleared"
+      )
+    )
+    && !existsAfter(
+      /databases/$(database)/documents/moderationAppealLocks/$(resource.data.appellantUserId)
+    );
+
+  allow delete:
+    if false;
+}
+
+match /moderationAppealLocks/{userId} {
+
+  allow read:
+    if signedIn()
+    && (
+      request.auth.uid == userId
+      || isPlatformModerator()
+    );
+
+  allow create:
+    if signedIn()
+    && request.auth.uid == userId
+    && request.resource.data.userId == userId
+    && request.resource.data.appealId is string
+    && request.resource.data.appealId.size() > 0
+    && !exists(
+      /databases/$(database)/documents/moderationAppealLocks/$(userId)
+    )
+    && existsAfter(
+      /databases/$(database)/documents/moderationAppeals/$(request.resource.data.appealId)
+    )
+    && getAfter(
+      /databases/$(database)/documents/moderationAppeals/$(request.resource.data.appealId)
+    ).data.appellantUserId == userId
+    && getAfter(
+      /databases/$(database)/documents/moderationAppeals/$(request.resource.data.appealId)
+    ).data.status == "open";
+
+  allow update:
+    if false;
+
+  allow delete:
+    if isPlatformAdmin()
+    && canPlatformDiscipline(resource.data.userId)
+    && existsAfter(
+      /databases/$(database)/documents/moderationAppeals/$(resource.data.appealId)
+    )
+    && getAfter(
+      /databases/$(database)/documents/moderationAppeals/$(resource.data.appealId)
+    ).data.status in [
+      "approved",
+      "denied"
+    ];
+}
+
+
+/* ========================================================
+   PHASE 4.3A GLOBAL MODERATION ACTIONS
+   ======================================================== */
+match /moderationActions/{actionId} {
+
+    /*
+     * Moderation history is restricted to platform staff.
+     */
+    allow read:
+      if isPlatformModerator();
+
+    /*
+     * Append-only audit log.
+     *
+     * A moderator can only record themselves as the actor,
+     * and can only record an action against a user below
+     * them in the hierarchy.
+     */
+    allow create:
+      if isPlatformModerator()
+      && request.resource.data.moderatorUserId == request.auth.uid
+      && request.resource.data.moderatorUserId is string
+      && request.resource.data.action is string
+      && request.resource.data.action.size() > 0
+      && request.resource.data.targetUserId is string
+      && canPlatformDiscipline(
+        request.resource.data.targetUserId
+      );
+
+    allow update:
+     if false;
+
+    allow delete:
+     if false;
+}
+
+
+/* ========================================================
+   PHASE 4.3A ACCOUNT ENFORCEMENT
+   ======================================================== */
+
+match /platformEnforcement/{userId} {
+
+    /*
+     * Users can see enforcement applied to their own
+     * accounts. Platform staff can see enforcement records.
+     */
+allow read:
+ if signedIn()
+ && (
+   request.auth.uid == userId
+   || isPlatformModerator()
+ );
+
+/*
+ * Account suspension and banning are deliberately
+ * stronger powers than content/report moderation.
+ *
+ * Only platform_admin or foundation_admin may create
+ * these records.
+ */
+allow create:
+  if isPlatformAdmin()
+  && canPlatformDiscipline(userId)
+  && request.resource.data.userId == userId
+  && request.resource.data.status is string
+  && validPlatformEnforcementStatus(
+    request.resource.data.status
+  )
+  && (
+    request.resource.data.status != "suspended"
+    ||
+    (
+      request.resource.data.endsAt is timestamp
+      && request.resource.data.endsAt > request.time
+      && request.resource.data.durationHours in [24, 168, 720]
+    )
+  )
+  && request.resource.data.enforcedBy == request.auth.uid
+  && request.resource.data.reason is string
+  && request.resource.data.reason.size() > 0;
+
+/*
+ * Admins may change an existing enforcement state for
+ * a lower-ranked account.
+ */
+allow update:
+  if isPlatformAdmin()
+  && canPlatformDiscipline(userId)
+  && resource.data.userId == userId
+  && request.resource.data.userId == userId
+  && request.resource.data.status is string
+  && validPlatformEnforcementStatus(
+    request.resource.data.status
+  )
+  && (
+    request.resource.data.status != "suspended"
+    ||
+    (
+      request.resource.data.endsAt is timestamp
+      && request.resource.data.endsAt > request.time
+      && request.resource.data.durationHours in [24, 168, 720]
+    )
+  )
+  && request.resource.data.enforcedBy == request.auth.uid
+  && request.resource.data.reason is string
+  && request.resource.data.reason.size() > 0;
+
+/*
+    * Deleting the enforcement document represents lifting
+    * the current enforcement state.
+    */
+    allow delete:
+     if isPlatformAdmin()
+     && canPlatformDiscipline(userId);
+}
+
+/* ========================================================
+   GROUP FORUM VOTE HELPERS
+   ======================================================== */
+
+function groupForumCount(data, key) {
+  return data.keys().hasAll([key]) ? data[key] : 0;
+}
+
+function groupForumVoteId(targetType, targetId, voterUserId) {
+  return targetType + "_" + targetId + "_" + voterUserId;
+}
+
+function groupForumVotePath(groupId, targetType, targetId, voterUserId) {
+  return /databases/$(database)/documents/groups/$(groupId)/forumVotes/$(groupForumVoteId(
+    targetType,
+    targetId,
+    voterUserId
+  ));
+}
+
+function oldGroupForumVoteDirection(groupId, targetType, targetId) {
+  return exists(
+    groupForumVotePath(groupId, targetType, targetId, request.auth.uid)
+  )
+    ? get(
+        groupForumVotePath(groupId, targetType, targetId, request.auth.uid)
+      ).data.direction
+    : 0;
+}
+
+function newGroupForumVoteDirection(groupId, targetType, targetId) {
+  return existsAfter(
+    groupForumVotePath(groupId, targetType, targetId, request.auth.uid)
+  )
+    ? getAfter(
+        groupForumVotePath(groupId, targetType, targetId, request.auth.uid)
+      ).data.direction
+    : 0;
+}
+
+function validGroupForumVoteAggregateUpdate(groupId, targetType, targetId) {
+  let oldDirection = oldGroupForumVoteDirection(
+    groupId,
+    targetType,
+    targetId
+  );
+  let newDirection = newGroupForumVoteDirection(
+    groupId,
+    targetType,
+    targetId
+  );
+  let oldUp = groupForumCount(resource.data, "forumUpCount");
+  let oldDown = groupForumCount(resource.data, "forumDownCount");
+  let oldScore = groupForumCount(resource.data, "forumScore");
+
+  return signedIn()
+    && isGroupMember(groupId)
+    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+      "forumUpCount",
+      "forumDownCount",
+      "forumScore"
+    ])
+    && request.resource.data.forumUpCount is int
+    && request.resource.data.forumDownCount is int
+    && request.resource.data.forumScore is int
+    && request.resource.data.forumUpCount >= 0
+    && request.resource.data.forumDownCount >= 0
+    && (
+      (
+        oldDirection == 0
+        && newDirection == 1
+        && request.resource.data.forumUpCount == oldUp + 1
+        && request.resource.data.forumDownCount == oldDown
+        && request.resource.data.forumScore == oldScore + 1
+      )
+      ||
+      (
+        oldDirection == 0
+        && newDirection == -1
+        && request.resource.data.forumUpCount == oldUp
+        && request.resource.data.forumDownCount == oldDown + 1
+        && request.resource.data.forumScore == oldScore - 1
+      )
+      ||
+      (
+        oldDirection == 1
+        && newDirection == 0
+        && request.resource.data.forumUpCount == oldUp - 1
+        && request.resource.data.forumDownCount == oldDown
+        && request.resource.data.forumScore == oldScore - 1
+      )
+      ||
+      (
+        oldDirection == -1
+        && newDirection == 0
+        && request.resource.data.forumUpCount == oldUp
+        && request.resource.data.forumDownCount == oldDown - 1
+        && request.resource.data.forumScore == oldScore + 1
+      )
+      ||
+      (
+        oldDirection == 1
+        && newDirection == -1
+        && request.resource.data.forumUpCount == oldUp - 1
+        && request.resource.data.forumDownCount == oldDown + 1
+        && request.resource.data.forumScore == oldScore - 2
+      )
+      ||
+      (
+        oldDirection == -1
+        && newDirection == 1
+        && request.resource.data.forumUpCount == oldUp + 1
+        && request.resource.data.forumDownCount == oldDown - 1
+        && request.resource.data.forumScore == oldScore + 2
+      )
+    );
+}
+
+    /* ========================================================
+    GROUPS / CLASSES
+    ======================================================== */
+
+match /groups/{groupId} {
+
+    /*
+     * Signed-in users may read group metadata.
+     * This supports discovery.
+     */
+    allow read:
+      if signedIn();
+
+    /*
+     * Group creation.
+     */
+    allow create:
+      if platformWriteAllowed()
+      && request.resource.data.ownerId == request.auth.uid
+      && (
+        request.resource.data.type == "group"
+        || request.resource.data.type == "class"
+      );
+
+    /*
+     * Owners/admins may edit group metadata.
+     * Ownership transfer is handled separately below.
+     */
+    allow update:
+      if platformWriteAllowed()
+      && (
+        (
+          (isGroupOwner(groupId) || isGroupAdmin(groupId))
+          && request.resource.data.ownerId == resource.data.ownerId
+        )
+        ||
+        (
+          isGroupOwner(groupId)
+          && request.resource.data.ownerId is string
+          && request.resource.data.ownerId != resource.data.ownerId
+          && exists(
+            /databases/$(database)/documents/groups/$(groupId)/members/$(request.resource.data.ownerId)
+          )
+        )
+      );
+
+   allow update:
+    if platformWriteAllowed()
+    && isGroupMember(groupId)
+    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+      "lastActivityAtISO",
+      "lastActivityAt"
+    ]);
+
+   /*
+    * Only the owner may delete the group.
+    *
+    * Platform moderators do not gain ownership powers.
+    */
+   allow delete:
+     if platformWriteAllowed()
+     && isGroupOwner(groupId);
+
+/* ======================================================
+      GROUP MEMBERS
+      ====================================================== */
+
+   match /members/{userId} {
+    allow read:
+     if signedIn()
+     && (
+       resource.data.userId == request.auth.uid
+       || isGroupMember(groupId)
+     );
+
+    /*
+     * Membership creation supports:
+* 1. Initial owner membership.
+* 2. Accepting an invitation.
+* 3. Joining an open group.
+* 4. Owner/admin approving a join request.
+*/
+allow create:
+ if platformWriteAllowed()
+ && request.resource.data.userId == userId
+ && request.resource.data.groupId == groupId
+ && !isBanned(groupId, userId)
+ && (
+   (
+      request.auth.uid == userId
+      && request.resource.data.role == "owner"
+      && existsAfter(
+        /databases/$(database)/documents/groups/$(groupId)
+      )
+      && getAfter(
+        /databases/$(database)/documents/groups/$(groupId)
+      ).data.ownerId == request.auth.uid
+   )
+   ||
+   (
+      request.auth.uid == userId
+      && request.resource.data.role == "member"
+      && exists(
+        /databases/$(database)/documents/groups/$(groupId)/invites/$(userId)
+      )
+      && get(
+        /databases/$(database)/documents/groups/$(groupId)/invites/$(userId)
+      ).data.status == "pending"
+   )
+   ||
+   (
+      request.auth.uid == userId
+      && request.resource.data.role == "member"
+      && exists(
+        /databases/$(database)/documents/groups/$(groupId)
+      )
+      && (
+        get(
+           /databases/$(database)/documents/groups/$(groupId)
+        ).data.visibility == "discoverable"
+        ||
+        get(
+          /databases/$(database)/documents/groups/$(groupId)
+        ).data.visibility == "public"
+       )
+       && get(
+         /databases/$(database)/documents/groups/$(groupId)
+       ).data.joinPolicy == "open"
+  )
+  ||
+  (
+       isGroupAdmin(groupId)
+       && request.resource.data.role == "member"
+       && exists(
+         /databases/$(database)/documents/groups/$(groupId)/joinRequests/$(userId)
+       )
+       && get(
+         /databases/$(database)/documents/groups/$(groupId)/joinRequests/$(userId)
+       ).data.status == "pending"
+   )
+ );
+
+/*
+ * Only the owner may promote/demote roles.
+ * Ownership-transfer transactions are also supported.
+ */
+allow update:
+  if platformWriteAllowed()
+  && (
+    (
+       isGroupOwner(groupId)
+       && resource.data.role != "owner"
+       && request.resource.data.userId == resource.data.userId
+       && request.resource.data.groupId == resource.data.groupId
+       && (
+         request.resource.data.role == "admin"
+         || request.resource.data.role == "moderator"
+         || request.resource.data.role == "member"
+       )
+    )
+    ||
+    (
+       request.auth.uid == userId
+       && resource.data.role == "owner"
+       && request.resource.data.role == "admin"
+       && request.resource.data.userId == resource.data.userId
+       && request.resource.data.groupId == resource.data.groupId
+       && getAfter(
+         /databases/$(database)/documents/groups/$(groupId)
+       ).data.ownerId != request.auth.uid
+  )
+  ||
+  (
+       isGroupOwner(groupId)
+       && resource.data.role != "owner"
+       && request.resource.data.role == "owner"
+       && request.resource.data.userId == resource.data.userId
+       && request.resource.data.groupId == resource.data.groupId
+       && getAfter(
+         /databases/$(database)/documents/groups/$(groupId)
+       ).data.ownerId == userId
+   )
+ );
+
+/*
+ * Member may leave.
+ * Owner may remove non-owners.
+ * Admin may remove members/moderators.
+ * Non-class moderator may remove members.
+ */
+allow delete:
+  if platformWriteAllowed()
+  && (
+    (
+       request.auth.uid == userId
+       && resource.data.role != "owner"
+    )
+    ||
+    (
+       isGroupOwner(groupId)
+       && resource.data.role != "owner"
+    )
+    ||
+    (
+       isGroupAdmin(groupId)
+       && (
+         resource.data.role == "member"
+         || resource.data.role == "moderator"
+       )
+         )
+         ||
          (
               isGroupModerator(groupId)
               && resource.data.role == "member"
          )
+         ||
+         (
+              request.auth != null
+              && userId == request.auth.uid
+              && resource.data.role == "owner"
+              && get(
+                /databases/$(database)/documents/groups/$(groupId)
+              ).data.ownerId == request.auth.uid
+              && !existsAfter(
+                /databases/$(database)/documents/groups/$(groupId)
+              )
+          )
+        );
+   }
 
-This gives Aides the same limited student-removal moderation authority as
-group moderators, while owner/admin hierarchy remains intact.
+/* ======================================================
+      GROUP INVITATIONS
+      ====================================================== */
 
-NOTE:
-The assignment rule already uses classTeacher(groupId), so after step 1
-Aides are automatically allowed to create/update/delete assignments.
+   match /invites/{userId} {
+    allow read:
+     if signedIn()
+     && (
+       resource.data.userId == request.auth.uid
+       || isGroupAdmin(groupId)
+     );
+
+       allow create:
+        if platformWriteAllowed()
+        && isGroupAdmin(groupId)
+        && request.resource.data.userId == userId
+        && request.resource.data.groupId == groupId
+        && !isBanned(
+          groupId,
+          request.resource.data.userId
+        )
+     && request.resource.data.status == "pending"
+     && request.resource.data.invitedBy == request.auth.uid;
+
+    /*
+     * Invitee may accept or decline.
+     *
+     * Group admin/owner may also reissue an old invite
+     * after a member has left, been removed, or unbanned.
+     *
+     * This is the Phase 4.2 re-invite fix that passed
+     * testing and is intentionally preserved.
+     */
+    allow update:
+      if platformWriteAllowed()
+      && (
+        (
+           request.auth.uid == userId
+           && resource.data.userId == userId
+           && request.resource.data.userId == userId
+           && request.resource.data.groupId == resource.data.groupId
+           && request.resource.data.invitedBy == resource.data.invitedBy
+           && resource.data.status == "pending"
+           && (
+             request.resource.data.status == "accepted"
+             || request.resource.data.status == "declined"
+           )
+        )
+        ||
+        (
+           isGroupAdmin(groupId)
+           && request.resource.data.userId == userId
+           && request.resource.data.groupId == groupId
+           && !isBanned(groupId, userId)
+           && request.resource.data.status == "pending"
+           && request.resource.data.invitedBy == request.auth.uid
+        )
+      );
+
+    allow delete:
+     if platformWriteAllowed()
+     && isGroupAdmin(groupId);
+}
+
+
+/* ======================================================
+ GROUP JOIN REQUESTS
+ ====================================================== */
+
+match /joinRequests/{userId} {
+ allow read:
+  if signedIn()
+  && (
+    request.auth.uid == userId
+    || isGroupAdmin(groupId)
+  );
+
+ allow create:
+  if platformWriteAllowed()
+  && request.auth.uid == userId
+  && request.resource.data.userId == userId
+  && request.resource.data.groupId == groupId
+  && !isBanned(
+    groupId,
+    request.resource.data.userId
+  )
+  && request.resource.data.status == "pending"
+  && exists(
+    /databases/$(database)/documents/groups/$(groupId)
+  )
+  && (
+    get(
+       /databases/$(database)/documents/groups/$(groupId)
+    ).data.visibility == "discoverable"
+    ||
+    get(
+       /databases/$(database)/documents/groups/$(groupId)
+    ).data.visibility == "public"
+  )
+  && get(
+    /databases/$(database)/documents/groups/$(groupId)
+  ).data.joinPolicy == "request_to_join";
+
+ allow update:
+  if platformWriteAllowed()
+  && isGroupAdmin(groupId)
+  && resource.data.userId == userId
+  && request.resource.data.userId == resource.data.userId
+  && request.resource.data.groupId == resource.data.groupId
+  && resource.data.status == "pending"
+  && (
+          request.resource.data.status == "accepted"
+          || request.resource.data.status == "declined"
+        );
+
+       allow delete:
+        if platformWriteAllowed()
+        && (
+          request.auth.uid == userId
+          || isGroupAdmin(groupId)
+        );
+   }
+
+/* ======================================================
+      PHASE 4.2 GROUP MODERATION
+      ====================================================== */
+
+   match /moderationReports/{reportId} {
+    allow read:
+     if isGroupOwner(groupId)
+     || isGroupAdmin(groupId)
+     || isGroupModerator(groupId);
+
+       allow create:
+        if platformWriteAllowed()
+        && isGroupMember(groupId)
+        && request.resource.data.reporterUserId == request.auth.uid
+        && request.resource.data.groupId == groupId
+        && request.resource.data.status == "open";
+
+       allow update:
+        if platformWriteAllowed()
+        && canDiscipline(
+          groupId,
+          resource.data.reportedUserId
+        );
+
+       allow delete:
+        if platformWriteAllowed()
+        && isGroupOwner(groupId)
+        && !existsAfter(
+          /databases/$(database)/documents/groups/$(groupId)
+        );
+}
+
+
+match /moderationActions/{actionId} {
+ allow read:
+  if isGroupOwner(groupId)
+  || isGroupAdmin(groupId)
+  || isGroupModerator(groupId);
+
+    allow create:
+     if platformWriteAllowed()
+     && (
+       isGroupOwner(groupId)
+       || isGroupAdmin(groupId)
+       || isGroupModerator(groupId)
+     )
+     && request.resource.data.moderatorUserId == request.auth.uid
+     && request.resource.data.groupId == groupId;
+
+    allow update:
+     if false;
+
+    allow delete:
+     if platformWriteAllowed()
+     && isGroupOwner(groupId)
+     && !existsAfter(
+       /databases/$(database)/documents/groups/$(groupId)
+     );
+}
+
+
+match /bans/{userId} {
+ allow read:
+  if request.auth != null
+  && (
+    request.auth.uid == userId
+       || isGroupOwner(groupId)
+       || isGroupAdmin(groupId)
+       || isGroupModerator(groupId)
+     );
+
+    allow create:
+     if platformWriteAllowed()
+     && canDiscipline(groupId, userId)
+     && request.resource.data.userId == userId
+     && request.resource.data.groupId == groupId
+     && request.resource.data.bannedBy == request.auth.uid
+     && request.resource.data.targetRole ==
+       moderationTargetRole(groupId, userId);
+
+    allow delete:
+     if platformWriteAllowed()
+     && canDisciplineStoredRole(
+       groupId,
+       resource.data.targetRole
+     );
+
+    allow update:
+     if false;
+}
+
+/* ======================================================
+   GROUP FORUM
+   ====================================================== */
+
+match /forumPosts/{postId} {
+ allow read:
+  if isGroupMember(groupId);
+
+ allow create:
+  if platformWriteAllowed()
+  && (
+    isGroupMember(groupId)
+    || (
+      classMemberAfter(groupId)
+      && existsAfter(
+        /databases/$(database)/documents/groups/$(groupId)
+      )
+      && getAfter(
+        /databases/$(database)/documents/groups/$(groupId)
+      ).data.type == "class"
+      && getAfter(
+        /databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)
+      ).data.role in ["owner", "admin", "moderator"]
+    )
+  )
+  && (
+    (
+      exists(
+        /databases/$(database)/documents/groups/$(groupId)
+      )
+      && get(
+        /databases/$(database)/documents/groups/$(groupId)
+      ).data.type != "class"
+    )
+    ||
+    classTeacher(groupId)
+    ||
+    (
+      existsAfter(
+        /databases/$(database)/documents/groups/$(groupId)
+      )
+      && getAfter(
+        /databases/$(database)/documents/groups/$(groupId)
+      ).data.type == "class"
+      && getAfter(
+        /databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)
+      ).data.role in ["owner", "admin", "moderator"]
+    )
+  )
+  && request.resource.data.userId == request.auth.uid
+  && request.resource.data.groupId == groupId
+  && request.resource.data.title is string
+  && request.resource.data.title.size() >= 2
+  && request.resource.data.title.size() <= 200
+  && request.resource.data.body is string
+  && request.resource.data.body.size() > 0
+  && request.resource.data.body.size() <= 10000
+  && request.resource.data.pinned == false
+  && request.resource.data.locked == false
+  && request.resource.data.forumUpCount == 0
+  && request.resource.data.forumDownCount == 0
+  && request.resource.data.forumScore == 0;
+
+ allow update:
+  if platformWriteAllowed()
+  && isGroupMember(groupId)
+  && (
+    validGroupForumVoteAggregateUpdate(
+      groupId,
+      "post",
+      postId
+    )
+    ||
+    (
+      resource.data.userId == request.auth.uid
+      && request.resource.data.userId == resource.data.userId
+      && request.resource.data.groupId == resource.data.groupId
+      && request.resource.data.pinned == resource.data.pinned
+      && request.resource.data.locked == resource.data.locked
+      && request.resource.data.forumUpCount == resource.data.forumUpCount
+      && request.resource.data.forumDownCount == resource.data.forumDownCount
+      && request.resource.data.forumScore == resource.data.forumScore
+    )
+    ||
+    canDiscipline(
+      groupId,
+      resource.data.userId
+    )
+    ||
+    request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+      "lastReplyAtISO",
+      "lastReplyAt",
+      "updatedAtISO",
+      "updatedAt"
+    ])
+  );
+
+ allow delete:
+  if platformWriteAllowed()
+  && isGroupMember(groupId)
+  && (
+    resource.data.userId == request.auth.uid
+    || canDiscipline(
+      groupId,
+      resource.data.userId
+    )
+  );
+
+ match /replies/{replyId} {
+  allow read:
+   if isGroupMember(groupId);
+
+  allow create:
+   if platformWriteAllowed()
+   && isGroupMember(groupId)
+   && request.resource.data.userId == request.auth.uid
+   && request.resource.data.groupId == groupId
+   && request.resource.data.postId == postId
+   && request.resource.data.body is string
+   && request.resource.data.body.size() > 0
+   && request.resource.data.body.size() <= 5000
+   && request.resource.data.forumUpCount == 0
+   && request.resource.data.forumDownCount == 0
+   && request.resource.data.forumScore == 0
+   && (
+     request.resource.data.parentReplyId == null
+     || (
+       request.resource.data.parentReplyId is string
+       && request.resource.data.parentReplyId.size() > 0
+       && exists(
+         /databases/$(database)/documents/groups/$(groupId)/forumPosts/$(postId)/replies/$(request.resource.data.parentReplyId)
+       )
+     )
+   );
+
+  allow update:
+   if platformWriteAllowed()
+   && isGroupMember(groupId)
+   && (
+     validGroupForumVoteAggregateUpdate(
+       groupId,
+       "reply",
+       replyId
+     )
+     ||
+     (
+       resource.data.userId == request.auth.uid
+       && request.resource.data.userId == resource.data.userId
+       && request.resource.data.groupId == resource.data.groupId
+       && request.resource.data.postId == resource.data.postId
+       && request.resource.data.parentReplyId == resource.data.parentReplyId
+       && request.resource.data.forumUpCount == resource.data.forumUpCount
+       && request.resource.data.forumDownCount == resource.data.forumDownCount
+       && request.resource.data.forumScore == resource.data.forumScore
+     )
+   );
+
+  allow delete:
+   if platformWriteAllowed()
+   && isGroupMember(groupId)
+   && (
+     resource.data.userId == request.auth.uid
+     || canDiscipline(
+       groupId,
+       resource.data.userId
+     )
+   );
+ }
+}
+
+/* ======================================================
+   GROUP FORUM VOTES
+   ====================================================== */
+
+match /forumVotes/{voteId} {
+ allow get:
+  if signedIn()
+  && isGroupMember(groupId)
+  && voteId.matches(
+    ".*_" + request.auth.uid + "$"
+  );
+
+ allow list:
+  if false;
+
+ allow create:
+  if platformWriteAllowed()
+  && isGroupMember(groupId)
+  && request.resource.data.id == voteId
+  && request.resource.data.groupId == groupId
+  && request.resource.data.voterUserId == request.auth.uid
+  && request.resource.data.targetType in ["post", "reply"]
+  && request.resource.data.targetId is string
+  && request.resource.data.targetId.size() > 0
+  && request.resource.data.postId is string
+  && request.resource.data.postId.size() > 0
+  && request.resource.data.direction in [-1, 1]
+  && voteId == groupForumVoteId(
+    request.resource.data.targetType,
+    request.resource.data.targetId,
+    request.auth.uid
+  );
+
+ allow update:
+  if platformWriteAllowed()
+  && isGroupMember(groupId)
+  && resource.data.voterUserId == request.auth.uid
+  && request.resource.data.id == resource.data.id
+  && request.resource.data.groupId == resource.data.groupId
+  && request.resource.data.voterUserId == resource.data.voterUserId
+  && request.resource.data.targetType == resource.data.targetType
+  && request.resource.data.targetId == resource.data.targetId
+  && request.resource.data.postId == resource.data.postId
+  && request.resource.data.replyId == resource.data.replyId
+  && request.resource.data.direction in [-1, 1];
+
+ allow delete:
+  if platformWriteAllowed()
+  && isGroupMember(groupId)
+  && resource.data.voterUserId == request.auth.uid;
+}
+}
+
+/* ========================================================
+     GROUP MEMBER COLLECTION-GROUP READS
+     ======================================================== */
+
+ match /{path=**}/members/{memberId} {
+   allow read:
+    if signedIn()
+    && resource.data.userId == request.auth.uid;
+ }
+
+
+ /* ========================================================
+    GROUP INVITE COLLECTION-GROUP READS
+    ======================================================== */
+
+ match /{path=**}/invites/{inviteId} {
+   allow read:
+    if signedIn()
+    && resource.data.userId == request.auth.uid;
+ }
+
+
+ /* ========================================================
+    GROUP JOIN REQUEST COLLECTION-GROUP READS
+    ======================================================== */
+match /{path=**}/joinRequests/{requestId} {
+  allow read:
+   if signedIn()
+   && resource.data.userId == request.auth.uid;
+}
+
+
+/* ========================================================
+   NOTIFICATIONS
+   ======================================================== */
+
+function validNotificationType(type) {
+  return type in [
+    "friend_request",
+    "friend_accepted",
+    "group_invite",
+    "group_invite_accepted",
+    "group_join_approved",
+    "group_role_changed",
+    "forum_reply",
+    "class_assignment",
+    "chain_reply",
+    "group_chain_reply"
+  ];
+}
+
+function validNotificationCreate(notificationId, data) {
+  return data.id == notificationId
+    && data.recipientUserId is string
+    && data.recipientUserId.size() > 0
+    && data.recipientUserId != request.auth.uid
+    && data.actorUserId == request.auth.uid
+    && data.type is string
+    && validNotificationType(data.type)
+    && data.read == false
+    && data.createdAtISO is string
+    && data.createdAtISO.size() <= 64
+    && validOptionalString(data, "actorName", 120)
+    && validOptionalString(data, "actorUsername", 40)
+    && validOptionalString(data, "actorAvatar", 1000)
+    && validOptionalNullableString(data, "groupId", 160)
+    && validOptionalString(data, "groupName", 200)
+    && validOptionalNullableString(data, "chainId", 160)
+    && validOptionalNullableString(data, "postId", 160)
+    && validOptionalString(data, "targetPath", 500)
+    && validOptionalString(data, "message", 1000);
+}
+
+match /notifications/{notificationId} {
+  allow read:
+    if signedIn()
+    && resource.data.recipientUserId == request.auth.uid;
+
+  allow create:
+    if platformWriteAllowed()
+    && validNotificationCreate(
+      notificationId,
+      request.resource.data
+    );
+
+  allow update:
+    if platformWriteAllowed()
+    && resource.data.recipientUserId == request.auth.uid
+    && request.resource.data.recipientUserId == resource.data.recipientUserId
+    && request.resource.data.actorUserId == resource.data.actorUserId
+    && request.resource.data.type == resource.data.type
+    && request.resource.data.id == resource.data.id
+    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+      "read",
+      "readAtISO",
+      "readAt"
+    ])
+    && request.resource.data.read == true
+    && request.resource.data.readAtISO is string
+    && request.resource.data.readAtISO.size() <= 64
+    && request.resource.data.readAt is timestamp;
+
+  allow delete:
+    if false;
+}
+
+/* ========================================================
+   PHASE 5A NOTE LINKS
+   ======================================================== */
+
+/*
+ * Phase 5A deliberately starts with connections between a
+ * reader's own journal notes. This gives us safe cross-book
+ * chains without allowing a link document to reveal another
+ * reader's private note. Group/public note linking can extend
+ * this model in Phase 5B.
+ */
+match /noteLinks/{linkId} {
+  allow read:
+    if signedIn()
+    && resource.data.createdBy == request.auth.uid;
+
+  allow create:
+    if platformWriteAllowed()
+    && request.resource.data.id == linkId
+    && request.resource.data.createdBy == request.auth.uid
+    && request.resource.data.sourceUserId == request.auth.uid
+    && request.resource.data.targetUserId == request.auth.uid
+    && request.resource.data.sourceNoteId is string
+    && request.resource.data.sourceNoteId.size() > 0
+    && request.resource.data.targetNoteId is string
+    && request.resource.data.targetNoteId.size() > 0
+    && request.resource.data.sourceNoteId != request.resource.data.targetNoteId
+    && request.resource.data.relationship is string
+    && request.resource.data.relationship.size() <= 500
+    && request.resource.data.createdAtISO is string
+    && request.resource.data.createdAtISO.size() <= 64
+    && request.resource.data.source is map
+    && request.resource.data.target is map
+    && exists(
+      /databases/$(database)/documents/users/$(request.auth.uid)/journal/$(request.resource.data.sourceNoteId)
+    )
+    && exists(
+      /databases/$(database)/documents/users/$(request.auth.uid)/journal/$(request.resource.data.targetNoteId)
+    );
+
+  allow update:
+    if false;
+
+  allow delete:
+    if platformWriteAllowed()
+    && resource.data.createdBy == request.auth.uid;
+}
+
+
+/* ========================================================
+   PHASE 5C CHAIN VOTES
+   ======================================================== */
+
+/*
+ * Vote documents are private to the voter. Public ranking
+ * comes from the aggregate counts stored on the journal
+ * entry, so voter identities never need to be listed.
+ */
+match /chainVotes/{voteId} {
+  /*
+   * A first vote reads its vote document before creating it.
+   * When that document does not exist yet, resource.data cannot be
+   * used to authorize the read. The vote ID always ends in the
+   * authenticated voter's UID, so this permits only that user's
+   * own direct vote-document reads, including a missing document.
+   */
+  allow get:
+    if signedIn()
+    && voteId.matches(
+      ".*_" + request.auth.uid + "$"
+    );
+
+  allow list:
+    if false;
+
+  allow create:
+    if platformWriteAllowed()
+    && request.resource.data.id == voteId
+    && request.resource.data.voterUserId == request.auth.uid
+    && request.resource.data.targetUserId is string
+    && request.resource.data.targetUserId.size() > 0
+    && request.resource.data.targetEntryId is string
+    && request.resource.data.targetEntryId.size() > 0
+    && request.resource.data.direction in [-1, 1]
+    && voteId == chainVoteId(
+      request.resource.data.targetUserId,
+      request.resource.data.targetEntryId,
+      request.auth.uid
+    );
+
+  allow update:
+    if platformWriteAllowed()
+    && resource.data.voterUserId == request.auth.uid
+    && request.resource.data.voterUserId == resource.data.voterUserId
+    && request.resource.data.targetUserId == resource.data.targetUserId
+    && request.resource.data.targetEntryId == resource.data.targetEntryId
+    && request.resource.data.id == resource.data.id
+    && request.resource.data.direction in [-1, 1];
+
+  allow delete:
+    if platformWriteAllowed()
+    && resource.data.voterUserId == request.auth.uid;
+}
+
+
+/* ========================================================
+   CHAIN REPLIES
+   ======================================================== */
+
+match /chainReplies/{replyId} {
+ allow read:
+  if resource.data.visibility == "public"
+  || (
+    signedIn()
+    && resource.data.visibility == "private"
+    && resource.data.userId == request.auth.uid
+  )
+  || (
+    resource.data.visibility == "group"
+    && resource.data.groupId is string
+    && isGroupMember(
+      resource.data.groupId
+    )
+  );
+
+ allow create:
+  if platformWriteAllowed()
+  && request.resource.data.userId == request.auth.uid
+  && request.resource.data.parentUserId is string
+  && request.resource.data.parentEntryId is string
+  && request.resource.data.id == replyId
+  && request.resource.data.note is string
+  && request.resource.data.note.size() > 0
+  && request.resource.data.note.size() <= 3000
+  && validOptionalString(request.resource.data, "title", 500)
+  && validOptionalString(request.resource.data, "author", 300)
+  && validOptionalNullableString(request.resource.data, "bookId", 100)
+  && validOptionalNullableString(request.resource.data, "parentReplyId", 160)
+  && request.resource.data.createdAtISO is string
+  && request.resource.data.createdAtISO.size() <= 64
+  && validChainReplyVisibility(
+    request.resource.data
+  );
+
+ allow update:
+  if false;
+
+ /*
+  * Existing group moderation remains unchanged.
+    *
+    * Platform moderation is not being given direct delete
+    * access to Chain content in 4.3A. The platform layer
+    * records reports/actions/enforcement while immutable
+    * or user-owned Chain data remains protected.
+    */
+    allow delete:
+     if platformWriteAllowed()
+     && (
+       resource.data.userId == request.auth.uid
+       ||
+       (
+          resource.data.visibility == "group"
+          && resource.data.groupId is string
+          && isGroupModerator(
+            resource.data.groupId
+          )
+       )
+     );
+}
+
+
+/* ========================================================
+   EXISTING CHAIN REPORTS
+   ======================================================== */
+
+match /chainReports/{reportId} {
+ allow create:
+  if signedIn()
+  && request.resource.data.reporterUserId == request.auth.uid
+  && request.resource.data.reportedEntryId is string
+  && request.resource.data.reportedUserId is string
+  && request.resource.data.reason is string
+  && request.resource.data.status == "open"
+  && request.resource.data.chainEntry is map
+  && request.resource.data.chainEntry.id ==
+    request.resource.data.reportedEntryId
+  && request.resource.data.chainEntry.userId ==
+    request.resource.data.reportedUserId;
+
+    allow read:
+     if signedIn()
+     && (
+       resource.data.reporterUserId == request.auth.uid
+      ||
+      (
+           resource.data.groupId is string
+           && isGroupModerator(
+             resource.data.groupId
+           )
+       )
+     );
+
+    allow update:
+     if signedIn()
+     && resource.data.groupId is string
+     && isGroupModerator(
+       resource.data.groupId
+     )
+     && request.resource.data.groupId == resource.data.groupId
+     && request.resource.data.reportedEntryId ==
+       resource.data.reportedEntryId
+     && request.resource.data.reportedUserId ==
+       resource.data.reportedUserId
+     && request.resource.data.reporterUserId ==
+       resource.data.reporterUserId
+     && request.resource.data.chainEntry ==
+       resource.data.chainEntry
+     && resource.data.status == "open"
+     && (
+       request.resource.data.status == "resolved"
+       || request.resource.data.status == "dismissed"
+     );
+
+    allow delete:
+     if false;
+}
+
+    /* ========================================================
+    PHASE 4.3A PLATFORM MODERATION DESIGN BOUNDARY
+    ======================================================== */
+
+/*
+ * IMPORTANT:
+ *
+ * The global moderation system added in Phase 4.3A is
+ * intentionally an oversight layer rather than a blanket
+ * Firestore superuser role.
+*
+* platform_moderator:
+* - may read the global moderation queue
+* - may resolve/dismiss eligible reports
+* - may create append-only moderation actions
+* - may inspect platform roles
+* - may NOT suspend or ban accounts
+* - may NOT assign platform roles
+* - may NOT modify private user data
+* - may NOT change group ownership/roles
+* - may NOT mutate canonical Lit Chain blocks
+*
+* platform_admin:
+* - includes platform_moderator abilities
+* - may create/update/lift account enforcement
+* against lower-ranked users
+* - may NOT assign platform roles
+* - may NOT act against foundation_admin
+* - may NOT mutate canonical Lit Chain blocks
+*
+* foundation_admin:
+* - includes platform_admin abilities
+* - may assign/remove platform_moderator and
+* platform_admin roles
+* - foundation_admin itself cannot be created,
+* updated, or deleted through these client rules
+* - may NOT mutate canonical Lit Chain blocks merely
+* because of the platform role
+*
+* Group roles remain separate:
+*
+* owner > admin > moderator > member
+*
+* Platform authority does not automatically make someone
+* a group owner/admin/moderator. This protects classroom
+* and group governance from accidental privilege leakage.
+*/
+
+
+/* ========================================================
+   PHASE 4.3A REPORT TARGET EXPECTATIONS
+   ======================================================== */
+
+/*
+  * Global moderationReports use the following common
+  * structure:
+  *
+  *{
+  * reporterUserId: "...",
+  * targetType: "profile",
+  * targetId: "...",
+  * targetUserId: "...",
+  * groupId: null,          // optional
+  * reason: "...",
+  * details: "...",      // optional
+  * status: "open",
+  * createdAtISO: "...",
+  * createdAt: timestamp
+  *}
+  *
+  * The security rules intentionally require only the
+  * security-critical fields so the UI can evolve without
+  * requiring a rules deployment for every presentation
+  * field.
+  *
+  * The Phase 4.3 service layer should validate the richer
+  * client schema.
+  */
+
+/* ========================================================
+     PHASE 4.3A ACTION EXPECTATIONS
+     ======================================================== */
+
+ /*
+  * Global moderationActions are append-only.
+  *
+  * Expected actions include:
+  *
+  * report_resolved
+  * report_dismissed
+  * warning
+  * content_hidden
+  * content_restored
+  * account_suspended
+  * account_reinstated
+  * account_banned
+  *
+  * The action collection is an audit trail. Existing
+* records cannot be edited or deleted from the client.
+*/
+
+
+/* ========================================================
+   PHASE 4.3A ACCOUNT ENFORCEMENT EXPECTATIONS
+   ======================================================== */
+
+/*
+ * platformEnforcement/{userId}
+ *
+ * Example:
+ *
+ *{
+ * userId: "...",
+ * status: "suspended",
+ * reason: "...",
+ * enforcedBy: "...",
+ * createdAtISO: "...",
+ * createdAt: timestamp,
+ * expiresAtISO: "..." // optional
+ *}
+ *
+ * Phase 4.3A establishes the secure storage model.
+ *
+ * Phase 4.3B/4.3C can then make application features
+ * respect suspension/ban status at the appropriate
+ * interaction points.
+ */
+
+
+/* ========================================================
+   CANONICAL LIT CHAIN PROTECTION
+   ======================================================== */
+
+/*
+ * No new wildcard permission is granted to platform
+ * moderators or platform admins.
+ *
+ * This is intentional.
+ *
+ * Canonical Lit Chain/block storage that is not explicitly
+ * matched elsewhere continues to reach the final:
+ *
+* allow read, write: if false;
+*
+* rule below.
+*
+* If canonical Lit Chain storage is later given dedicated
+* Firestore rules, those rules should NOT use:
+*
+* isPlatformModerator()
+*
+* as authority to rewrite or delete canonical blocks.
+*
+* Moderation of immutable literature should instead act
+* on discovery/indexing/visibility metadata while the
+* underlying canonical block remains immutable.
+*/
+
+/*
+* Class moderation requires owner/admin.
+*
+*
+* --------------------------------------------------------
+* FOUNDATION ADMIN BOOTSTRAP
+* --------------------------------------------------------
+*
+* Because foundation_admin cannot be created from the
+* client, the first foundation-admin document must be
+* created through a trusted administrative environment,
+* such as Firebase Admin SDK / server tooling.
+*
+* Expected document:
+*
+* platformRoles/{FOUNDATION_ADMIN_UID}
+*
+*{
+* userId: "{FOUNDATION_ADMIN_UID}",
+* role: "foundation_admin"
+*}
+*
+* Once that trusted bootstrap exists, the foundation admin
+* can assign platform_moderator and platform_admin roles
+* through the application UI we build in a later step.
+*
+*
+* --------------------------------------------------------
+* PHASE 4.3B
+* --------------------------------------------------------
+*
+* The next frontend/service phase can build:
+*
+* - system moderation dashboard
+* - open report count
+* - report detail view
+* - public profile reporting
+* - public Chain entry reporting
+* - Chain reply reporting
+* - report resolve/dismiss actions
+* - moderation history
+* - moderator identity display
+*
+*
+* --------------------------------------------------------
+* PHASE 4.3C
+* --------------------------------------------------------
+*
+* Later enforcement functionality can add:
+*
+* - account warnings
+* - temporary suspensions
+* - permanent platform bans
+* - enforcement expiration
+* - appeals
+* - reinstatement
+* - moderator oversight
+*
+* Application services should check platformEnforcement
+* before allowing interactions that suspended/banned users
+* should no longer perform.
+*
+*
+* --------------------------------------------------------
+* IMMUTABILITY
+* --------------------------------------------------------
+*
+* Platform moderation authority must never become
+* permission to rewrite canonical Lit Chain blocks.
+*
+* A future moderation layer may mark content:
+*
+* hidden
+        * excluded_from_search
+        * superseded
+        * disputed
+        * restricted
+        *
+        * without rewriting the canonical literature itself.
+        */
+
+
+        /* ========================================================
+           DENY EVERYTHING ELSE
+           ======================================================== */
+
+        match /{document=**} {
+          allow read, write:
+           if false;
+        }
+    }
+}
