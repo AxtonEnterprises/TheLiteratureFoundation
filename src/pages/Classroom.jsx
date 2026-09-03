@@ -18,7 +18,6 @@ import {
   Users,
   X
 } from "lucide-react";
-
 import SEO from "../components/SEO.jsx";
 
 import {
