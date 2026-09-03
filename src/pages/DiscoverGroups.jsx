@@ -56,7 +56,12 @@ export default function DiscoverGroups() {
   }, []);
 
   const groups = useMemo(() => {
-    const source = view === "mine" ? myGroups : discoverGroups;
+    const source =
+      view === "mine"
+        ? myGroups.filter((group) => group.type !== "class")
+        : view === "classes"
+          ? myGroups.filter((group) => group.type === "class")
+          : discoverGroups;
     const term = search.trim().toLowerCase();
 
     if (!term) return source;
@@ -183,6 +188,13 @@ export default function DiscoverGroups() {
           </button>
           <button
             type="button"
+            className={view === "classes" ? "active" : ""}
+            onClick={() => setView("classes")}
+          >
+            My Classes
+          </button>
+          <button
+            type="button"
             className={view === "discover" ? "active" : ""}
             onClick={() => setView("discover")}
           >
@@ -209,7 +221,13 @@ export default function DiscoverGroups() {
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder={view === "mine" ? "Search my groups..." : "Search groups..."}
+            placeholder={
+              view === "mine"
+                ? "Search my groups..."
+                : view === "classes"
+                  ? "Search my classes..."
+                  : "Search groups..."
+            }
           />
         </div>
       )}
@@ -223,11 +241,19 @@ export default function DiscoverGroups() {
       ) : groups.length === 0 ? (
         <section className="groups-home-empty">
           <Users size={36} />
-          <h2>{view === "mine" ? "No groups yet" : "No groups found"}</h2>
+          <h2>
+            {view === "mine"
+              ? "No groups yet"
+              : view === "classes"
+                ? "No classes yet"
+                : "No groups found"}
+          </h2>
           <p className="muted">
             {view === "mine"
-              ? "Switch to Discover to find a reading group or class."
-              : "No discoverable groups match your search."}
+              ? "Switch to Discover to find a reading group."
+              : view === "classes"
+                ? "Classes you join or teach will appear here."
+                : "No discoverable groups match your search."}
           </p>
           {view === "mine" && (
             <button

@@ -4,17 +4,17 @@ import {
   ArrowLeft,
   BookOpen,
   CalendarDays,
-  ChevronLeft,
-  ChevronRight,
   GraduationCap,
+  Link2,
   MessageCircle,
   Pencil,
   Plus,
   Save,
-  Send,
   Search,
+  Send,
   Settings,
   Trash2,
+  Unlink2,
   UserMinus,
   Users,
   X
@@ -47,8 +47,10 @@ import {
   deleteGroupForumReply,
   getGroupForumPosts,
   getGroupForumReplies,
+  getMyGroupForumVote,
   replyToGroupForumPost,
-  updateGroupProfile
+  updateGroupProfile,
+  voteOnGroupForumNode
 } from "../services/groupsPhase3A.js";
 
 import {
@@ -65,11 +67,7 @@ function mergeUniqueBooks(...groups) {
 
   return groups.flat().filter((book) => {
     const id = String(book?.id || "");
-
-    if (!id || seen.has(id)) {
-      return false;
-    }
-
+    if (!id || seen.has(id)) return false;
     seen.add(id);
     return true;
   });
@@ -79,10 +77,7 @@ function formatDate(value) {
   if (!value) return "No due date";
 
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "No due date";
-  }
+  if (Number.isNaN(date.getTime())) return "No due date";
 
   return date.toLocaleDateString(undefined, {
     month: "short",
@@ -95,10 +90,7 @@ function formatDateTime(value) {
   if (!value) return "";
 
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
+  if (Number.isNaN(date.getTime())) return "";
 
   return date.toLocaleString(undefined, {
     month: "short",
@@ -128,24 +120,10 @@ function ProgressBar({ value }) {
   const safe = Math.min(Math.max(Number(value) || 0, 0), 100);
 
   return (
-    <div
-      style={{
-        width: "100%",
-        maxWidth: 180,
-        height: 10,
-        background: "#e9eeec",
-        borderRadius: 999,
-        overflow: "hidden"
-      }}
-      aria-label={`${safe}% complete`}
-    >
+    <div className="class-progress-track" aria-label={`${safe}% complete`}>
       <div
-        style={{
-          width: `${safe}%`,
-          height: "100%",
-          background: "var(--primary)",
-          borderRadius: 999
-        }}
+        className="class-progress-fill"
+        style={{ width: `${safe}%` }}
       />
     </div>
   );
@@ -155,29 +133,37 @@ export default function Classroom({ initialGroup }) {
   const { groupId } = useParams();
 
   const [group, setGroup] = useState(initialGroup);
-  const [activeTab, setActiveTab] = useState("assignments");
-  const [spatialIndex, setSpatialIndex] = useState(0);
-  const [spatialSwipeStart, setSpatialSwipeStart] = useState(null);
-
   const [members, setMembers] = useState([]);
   const [friends, setFriends] = useState([]);
   const [assignments, setAssignments] = useState([]);
-
   const [forumPosts, setForumPosts] = useState([]);
   const [forumReplies, setForumReplies] = useState({});
-  const [openTopicId, setOpenTopicId] = useState(null);
-
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
-  const [studentProgress, setStudentProgress] = useState([]);
   const [myAssignmentProgress, setMyAssignmentProgress] = useState({});
+  const [studentProgress, setStudentProgress] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [progressLoading, setProgressLoading] = useState(false);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [busyTopicId, setBusyTopicId] = useState(null);
 
-  const [showCreate, setShowCreate] = useState(false);
+  const [assignmentIndex, setAssignmentIndex] = useState(0);
+  const [discussionIndex, setDiscussionIndex] = useState(0);
+  const [classDepth, setClassDepth] = useState(0);
+  const [spatialSwipeStart, setSpatialSwipeStart] = useState(null);
+
+  const [replyModePostId, setReplyModePostId] = useState(null);
+  const [replyLevels, setReplyLevels] = useState([]);
+  const [replyComposerParentId, setReplyComposerParentId] = useState(undefined);
+  const [replyText, setReplyText] = useState("");
+  const [forumVotes, setForumVotes] = useState({});
+
+  const [showCreateAssignment, setShowCreateAssignment] = useState(false);
   const [editingAssignmentId, setEditingAssignmentId] = useState(null);
+  const [showDiscussionComposer, setShowDiscussionComposer] = useState(false);
+  const [showStudents, setShowStudents] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showProgress, setShowProgress] = useState(false);
 
   const [bookSearchQuery, setBookSearchQuery] = useState("");
   const [bookSearchResults, setBookSearchResults] = useState([]);
@@ -198,7 +184,6 @@ export default function Classroom({ initialGroup }) {
 
   const [topicTitle, setTopicTitle] = useState("");
   const [topicBody, setTopicBody] = useState("");
-  const [replyText, setReplyText] = useState("");
 
   const [settingsForm, setSettingsForm] = useState({
     name: initialGroup?.name || "",
@@ -213,6 +198,44 @@ export default function Classroom({ initialGroup }) {
   const isTeacher = ["owner", "admin"].includes(myRole);
   const isOwner = myRole === "owner";
 
+  const selectedAssignment =
+    assignments[assignmentIndex] || null;
+
+  const discussions = useMemo(() => {
+    if (!selectedAssignment) return [];
+
+    const firstAssignmentId = assignments[0]?.id || null;
+
+    return forumPosts.filter((post) => {
+      if (post.sourceAssignmentId) {
+        return String(post.sourceAssignmentId) === String(selectedAssignment.id);
+      }
+
+      /*
+       * Legacy class discussions predate assignment provenance.
+       * Keep them visible by placing them under the first assignment.
+       */
+      return String(selectedAssignment.id) === String(firstAssignmentId);
+    });
+  }, [forumPosts, assignments, selectedAssignment]);
+
+  const selectedDiscussion =
+    discussions[discussionIndex] || null;
+
+  const studentCount = members.filter(
+    (member) => !["owner", "admin"].includes(member.role)
+  ).length;
+
+  const teacherCount = members.length - studentCount;
+
+  const inviteableFriends = useMemo(() => {
+    const ids = new Set(members.map((member) => String(member.userId)));
+
+    return friends.filter(
+      (friend) => !ids.has(String(friend.otherUserId))
+    );
+  }, [friends, members]);
+
   async function refreshCore() {
     const [
       loadedMembers,
@@ -226,11 +249,6 @@ export default function Classroom({ initialGroup }) {
 
     let normalizedMembers = loadedMembers;
 
-    /*
-     * Classes have only Primary Teacher / Teacher / Student.
-     * If an older class still contains the group-only Moderator role,
-     * the Primary Teacher normalizes it to Student.
-     */
     if (
       isOwner &&
       loadedMembers.some((member) => member.role === "moderator")
@@ -239,11 +257,7 @@ export default function Classroom({ initialGroup }) {
         loadedMembers
           .filter((member) => member.role === "moderator")
           .map((member) =>
-            setGroupMemberRole(
-              groupId,
-              member.userId,
-              "member"
-            )
+            setGroupMemberRole(groupId, member.userId, "member")
           )
       );
 
@@ -254,15 +268,12 @@ export default function Classroom({ initialGroup }) {
     setAssignments(loadedAssignments);
     setForumPosts(loadedForumPosts);
 
-    if (loadedAssignments.length) {
-      setSelectedAssignmentId((current) =>
-        loadedAssignments.some((item) => item.id === current)
-          ? current
-          : loadedAssignments[0].id
-      );
-    } else {
-      setSelectedAssignmentId("");
-    }
+    setAssignmentIndex((current) =>
+      Math.max(
+        0,
+        Math.min(loadedAssignments.length - 1, current)
+      )
+    );
 
     if (isTeacher) {
       try {
@@ -282,14 +293,11 @@ export default function Classroom({ initialGroup }) {
         await refreshCore();
       } catch (error) {
         console.error("Could not load class:", error);
-
         if (active) {
           setStatus(error?.message || "We couldn't load this class.");
         }
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       }
     }
 
@@ -300,17 +308,37 @@ export default function Classroom({ initialGroup }) {
     };
   }, [groupId]);
 
-  const selectedAssignment = useMemo(
-    () =>
-      assignments.find(
-        (assignment) => assignment.id === selectedAssignmentId
-      ) || null,
-    [assignments, selectedAssignmentId]
-  );
+  useEffect(() => {
+    setDiscussionIndex(0);
+    setReplyModePostId(null);
+    setReplyLevels([]);
+    setReplyComposerParentId(undefined);
+    setClassDepth(0);
+  }, [selectedAssignment?.id]);
 
   useEffect(() => {
-    if (!isTeacher || !selectedAssignment) {
-      setStudentProgress([]);
+    if (isTeacher || !assignments.length) {
+      setMyAssignmentProgress({});
+      return;
+    }
+
+    let active = true;
+
+    getMyClassAssignmentProgress(groupId, assignments)
+      .then((progressByAssignment) => {
+        if (active) setMyAssignmentProgress(progressByAssignment);
+      })
+      .catch((error) => {
+        console.error("Could not load student assignment progress:", error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [groupId, isTeacher, assignments]);
+
+  useEffect(() => {
+    if (!showProgress || !isTeacher || !selectedAssignment) {
       return;
     }
 
@@ -326,21 +354,14 @@ export default function Classroom({ initialGroup }) {
           selectedAssignment
         );
 
-        if (active) {
-          setStudentProgress(rows);
-        }
+        if (active) setStudentProgress(rows);
       } catch (error) {
         console.error("Could not load class progress:", error);
-
         if (active) {
-          setStatus(
-            "Student progress could not be loaded. Confirm the class Firestore rules included in this package are installed."
-          );
+          setStatus("Student progress could not be loaded.");
         }
       } finally {
-        if (active) {
-          setProgressLoading(false);
-        }
+        if (active) setProgressLoading(false);
       }
     }
 
@@ -350,54 +371,30 @@ export default function Classroom({ initialGroup }) {
       active = false;
     };
   }, [
-    groupId,
+    showProgress,
     isTeacher,
+    groupId,
     members,
     selectedAssignment
   ]);
 
-  useEffect(() => {
-    if (isTeacher || !assignments.length) {
-      setMyAssignmentProgress({});
-      return;
-    }
+  function clearAssignmentForm() {
+    setAssignmentForm({
+      bookId: "",
+      title: "",
+      author: "",
+      instructions: "",
+      dueAt: "",
+      startParagraphIndex: 0,
+      endParagraphIndex: ""
+    });
 
-    let active = true;
-
-    getMyClassAssignmentProgress(
-      groupId,
-      assignments
-    )
-      .then((progressByAssignment) => {
-        if (active) {
-          setMyAssignmentProgress(progressByAssignment);
-        }
-      })
-      .catch((error) => {
-        console.error(
-          "Could not load student assignment progress:",
-          error
-        );
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [groupId, isTeacher, assignments]);
-
-  const studentCount = members.filter(
-    (member) => !["owner", "admin"].includes(member.role)
-  ).length;
-
-  const teacherCount = members.length - studentCount;
-
-  const inviteableFriends = useMemo(() => {
-    const ids = new Set(members.map((member) => String(member.userId)));
-
-    return friends.filter(
-      (friend) => !ids.has(String(friend.otherUserId))
-    );
-  }, [friends, members]);
+    setEditingAssignmentId(null);
+    setShowCreateAssignment(false);
+    setBookSearchQuery("");
+    setBookSearchResults([]);
+    setBookSearchStatus("Search by title, author, or subject.");
+  }
 
   async function searchAssignmentBooks() {
     const query = bookSearchQuery.trim();
@@ -433,9 +430,7 @@ export default function Classroom({ initialGroup }) {
       );
     } catch (error) {
       console.error("Could not search assignment books:", error);
-      setBookSearchStatus(
-        "Search failed. Check your connection and try again."
-      );
+      setBookSearchStatus("Search failed. Check your connection and try again.");
     } finally {
       setBookSearchLoading(false);
     }
@@ -454,24 +449,6 @@ export default function Classroom({ initialGroup }) {
     setBookSearchStatus(`Selected “${book.title || "book"}.”`);
   }
 
-  function clearAssignmentForm() {
-    setAssignmentForm({
-      bookId: "",
-      title: "",
-      author: "",
-      instructions: "",
-      dueAt: "",
-      startParagraphIndex: 0,
-      endParagraphIndex: ""
-    });
-
-    setEditingAssignmentId(null);
-    setShowCreate(false);
-    setBookSearchQuery("");
-    setBookSearchResults([]);
-    setBookSearchStatus("Search by title, author, or subject.");
-  }
-
   function beginEditAssignment(assignment) {
     setAssignmentForm({
       bookId: assignment.bookId || "",
@@ -484,8 +461,7 @@ export default function Classroom({ initialGroup }) {
     });
 
     setEditingAssignmentId(assignment.id);
-    setShowCreate(true);
-    setActiveTab("assignments");
+    setShowCreateAssignment(true);
   }
 
   async function saveAssignment(event) {
@@ -501,15 +477,15 @@ export default function Classroom({ initialGroup }) {
           editingAssignmentId,
           assignmentForm
         );
-
         setStatus("Assignment updated.");
       } else {
-        const id = await createClassAssignment(
-          groupId,
-          assignmentForm
-        );
+        const id = await createClassAssignment(groupId, assignmentForm);
+        await refreshCore();
 
-        setSelectedAssignmentId(id);
+        const nextAssignments = await getClassAssignments(groupId);
+        const nextIndex = nextAssignments.findIndex((item) => item.id === id);
+        if (nextIndex >= 0) setAssignmentIndex(nextIndex);
+
         setStatus("Assignment created.");
       }
 
@@ -524,11 +500,7 @@ export default function Classroom({ initialGroup }) {
   }
 
   async function removeAssignment(assignment) {
-    if (
-      !window.confirm(
-        `Delete "${assignment.title}" from this class?`
-      )
-    ) {
+    if (!window.confirm(`Delete "${assignment.title}" from this class?`)) {
       return;
     }
 
@@ -547,6 +519,11 @@ export default function Classroom({ initialGroup }) {
   async function createTopic(event) {
     event.preventDefault();
 
+    if (!selectedAssignment) {
+      setStatus("Create an assignment before starting its discussion.");
+      return;
+    }
+
     if (!topicTitle.trim() || !topicBody.trim()) {
       setStatus("Add a discussion title and message.");
       return;
@@ -557,12 +534,16 @@ export default function Classroom({ initialGroup }) {
 
       await createGroupForumPost(groupId, {
         title: topicTitle,
-        body: topicBody
+        body: topicBody,
+        sourceAssignment: selectedAssignment
       });
 
       setTopicTitle("");
       setTopicBody("");
       setForumPosts(await getGroupForumPosts(groupId));
+      setDiscussionIndex(0);
+      setClassDepth(1);
+      setShowDiscussionComposer(false);
       setStatus("Discussion posted.");
     } catch (error) {
       setStatus(error?.message || "We couldn't post that discussion.");
@@ -571,12 +552,40 @@ export default function Classroom({ initialGroup }) {
     }
   }
 
-  async function toggleTopic(post) {
-    if (openTopicId === post.id) {
-      setOpenTopicId(null);
-      setReplyText("");
-      return;
-    }
+  function replyChildren(replies, parentReplyId) {
+    const replyIds = new Set(
+      replies.map((reply) => String(reply.id))
+    );
+
+    return replies
+      .filter((reply) =>
+        parentReplyId
+          ? String(reply.parentReplyId || "") === String(parentReplyId)
+          : (
+              !reply.parentReplyId ||
+              !replyIds.has(String(reply.parentReplyId))
+            )
+      )
+      .sort((a, b) => {
+        const scoreDifference =
+          Number(b.forumScore || 0) - Number(a.forumScore || 0);
+
+        if (scoreDifference !== 0) return scoreDifference;
+
+        const upDifference =
+          Number(b.forumUpCount || 0) - Number(a.forumUpCount || 0);
+
+        if (upDifference !== 0) return upDifference;
+
+        return String(b.createdAtISO || "").localeCompare(
+          String(a.createdAtISO || "")
+        );
+      });
+  }
+
+  async function loadTopicReplies(post) {
+    setBusyTopicId(post.id);
+    setStatus("");
 
     try {
       const replies = await getGroupForumReplies(groupId, post.id);
@@ -586,29 +595,98 @@ export default function Classroom({ initialGroup }) {
         [post.id]: replies
       }));
 
-      setOpenTopicId(post.id);
-      setReplyText("");
+      return replies;
     } catch (error) {
       setStatus(error?.message || "We couldn't load that discussion.");
+      return [];
+    } finally {
+      setBusyTopicId(null);
     }
   }
 
-  async function sendReply(post) {
+  async function enterTopicReplies(post) {
+    const replies =
+      forumReplies[post.id] || await loadTopicReplies(post);
+
+    const roots = replyChildren(replies, null);
+
+    if (!roots.length) {
+      setReplyComposerParentId(null);
+      return;
+    }
+
+    setReplyModePostId(post.id);
+    setReplyLevels([
+      {
+        parentReplyId: null,
+        items: roots,
+        selectedIndex: 0
+      }
+    ]);
+    setReplyText("");
+    setClassDepth(2);
+  }
+
+  function currentReplyItem() {
+    const level = replyLevels[replyLevels.length - 1];
+    return level?.items?.[level.selectedIndex] || null;
+  }
+
+  function replyChildCount(postId, replyId) {
+    return replyChildren(
+      forumReplies[postId] || [],
+      replyId
+    ).length;
+  }
+
+  function enterReplyChildren(post, reply) {
+    const allReplies = forumReplies[post.id] || [];
+    const children = replyChildren(allReplies, reply.id);
+
+    if (!children.length) {
+      setReplyComposerParentId(reply.id);
+      return;
+    }
+
+    setReplyLevels((current) => [
+      ...current,
+      {
+        parentReplyId: reply.id,
+        items: children,
+        selectedIndex: 0
+      }
+    ]);
+
+    setClassDepth((current) => current + 1);
+  }
+
+  function backReplyDepth() {
+    if (replyLevels.length > 1) {
+      setReplyLevels((current) => current.slice(0, -1));
+      setClassDepth((current) => Math.max(2, current - 1));
+      return;
+    }
+
+    setReplyLevels([]);
+    setReplyModePostId(null);
+    setClassDepth(1);
+  }
+
+  async function sendForumReply(post, parentReplyId = null) {
     if (!replyText.trim()) return;
 
     try {
-      setBusy(true);
+      setBusyTopicId(post.id);
+      setStatus("");
 
-      await replyToGroupForumPost(
+      const created = await replyToGroupForumPost(
         groupId,
         post.id,
-        replyText.trim()
+        replyText,
+        { parentReplyId }
       );
 
-      const replies = await getGroupForumReplies(
-        groupId,
-        post.id
-      );
+      const replies = await getGroupForumReplies(groupId, post.id);
 
       setForumReplies((current) => ({
         ...current,
@@ -616,10 +694,143 @@ export default function Classroom({ initialGroup }) {
       }));
 
       setReplyText("");
+      setReplyComposerParentId(undefined);
+      setForumPosts(await getGroupForumPosts(groupId));
+
+      if (replyModePostId === post.id) {
+        const nextItems = replyChildren(replies, parentReplyId);
+
+        setReplyLevels((current) => {
+          if (!current.length) {
+            return [{
+              parentReplyId,
+              items: nextItems,
+              selectedIndex: Math.max(
+                0,
+                nextItems.findIndex((item) => item.id === created.id)
+              )
+            }];
+          }
+
+          const next = [...current];
+          const lastIndex = next.length - 1;
+
+          if (
+            String(next[lastIndex].parentReplyId || "") ===
+            String(parentReplyId || "")
+          ) {
+            next[lastIndex] = {
+              ...next[lastIndex],
+              items: nextItems,
+              selectedIndex: Math.max(
+                0,
+                nextItems.findIndex((item) => item.id === created.id)
+              )
+            };
+          }
+
+          return next;
+        });
+      } else if (parentReplyId === null) {
+        const roots = replyChildren(replies, null);
+
+        setReplyModePostId(post.id);
+        setReplyLevels([
+          {
+            parentReplyId: null,
+            items: roots,
+            selectedIndex: Math.max(
+              0,
+              roots.findIndex((item) => item.id === created.id)
+            )
+          }
+        ]);
+        setClassDepth(2);
+      }
     } catch (error) {
       setStatus(error?.message || "We couldn't post that reply.");
     } finally {
-      setBusy(false);
+      setBusyTopicId(null);
+    }
+  }
+
+  function voteKey(targetType, targetId) {
+    return `${targetType}:${targetId}`;
+  }
+
+  async function ensureForumVote(targetType, targetId) {
+    const key = voteKey(targetType, targetId);
+
+    if (Object.prototype.hasOwnProperty.call(forumVotes, key)) {
+      return;
+    }
+
+    try {
+      const direction = await getMyGroupForumVote(
+        groupId,
+        { targetType, targetId }
+      );
+
+      setForumVotes((current) => ({
+        ...current,
+        [key]: direction
+      }));
+    } catch (error) {
+      console.warn("Could not load class discussion vote:", error);
+    }
+  }
+
+  async function castForumVote(post, reply, direction) {
+    const targetType = reply ? "reply" : "post";
+    const targetId = reply?.id || post.id;
+    const key = voteKey(targetType, targetId);
+
+    try {
+      const result = await voteOnGroupForumNode(
+        groupId,
+        post.id,
+        {
+          replyId: reply?.id || null,
+          direction
+        }
+      );
+
+      setForumVotes((current) => ({
+        ...current,
+        [key]: result.direction
+      }));
+
+      if (reply) {
+        setForumReplies((current) => ({
+          ...current,
+          [post.id]: (current[post.id] || []).map((item) =>
+            item.id === reply.id
+              ? { ...item, ...result }
+              : item
+          )
+        }));
+
+        setReplyLevels((current) =>
+          current.map((level) => ({
+            ...level,
+            items: level.items.map((item) =>
+              item.id === reply.id
+                ? { ...item, ...result }
+                : item
+            )
+          }))
+        );
+      } else {
+        setForumPosts((current) =>
+          current.map((item) =>
+            item.id === post.id
+              ? { ...item, ...result }
+              : item
+          )
+        );
+      }
+    } catch (error) {
+      setStatus(error?.message || "We couldn't update that vote.");
     }
   }
 
@@ -629,7 +840,10 @@ export default function Classroom({ initialGroup }) {
     try {
       await deleteGroupForumPost(groupId, post.id);
       setForumPosts(await getGroupForumPosts(groupId));
-      setOpenTopicId(null);
+      setDiscussionIndex(0);
+      setReplyModePostId(null);
+      setReplyLevels([]);
+      setClassDepth(1);
     } catch (error) {
       setStatus(error?.message || "We couldn't delete that discussion.");
     }
@@ -639,23 +853,150 @@ export default function Classroom({ initialGroup }) {
     if (!window.confirm("Delete this reply?")) return;
 
     try {
-      await deleteGroupForumReply(
-        groupId,
-        post.id,
-        reply.id
-      );
+      await deleteGroupForumReply(groupId, post.id, reply.id);
 
-      const replies = await getGroupForumReplies(
-        groupId,
-        post.id
-      );
+      const replies = await getGroupForumReplies(groupId, post.id);
 
       setForumReplies((current) => ({
         ...current,
         [post.id]: replies
       }));
+
+      const roots = replyChildren(replies, null);
+
+      if (!roots.length) {
+        setReplyModePostId(null);
+        setReplyLevels([]);
+        setClassDepth(1);
+      } else {
+        setReplyLevels([
+          {
+            parentReplyId: null,
+            items: roots,
+            selectedIndex: 0
+          }
+        ]);
+        setClassDepth(2);
+      }
     } catch (error) {
       setStatus(error?.message || "We couldn't delete that reply.");
+    }
+  }
+
+  function handleAssignmentScroll(event) {
+    const height = event.currentTarget.clientHeight;
+    if (!height) return;
+
+    const next = Math.round(event.currentTarget.scrollTop / height);
+
+    setAssignmentIndex(
+      Math.max(0, Math.min(assignments.length - 1, next))
+    );
+  }
+
+  function handleDiscussionScroll(event) {
+    const height = event.currentTarget.clientHeight;
+    if (!height) return;
+
+    const next = Math.round(event.currentTarget.scrollTop / height);
+
+    setDiscussionIndex(
+      Math.max(0, Math.min(discussions.length - 1, next))
+    );
+  }
+
+  function handleReplyScroll(event) {
+    const levelIndex = replyLevels.length - 1;
+    const height = event.currentTarget.clientHeight;
+
+    if (levelIndex < 0 || !height) return;
+
+    const nextIndex = Math.round(
+      event.currentTarget.scrollTop / height
+    );
+
+    setReplyLevels((current) => {
+      if (!current[levelIndex]) return current;
+
+      const next = [...current];
+      next[levelIndex] = {
+        ...next[levelIndex],
+        selectedIndex: Math.max(
+          0,
+          Math.min(
+            next[levelIndex].items.length - 1,
+            nextIndex
+          )
+        )
+      };
+
+      return next;
+    });
+  }
+
+  function handleSpatialTouchStart(event) {
+    const touch = event.touches?.[0];
+
+    if (!touch) return;
+
+    setSpatialSwipeStart({
+      x: touch.clientX,
+      y: touch.clientY
+    });
+  }
+
+  async function handleSpatialTouchEnd(event) {
+    if (!spatialSwipeStart) return;
+
+    const touch = event.changedTouches?.[0];
+    setSpatialSwipeStart(null);
+
+    if (!touch) return;
+
+    const deltaX = touch.clientX - spatialSwipeStart.x;
+    const deltaY = touch.clientY - spatialSwipeStart.y;
+
+    if (
+      Math.abs(deltaX) < 70 ||
+      Math.abs(deltaX) <= Math.abs(deltaY)
+    ) {
+      return;
+    }
+
+    if (deltaX < 0) {
+      if (replyModePostId) {
+        const post = forumPosts.find(
+          (item) => item.id === replyModePostId
+        );
+
+        const reply = currentReplyItem();
+
+        if (post && reply) {
+          enterReplyChildren(post, reply);
+        }
+        return;
+      }
+
+      if (classDepth === 0) {
+        setClassDepth(1);
+        setDiscussionIndex(0);
+        return;
+      }
+
+      if (classDepth === 1 && selectedDiscussion) {
+        await enterTopicReplies(selectedDiscussion);
+      }
+
+      return;
+    }
+
+    if (replyModePostId) {
+      backReplyDepth();
+      return;
+    }
+
+    if (classDepth === 1) {
+      setClassDepth(0);
     }
   }
 
@@ -663,15 +1004,10 @@ export default function Classroom({ initialGroup }) {
     try {
       setBusy(true);
 
-      const storedRole =
-        nextRole === "teacher"
-          ? "admin"
-          : "member";
-
       await setGroupMemberRole(
         groupId,
         member.userId,
-        storedRole
+        nextRole === "teacher" ? "admin" : "member"
       );
 
       await refreshCore();
@@ -684,11 +1020,7 @@ export default function Classroom({ initialGroup }) {
   }
 
   async function removeStudent(member) {
-    if (
-      !window.confirm(
-        `Remove ${memberName(member)} from this class?`
-      )
-    ) {
+    if (!window.confirm(`Remove ${memberName(member)} from this class?`)) {
       return;
     }
 
@@ -709,9 +1041,7 @@ export default function Classroom({ initialGroup }) {
       setBusy(true);
       await inviteFriendToGroup(groupId, friend.otherUserId);
       setStatus(
-        `Invitation sent to ${
-          friend.profile?.displayName || "reader"
-        }.`
+        `Invitation sent to ${friend.profile?.displayName || "reader"}.`
       );
     } catch (error) {
       setStatus(error?.message || "We couldn't send that invitation.");
@@ -726,10 +1056,7 @@ export default function Classroom({ initialGroup }) {
     try {
       setBusy(true);
 
-      await updateGroupProfile(
-        groupId,
-        settingsForm
-      );
+      await updateGroupProfile(groupId, settingsForm);
 
       setGroup((current) => ({
         ...current,
@@ -737,6 +1064,7 @@ export default function Classroom({ initialGroup }) {
       }));
 
       setStatus("Class settings saved.");
+      setShowSettings(false);
     } catch (error) {
       setStatus(error?.message || "We couldn't save class settings.");
     } finally {
@@ -744,74 +1072,23 @@ export default function Classroom({ initialGroup }) {
     }
   }
 
-  const spatialSections = [
-    { value: "assignments", label: "Assignments" },
-    { value: "discussion", label: "Discussion" },
-    { value: "students", label: isTeacher ? "Students" : "Classmates" },
-    ...(isTeacher ? [{ value: "settings", label: "Settings" }] : [])
-  ];
+  useEffect(() => {
+    if (selectedDiscussion && classDepth === 1) {
+      ensureForumVote("post", selectedDiscussion.id);
+    }
+  }, [selectedDiscussion?.id, classDepth]);
 
   useEffect(() => {
-    const nextIndex = spatialSections.findIndex(
-      (section) => section.value === activeTab
-    );
+    const selectedReply = currentReplyItem();
 
-    if (nextIndex >= 0 && nextIndex !== spatialIndex) {
-      setSpatialIndex(nextIndex);
+    if (replyModePostId && selectedReply) {
+      ensureForumVote("reply", selectedReply.id);
     }
-  }, [activeTab, isTeacher]);
-
-  function moveSpatialSection(direction) {
-    const nextIndex = Math.max(
-      0,
-      Math.min(
-        spatialSections.length - 1,
-        spatialIndex + direction
-      )
-    );
-
-    if (nextIndex === spatialIndex) return;
-
-    setSpatialIndex(nextIndex);
-    setActiveTab(spatialSections[nextIndex].value);
-  }
-
-  function handleClassTouchStart(event) {
-    const touch = event.touches?.[0];
-    if (!touch) return;
-
-    setSpatialSwipeStart({
-      x: touch.clientX,
-      y: touch.clientY
-    });
-  }
-
-  function handleClassTouchEnd(event) {
-    if (!spatialSwipeStart) return;
-
-    const touch = event.changedTouches?.[0];
-    setSpatialSwipeStart(null);
-
-    if (!touch) return;
-
-    const deltaX = touch.clientX - spatialSwipeStart.x;
-    const deltaY = touch.clientY - spatialSwipeStart.y;
-
-    if (
-      Math.abs(deltaX) < 70 ||
-      Math.abs(deltaX) <= Math.abs(deltaY)
-    ) {
-      return;
-    }
-
-    // Same spatial grammar as The Chain and Groups:
-    // left = deeper/next, right = back/previous.
-    if (deltaX < 0) {
-      moveSpatialSection(1);
-    } else {
-      moveSpatialSection(-1);
-    }
-  }
+  }, [
+    replyModePostId,
+    replyLevels.length,
+    currentReplyItem()?.id
+  ]);
 
   if (loading) {
     return (
@@ -823,12 +1100,10 @@ export default function Classroom({ initialGroup }) {
     );
   }
 
+  const avatar = getGroupAvatar(group?.avatar);
+
   return (
-    <main
-      className="page-wrap classroom-spatial-page"
-      onTouchStart={handleClassTouchStart}
-      onTouchEnd={handleClassTouchEnd}
-    >
+    <main className="classroom-reel-page">
       <SEO
         title={`${group?.name || "Class"} | Lit Chain`}
         description={`Assignments and reading progress for ${
@@ -837,1156 +1112,1250 @@ export default function Classroom({ initialGroup }) {
         path={`/read/groups/${groupId}`}
       />
 
-      <div className="classroom-spatial-shell">
-        <header className="classroom-floating-card">
-          <Link
-            to="/read/profile?tab=groups"
-            className="classroom-floating-back"
-            aria-label="Back to classes"
-          >
-            <ArrowLeft size={18} />
-          </Link>
+      <header className="classroom-reel-header">
+        <Link
+          to="/read/groups"
+          className="classroom-reel-back"
+          aria-label="Back to classes"
+        >
+          <ArrowLeft size={18} />
+        </Link>
 
-          <button
-            type="button"
-            className="classroom-floating-identity"
-            onClick={() => {
-              setSpatialIndex(0);
-              setActiveTab("assignments");
-            }}
-          >
-            {getGroupAvatar(group?.avatar) && (
-              <img
-                src={getGroupAvatar(group.avatar).image}
-                alt=""
-              />
-            )}
-            <span>
-              <small>Class</small>
-              <strong>{group?.name || "Classroom"}</strong>
-            </span>
-          </button>
-
-          <button
-            type="button"
-            className="classroom-floating-members"
-            onClick={() => {
-              const index = spatialSections.findIndex(
-                (section) => section.value === "students"
-              );
-              if (index >= 0) {
-                setSpatialIndex(index);
-                setActiveTab("students");
-              }
-            }}
-            aria-label="Class members"
-          >
-            <Users size={18} />
-          </button>
-
-          {isTeacher && (
-            <button
-              type="button"
-              className="classroom-floating-settings"
-              onClick={() => {
-                const index = spatialSections.findIndex(
-                  (section) => section.value === "settings"
-                );
-                if (index >= 0) {
-                  setSpatialIndex(index);
-                  setActiveTab("settings");
-                }
-              }}
-              aria-label="Class settings"
-            >
-              <Settings size={18} />
-            </button>
+        <button
+          type="button"
+          className="classroom-reel-identity"
+          onClick={() => {
+            setReplyModePostId(null);
+            setReplyLevels([]);
+            setClassDepth(0);
+          }}
+        >
+          {avatar ? (
+            <img src={avatar.image} alt="" />
+          ) : (
+            <GraduationCap size={26} />
           )}
-        </header>
 
-        <section className="classroom-section-header">
+          <span>
+            <small>Class</small>
+            <strong>{group?.name || "Classroom"}</strong>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          className="classroom-reel-icon"
+          onClick={() => setShowStudents(true)}
+          aria-label="Students"
+          title="Students"
+        >
+          <Users size={19} />
+        </button>
+
+        {isTeacher && (
           <button
             type="button"
-            className="icon-link"
-            onClick={() => moveSpatialSection(-1)}
-            disabled={spatialIndex === 0}
-            aria-label="Previous class section"
+            className="classroom-reel-icon"
+            onClick={() => setShowSettings(true)}
+            aria-label="Class settings"
+            title="Class settings"
           >
-            <ChevronLeft size={18} />
+            <Settings size={19} />
           </button>
+        )}
+      </header>
 
-          <div>
-            <p className="eyebrow">
-              {spatialSections[spatialIndex]?.label || "Class"}
-            </p>
-            <div
-              className="classroom-depth-dots"
-              aria-label={`Class section ${spatialIndex + 1} of ${spatialSections.length}`}
-            >
-              {spatialSections.map((section, index) => (
-                <span
-                  key={section.value}
-                  className={index === spatialIndex ? "active" : ""}
-                />
-              ))}
-            </div>
-          </div>
+      {status && (
+        <p className="status classroom-reel-status">
+          {status}
+        </p>
+      )}
 
-          <button
-            type="button"
-            className="icon-link"
-            onClick={() => moveSpatialSection(1)}
-            disabled={spatialIndex === spatialSections.length - 1}
-            aria-label="Next class section"
-          >
-            <ChevronRight size={18} />
-          </button>
-        </section>
-
-        <section className="classroom-overview-strip">
-          <span>
-            <GraduationCap size={13} />
-            {teacherCount} {teacherCount === 1 ? "teacher" : "teachers"}
-          </span>
-          <span>
-            <Users size={13} />
-            {studentCount} {studentCount === 1 ? "student" : "students"}
-          </span>
-          <span>{classRoleLabel(myRole)}</span>
-        </section>
-
-        {status && <p className="status">{status}</p>}
-
-        {activeTab === "assignments" && (
-          <section className="panel classroom-spatial-section classroom-assignments-section" style={{ padding: "1.25rem" }}>
-            <div
-              style={{
-                display: "flex",
-                gap: "1rem",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap"
-              }}
-            >
-              <div>
-                <p className="eyebrow">Assigned Reading</p>
-                <h2>Assignments</h2>
-                <small className="classroom-swipe-cue">
-                  Swipe left for Discussion
-                </small>
+      <section
+        className="classroom-reel-stage"
+        onTouchStart={handleSpatialTouchStart}
+        onTouchEnd={handleSpatialTouchEnd}
+      >
+        {classDepth === 0 && (
+          <>
+            {!assignments.length ? (
+              <div className="classroom-reel-empty">
+                <BookOpen size={40} />
+                <h2>No assignments yet</h2>
+                <p className="muted">
+                  {isTeacher
+                    ? "Create the first reading assignment."
+                    : "Your teacher hasn't assigned any reading yet."}
+                </p>
               </div>
+            ) : (
+              <div
+                className="classroom-assignment-reels"
+                onScroll={handleAssignmentScroll}
+              >
+                {assignments.map((assignment) => {
+                  const mine =
+                    myAssignmentProgress[assignment.id] || null;
 
-              {isTeacher && (
+                  return (
+                    <article
+                      key={assignment.id}
+                      className="classroom-assignment-reel"
+                    >
+                      <div className="classroom-assignment-card">
+                        <p className="eyebrow">Assignment · Level 0</p>
+
+                        <h1>{assignment.title}</h1>
+
+                        {assignment.author && (
+                          <p className="classroom-assignment-author">
+                            {assignment.author}
+                          </p>
+                        )}
+
+                        <div className="classroom-assignment-meta">
+                          <span>
+                            <CalendarDays size={14} />
+                            {formatDate(assignment.dueAt)}
+                          </span>
+
+                          <span>
+                            Paragraph{" "}
+                            {Number(
+                              assignment.startParagraphIndex || 0
+                            ) + 1}
+                            {assignment.endParagraphIndex !== null &&
+                            assignment.endParagraphIndex !== undefined
+                              ? `–${
+                                  Number(
+                                    assignment.endParagraphIndex
+                                  ) + 1
+                                }`
+                              : " onward"}
+                          </span>
+                        </div>
+
+                        {assignment.instructions && (
+                          <p className="classroom-assignment-instructions">
+                            {assignment.instructions}
+                          </p>
+                        )}
+
+                        {!isTeacher && (
+                          <div className="classroom-current-progress">
+                            <div>
+                              <small>Your progress</small>
+                              <strong>
+                                {mine?.assignmentPercent || 0}%
+                              </strong>
+                            </div>
+
+                            <ProgressBar
+                              value={mine?.assignmentPercent || 0}
+                            />
+
+                            <small>
+                              {mine?.complete
+                                ? "Complete"
+                                : mine?.progress
+                                  ? "In progress"
+                                  : "Not started"}
+                            </small>
+                          </div>
+                        )}
+
+                        <div className="classroom-assignment-actions">
+                          <Link
+                            to={`/read/reader/${assignment.bookId}?paragraph=${
+                              assignment.startParagraphIndex || 0
+                            }`}
+                            className="button primary"
+                          >
+                            <BookOpen size={16} />
+                            Read
+                          </Link>
+
+                          {isTeacher && (
+                            <>
+                              <button
+                                type="button"
+                                className="button secondary"
+                                onClick={() => setShowProgress(true)}
+                              >
+                                <GraduationCap size={16} />
+                                Student Progress
+                              </button>
+
+                              <button
+                                type="button"
+                                className="icon-link"
+                                onClick={() =>
+                                  beginEditAssignment(assignment)
+                                }
+                                title="Edit assignment"
+                              >
+                                <Pencil size={17} />
+                              </button>
+
+                              <button
+                                type="button"
+                                className="icon-link danger"
+                                onClick={() =>
+                                  removeAssignment(assignment)
+                                }
+                                title="Delete assignment"
+                              >
+                                <Trash2 size={17} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          className="classroom-swipe-level-cue"
+                          onClick={() => {
+                            setDiscussionIndex(0);
+                            setClassDepth(1);
+                          }}
+                        >
+                          Swipe left for discussions
+                          <MessageCircle size={16} />
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+
+            {assignments.length > 1 && (
+              <div className="classroom-vertical-dots">
+                {assignments
+                  .slice(
+                    Math.max(0, assignmentIndex - 3),
+                    Math.min(assignments.length, assignmentIndex + 4)
+                  )
+                  .map((assignment, localIndex) => {
+                    const start = Math.max(0, assignmentIndex - 3);
+                    const index = start + localIndex;
+
+                    return (
+                      <span
+                        key={assignment.id}
+                        className={index === assignmentIndex ? "active" : ""}
+                      />
+                    );
+                  })}
+              </div>
+            )}
+
+            {isTeacher && (
+              <button
+                type="button"
+                className="group-new-discussion-fab classroom-add-assignment-fab"
+                onClick={() => {
+                  clearAssignmentForm();
+                  setShowCreateAssignment(true);
+                }}
+                aria-label="New assignment"
+                title="New assignment"
+              >
+                <Plus size={22} />
+              </button>
+            )}
+          </>
+        )}
+
+        {classDepth === 1 && !replyModePostId && (
+          <>
+            {!discussions.length ? (
+              <div className="classroom-reel-empty">
+                <MessageCircle size={40} />
+                <h2>No discussions yet</h2>
+                <p className="muted">
+                  Start a discussion about{" "}
+                  <strong>{selectedAssignment?.title || "this assignment"}</strong>.
+                </p>
+
                 <button
                   type="button"
                   className="button primary"
-                  onClick={() => {
-                    clearAssignmentForm();
-                    setShowCreate(true);
-                  }}
+                  onClick={() => setShowDiscussionComposer(true)}
                 >
                   <Plus size={16} />
-                  Assign Reading
+                  New Discussion
                 </button>
+
+                <button
+                  type="button"
+                  className="classroom-swipe-back-cue"
+                  onClick={() => setClassDepth(0)}
+                >
+                  <ArrowLeft size={15} />
+                  Assignment
+                </button>
+              </div>
+            ) : (
+              <div
+                className="group-discussion-reels classroom-discussion-reels"
+                onScroll={handleDiscussionScroll}
+              >
+                {discussions.map((post) => {
+                  const vote =
+                    forumVotes[voteKey("post", post.id)] || 0;
+
+                  return (
+                    <article
+                      key={post.id}
+                      className="group-discussion-reel"
+                      onMouseEnter={() =>
+                        ensureForumVote("post", post.id)
+                      }
+                    >
+                      <div className="group-discussion-card classroom-discussion-card">
+                        <div className="group-discussion-meta-row">
+                          <span>
+                            {post.authorProfile?.displayName ||
+                              post.authorProfile?.username ||
+                              "Reader"}
+                            {post.createdAtISO
+                              ? ` · ${formatDate(post.createdAtISO)}`
+                              : ""}
+                          </span>
+
+                          {(post.canDelete || isTeacher) && (
+                            <button
+                              type="button"
+                              className="icon-link danger"
+                              onClick={() => removeTopic(post)}
+                              title="Delete discussion"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="group-discussion-copy">
+                          <p className="eyebrow">
+                            Discussion · Level 1
+                          </p>
+                          <h2>{post.title}</h2>
+                          <p>{post.body}</p>
+                        </div>
+
+                        <div className="group-forum-vote-row">
+                          <button
+                            type="button"
+                            className={vote === 1 ? "active" : ""}
+                            onClick={() =>
+                              castForumVote(post, null, 1)
+                            }
+                            aria-label="Reinforce discussion"
+                            title="Reinforce"
+                          >
+                            <Link2 size={18} />
+                            <span>
+                              {Number(post.forumUpCount || 0)}
+                            </span>
+                          </button>
+
+                          <strong>
+                            {Number(post.forumScore || 0)}
+                          </strong>
+
+                          <button
+                            type="button"
+                            className={vote === -1 ? "active" : ""}
+                            onClick={() =>
+                              castForumVote(post, null, -1)
+                            }
+                            aria-label="Break discussion link"
+                            title="Break link"
+                          >
+                            <Unlink2 size={18} />
+                            <span>
+                              {Number(post.forumDownCount || 0)}
+                            </span>
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="group-swipe-deeper-cue"
+                          onClick={() => enterTopicReplies(post)}
+                          disabled={busyTopicId === post.id}
+                        >
+                          Swipe left for replies
+                          <MessageCircle size={16} />
+                        </button>
+
+                        <button
+                          type="button"
+                          className="classroom-swipe-back-cue"
+                          onClick={() => setClassDepth(0)}
+                        >
+                          <ArrowLeft size={15} />
+                          {selectedAssignment?.title || "Assignment"}
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+
+            {discussions.length > 1 && (
+              <div className="group-discussion-dots">
+                {discussions
+                  .slice(
+                    Math.max(0, discussionIndex - 3),
+                    Math.min(discussions.length, discussionIndex + 4)
+                  )
+                  .map((post, localIndex) => {
+                    const start = Math.max(0, discussionIndex - 3);
+                    const index = start + localIndex;
+
+                    return (
+                      <span
+                        key={post.id}
+                        className={index === discussionIndex ? "active" : ""}
+                      />
+                    );
+                  })}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="group-new-discussion-fab"
+              onClick={() => setShowDiscussionComposer(true)}
+              aria-label="New discussion"
+              title="New discussion"
+            >
+              <Plus size={22} />
+            </button>
+          </>
+        )}
+
+        {replyModePostId && (
+          <div className="group-reply-space classroom-reply-space">
+            <div className="group-reply-depth-header">
+              <button
+                type="button"
+                onClick={backReplyDepth}
+              >
+                <ArrowLeft size={17} />
+                {replyLevels.length > 1 ? "Back" : "Discussion"}
+              </button>
+
+              <div
+                className="group-reply-depth-dots"
+                aria-label={`Depth ${replyLevels.length + 1} from assignment`}
+              >
+                <span title="Assignment" />
+                <span title="Discussion" />
+                {replyLevels.map((_, index) => (
+                  <span
+                    key={index}
+                    className={
+                      index === replyLevels.length - 1
+                        ? "active"
+                        : ""
+                    }
+                    title={`Reply level ${index + 1}`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div
+              className="group-reply-reels"
+              onScroll={handleReplyScroll}
+            >
+              {(replyLevels[replyLevels.length - 1]?.items || []).map(
+                (reply) => {
+                  const post = forumPosts.find(
+                    (item) => item.id === replyModePostId
+                  );
+
+                  const vote =
+                    forumVotes[voteKey("reply", reply.id)] || 0;
+
+                  return (
+                    <article
+                      key={reply.id}
+                      className="group-reply-reel"
+                      onMouseEnter={() =>
+                        ensureForumVote("reply", reply.id)
+                      }
+                    >
+                      <div className="group-reply-card">
+                        <div className="group-discussion-meta-row">
+                          <span>
+                            {reply.authorProfile?.displayName ||
+                              reply.authorProfile?.username ||
+                              "Reader"}
+                            {reply.createdAtISO
+                              ? ` · ${formatDate(reply.createdAtISO)}`
+                              : ""}
+                          </span>
+
+                          {(reply.canDelete || isTeacher) && (
+                            <button
+                              type="button"
+                              className="icon-link danger"
+                              onClick={() =>
+                                removeReply(post, reply)
+                              }
+                              title="Delete reply"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="group-reply-copy">
+                          <p className="eyebrow">
+                            Reply · Level {replyLevels.length + 1}
+                          </p>
+                          <p>{reply.body}</p>
+                        </div>
+
+                        <div className="group-forum-vote-row">
+                          <button
+                            type="button"
+                            className={vote === 1 ? "active" : ""}
+                            onClick={() =>
+                              castForumVote(post, reply, 1)
+                            }
+                            aria-label="Reinforce reply"
+                            title="Reinforce"
+                          >
+                            <Link2 size={18} />
+                            <span>
+                              {Number(reply.forumUpCount || 0)}
+                            </span>
+                          </button>
+
+                          <strong>
+                            {Number(reply.forumScore || 0)}
+                          </strong>
+
+                          <button
+                            type="button"
+                            className={vote === -1 ? "active" : ""}
+                            onClick={() =>
+                              castForumVote(post, reply, -1)
+                            }
+                            aria-label="Break reply link"
+                            title="Break link"
+                          >
+                            <Unlink2 size={18} />
+                            <span>
+                              {Number(reply.forumDownCount || 0)}
+                            </span>
+                          </button>
+                        </div>
+
+                        <div className="group-reply-actions">
+                          <button
+                            type="button"
+                            className={
+                              replyChildCount(post.id, reply.id) > 0
+                                ? "group-swipe-deeper-cue"
+                                : "group-swipe-deeper-cue branch-end"
+                            }
+                            onClick={() =>
+                              enterReplyChildren(post, reply)
+                            }
+                          >
+                            {replyChildCount(post.id, reply.id) > 0 ? (
+                              <>
+                                Swipe left for{" "}
+                                {replyChildCount(post.id, reply.id)}{" "}
+                                {replyChildCount(post.id, reply.id) === 1
+                                  ? "reply"
+                                  : "replies"}
+                                <MessageCircle size={16} />
+                              </>
+                            ) : (
+                              <>
+                                End of branch · swipe left to reply
+                                <Plus size={16} />
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            className="group-reply-add-button"
+                            onClick={() =>
+                              setReplyComposerParentId(reply.id)
+                            }
+                          >
+                            <Plus size={15} />
+                            Reply
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                }
               )}
             </div>
 
-            {showCreate && isTeacher && (
-              <form
-                className="stack-md"
-                onSubmit={saveAssignment}
-                style={{
-                  padding: "1rem",
-                  marginBottom: "1.25rem",
-                  background: "#f7faf9",
-                  border: "1px solid var(--line)",
-                  borderRadius: 18
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: "1rem",
-                    alignItems: "center"
-                  }}
-                >
-                  <strong>
-                    {editingAssignmentId
-                      ? "Edit Assignment"
-                      : "New Assignment"}
-                  </strong>
+            {(replyLevels[replyLevels.length - 1]?.items || []).length > 1 && (
+              <div className="group-reply-sibling-dots">
+                {(replyLevels[replyLevels.length - 1]?.items || [])
+                  .slice(
+                    Math.max(
+                      0,
+                      (replyLevels[replyLevels.length - 1]?.selectedIndex || 0) - 3
+                    ),
+                    Math.min(
+                      (replyLevels[replyLevels.length - 1]?.items || []).length,
+                      (replyLevels[replyLevels.length - 1]?.selectedIndex || 0) + 4
+                    )
+                  )
+                  .map((reply, localIndex) => {
+                    const selectedIndex =
+                      replyLevels[replyLevels.length - 1]?.selectedIndex || 0;
+                    const start = Math.max(0, selectedIndex - 3);
+                    const index = start + localIndex;
 
-                  <button
-                    type="button"
-                    className="icon-link"
-                    onClick={clearAssignmentForm}
-                    aria-label="Close assignment form"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-
-                {!editingAssignmentId && (
-                  <div className="stack-md">
-                    <label>
-                      Find a book
-                      <div
-                        className="search-bar"
-                        style={{ marginTop: "0.35rem" }}
-                      >
-                        <Search size={20} />
-                        <input
-                          type="search"
-                          placeholder="Search title, author, or subject"
-                          value={bookSearchQuery}
-                          onChange={(event) =>
-                            setBookSearchQuery(event.target.value)
-                          }
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              searchAssignmentBooks();
-                            }
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={searchAssignmentBooks}
-                          disabled={bookSearchLoading}
-                        >
-                          {bookSearchLoading ? "Searching..." : "Search"}
-                        </button>
-                      </div>
-                    </label>
-
-                    <p className="status">{bookSearchStatus}</p>
-
-                    {bookSearchResults.length > 0 && (
-                      <div
-                        className="results-list"
-                        style={{
-                          maxHeight: 420,
-                          overflowY: "auto"
-                        }}
-                      >
-                        {bookSearchResults.map((book) => (
-                          <article
-                            key={book.id}
-                            className="book-card compact"
-                          >
-                            <div className="book-card-body">
-                              <h3>{book.title || "Untitled"}</h3>
-                              <p className="muted">
-                                {getAuthorName(book)}
-                              </p>
-                              <button
-                                type="button"
-                                className="button primary"
-                                onClick={() => chooseAssignmentBook(book)}
-                              >
-                                <Plus size={16} />
-                                Assign This Book
-                              </button>
-                            </div>
-                          </article>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {assignmentForm.bookId && (
-                  <div
-                    style={{
-                      padding: "0.85rem 1rem",
-                      background: "#eef4f3",
-                      borderRadius: 14
-                    }}
-                  >
-                    <strong>Selected book</strong>
-                    <p style={{ margin: "0.25rem 0 0" }}>
-                      {assignmentForm.title || "Untitled"}
-                      {assignmentForm.author
-                        ? ` — ${assignmentForm.author}`
-                        : ""}
-                    </p>
-                  </div>
-                )}
-
-                <label>
-                  Title
-                  <input
-                    required
-                    value={assignmentForm.title}
-                    onChange={(event) =>
-                      setAssignmentForm((current) => ({
-                        ...current,
-                        title: event.target.value
-                      }))
-                    }
-                    style={{
-                      width: "100%",
-                      padding: "0.75rem",
-                      border: "1px solid var(--line)",
-                      borderRadius: 12
-                    }}
-                  />
-                </label>
-
-                <label>
-                  Author
-                  <input
-                    value={assignmentForm.author}
-                    onChange={(event) =>
-                      setAssignmentForm((current) => ({
-                        ...current,
-                        author: event.target.value
-                      }))
-                    }
-                    style={{
-                      width: "100%",
-                      padding: "0.75rem",
-                      border: "1px solid var(--line)",
-                      borderRadius: 12
-                    }}
-                  />
-                </label>
-
-                <label>
-                  Instructions
-                  <textarea
-                    rows={3}
-                    value={assignmentForm.instructions}
-                    onChange={(event) =>
-                      setAssignmentForm((current) => ({
-                        ...current,
-                        instructions: event.target.value
-                      }))
-                    }
-                    style={{
-                      width: "100%",
-                      padding: "0.75rem",
-                      border: "1px solid var(--line)",
-                      borderRadius: 12
-                    }}
-                    placeholder="Read through Chapter 10, then..."
-                  />
-                </label>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "repeat(auto-fit, minmax(150px, 1fr))",
-                    gap: "0.75rem"
-                  }}
-                >
-                  <label>
-                    Start paragraph
-                    <input
-                      type="number"
-                      min="0"
-                      value={assignmentForm.startParagraphIndex}
-                      onChange={(event) =>
-                        setAssignmentForm((current) => ({
-                          ...current,
-                          startParagraphIndex: event.target.value
-                        }))
-                      }
-                      style={{
-                        width: "100%",
-                        padding: "0.75rem",
-                        border: "1px solid var(--line)",
-                        borderRadius: 12
-                      }}
-                    />
-                  </label>
-
-                  <label>
-                    End paragraph
-                    <input
-                      type="number"
-                      min="0"
-                      value={assignmentForm.endParagraphIndex}
-                      onChange={(event) =>
-                        setAssignmentForm((current) => ({
-                          ...current,
-                          endParagraphIndex: event.target.value
-                        }))
-                      }
-                      style={{
-                        width: "100%",
-                        padding: "0.75rem",
-                        border: "1px solid var(--line)",
-                        borderRadius: 12
-                      }}
-                      placeholder="Blank = whole book"
-                    />
-                  </label>
-
-                  <label>
-                    Due date
-                    <input
-                      type="date"
-                      value={assignmentForm.dueAt}
-                      onChange={(event) =>
-                        setAssignmentForm((current) => ({
-                          ...current,
-                          dueAt: event.target.value
-                        }))
-                      }
-                      style={{
-                        width: "100%",
-                        padding: "0.75rem",
-                        border: "1px solid var(--line)",
-                        borderRadius: 12
-                      }}
-                    />
-                  </label>
-                </div>
-
-                <button
-                  className="button primary"
-                  disabled={busy}
-                >
-                  <Save size={16} />
-                  {busy
-                    ? "Saving..."
-                    : editingAssignmentId
-                      ? "Save Changes"
-                      : "Create Assignment"}
-                </button>
-              </form>
-            )}
-
-            {!assignments.length && (
-              <p className="muted">
-                {isTeacher
-                  ? "No reading has been assigned yet."
-                  : "Your teacher hasn't assigned any reading yet."}
-              </p>
-            )}
-
-            <div className="stack-md">
-              {assignments.map((assignment) => (
-                <article
-                  key={assignment.id}
-                  className="public-journal-entry"
-                  style={{
-                    padding: "1rem",
-                    border: "1px solid var(--line)",
-                    borderRadius: 18
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: "1rem",
-                      flexWrap: "wrap"
-                    }}
-                  >
-                    <div>
-                      <h3>{assignment.title}</h3>
-                      {assignment.author && (
-                        <p className="muted" style={{ margin: 0 }}>
-                          {assignment.author}
-                        </p>
-                      )}
-                    </div>
-
-                    <Link
-                      to={`/read/reader/${assignment.bookId}?paragraph=${
-                        assignment.startParagraphIndex || 0
-                      }`}
-                      className="button primary"
-                    >
-                      <BookOpen size={16} />
-                      Read
-                    </Link>
-                  </div>
-
-                  <div className="public-entry-meta">
-                    <span>
-                      <CalendarDays size={14} />
-                      {formatDate(assignment.dueAt)}
-                    </span>
-
-                    <span>
-                      Paragraph{" "}
-                      {Number(
-                        assignment.startParagraphIndex || 0
-                      ) + 1}
-                      {assignment.endParagraphIndex !== null &&
-                      assignment.endParagraphIndex !== undefined
-                        ? `–${
-                            Number(
-                              assignment.endParagraphIndex
-                            ) + 1
-                          }`
-                        : " onward"}
-                    </span>
-                  </div>
-
-                  {assignment.instructions && (
-                    <p>{assignment.instructions}</p>
-                  )}
-
-                  {!isTeacher && (
-                    <div
-                      style={{
-                        marginTop: "0.85rem",
-                        paddingTop: "0.85rem",
-                        borderTop: "1px solid var(--line)"
-                      }}
-                    >
-                      <ProgressBar
-                        value={
-                          myAssignmentProgress[assignment.id]
-                            ?.assignmentPercent || 0
+                    return (
+                      <span
+                        key={reply.id}
+                        className={
+                          index === selectedIndex ? "active" : ""
                         }
                       />
-                      <small
-                        className="muted"
-                        style={{
-                          display: "block",
-                          marginTop: "0.35rem"
-                        }}
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="classroom-depth-dots-fixed" aria-hidden="true">
+          <span className={classDepth === 0 ? "active" : ""} />
+          <span className={classDepth === 1 ? "active" : ""} />
+          {replyLevels.map((_, index) => (
+            <span
+              key={index}
+              className={
+                classDepth === index + 2 ? "active" : ""
+              }
+            />
+          ))}
+        </div>
+      </section>
+
+      {showCreateAssignment && isTeacher && (
+        <div className="group-compose-modal">
+          <div
+            className="group-compose-backdrop"
+            onClick={clearAssignmentForm}
+          />
+
+          <form
+            className="group-compose-sheet class-assignment-compose-sheet"
+            onSubmit={saveAssignment}
+          >
+            <div className="group-compose-header">
+              <div>
+                <p className="eyebrow">Class</p>
+                <h2>
+                  {editingAssignmentId
+                    ? "Edit Assignment"
+                    : "New Assignment"}
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={clearAssignmentForm}
+                aria-label="Close"
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            {!editingAssignmentId && (
+              <>
+                <label>
+                  Find a book
+                  <div className="search-bar">
+                    <Search size={18} />
+                    <input
+                      type="search"
+                      placeholder="Search title, author, or subject"
+                      value={bookSearchQuery}
+                      onChange={(event) =>
+                        setBookSearchQuery(event.target.value)
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          searchAssignmentBooks();
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={searchAssignmentBooks}
+                      disabled={bookSearchLoading}
+                    >
+                      {bookSearchLoading ? "..." : "Search"}
+                    </button>
+                  </div>
+                </label>
+
+                <p className="status">{bookSearchStatus}</p>
+
+                {bookSearchResults.length > 0 && (
+                  <div className="class-assignment-search-results">
+                    {bookSearchResults.map((book) => (
+                      <button
+                        key={book.id}
+                        type="button"
+                        onClick={() => chooseAssignmentBook(book)}
                       >
-                        {myAssignmentProgress[assignment.id]
-                          ?.assignmentPercent || 0}
-                        % ·{" "}
-                        {myAssignmentProgress[assignment.id]
-                          ?.complete
+                        <strong>{book.title || "Untitled"}</strong>
+                        <span>{getAuthorName(book)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            <label>
+              Title
+              <input
+                required
+                value={assignmentForm.title}
+                onChange={(event) =>
+                  setAssignmentForm((current) => ({
+                    ...current,
+                    title: event.target.value
+                  }))
+                }
+              />
+            </label>
+
+            <label>
+              Author
+              <input
+                value={assignmentForm.author}
+                onChange={(event) =>
+                  setAssignmentForm((current) => ({
+                    ...current,
+                    author: event.target.value
+                  }))
+                }
+              />
+            </label>
+
+            <label>
+              Instructions
+              <textarea
+                rows={3}
+                value={assignmentForm.instructions}
+                onChange={(event) =>
+                  setAssignmentForm((current) => ({
+                    ...current,
+                    instructions: event.target.value
+                  }))
+                }
+              />
+            </label>
+
+            <div className="class-assignment-form-grid">
+              <label>
+                Start paragraph
+                <input
+                  type="number"
+                  min="0"
+                  value={assignmentForm.startParagraphIndex}
+                  onChange={(event) =>
+                    setAssignmentForm((current) => ({
+                      ...current,
+                      startParagraphIndex: event.target.value
+                    }))
+                  }
+                />
+              </label>
+
+              <label>
+                End paragraph
+                <input
+                  type="number"
+                  min="0"
+                  value={assignmentForm.endParagraphIndex}
+                  onChange={(event) =>
+                    setAssignmentForm((current) => ({
+                      ...current,
+                      endParagraphIndex: event.target.value
+                    }))
+                  }
+                />
+              </label>
+
+              <label>
+                Due date
+                <input
+                  type="date"
+                  value={assignmentForm.dueAt}
+                  onChange={(event) =>
+                    setAssignmentForm((current) => ({
+                      ...current,
+                      dueAt: event.target.value
+                    }))
+                  }
+                />
+              </label>
+            </div>
+
+            <button
+              className="button primary"
+              disabled={busy}
+            >
+              <Save size={16} />
+              {editingAssignmentId
+                ? "Save Changes"
+                : "Create Assignment"}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {showDiscussionComposer && selectedAssignment && (
+        <div className="group-compose-modal">
+          <div
+            className="group-compose-backdrop"
+            onClick={() => setShowDiscussionComposer(false)}
+          />
+
+          <form
+            className="group-compose-sheet"
+            onSubmit={createTopic}
+          >
+            <div className="group-compose-header">
+              <div>
+                <p className="eyebrow">
+                  {selectedAssignment.title}
+                </p>
+                <h2>New Discussion</h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowDiscussionComposer(false)}
+                aria-label="Close"
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            <input
+              value={topicTitle}
+              onChange={(event) => setTopicTitle(event.target.value)}
+              placeholder="Discussion title"
+              maxLength={120}
+            />
+
+            <textarea
+              rows={5}
+              value={topicBody}
+              onChange={(event) => setTopicBody(event.target.value)}
+              placeholder="Start a discussion about this assignment..."
+              maxLength={3000}
+            />
+
+            <button
+              className="button primary"
+              disabled={busy}
+            >
+              <Send size={16} />
+              Post Discussion
+            </button>
+          </form>
+        </div>
+      )}
+
+      {replyComposerParentId !== undefined && (
+        <div className="group-compose-modal">
+          <div
+            className="group-compose-backdrop"
+            onClick={() => {
+              setReplyComposerParentId(undefined);
+              setReplyText("");
+            }}
+          />
+
+          <div className="group-compose-sheet">
+            <div className="group-compose-header">
+              <div>
+                <p className="eyebrow">Class Discussion</p>
+                <h2>Reply</h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setReplyComposerParentId(undefined);
+                  setReplyText("");
+                }}
+                aria-label="Close"
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            <textarea
+              rows={5}
+              value={replyText}
+              onChange={(event) => setReplyText(event.target.value)}
+              placeholder="Write your reply..."
+              maxLength={5000}
+            />
+
+            <button
+              type="button"
+              className="button primary"
+              disabled={
+                busyTopicId ===
+                  (replyModePostId || selectedDiscussion?.id) ||
+                !replyText.trim()
+              }
+              onClick={() => {
+                const post = replyModePostId
+                  ? forumPosts.find(
+                      (item) => item.id === replyModePostId
+                    )
+                  : selectedDiscussion;
+
+                if (post) {
+                  sendForumReply(
+                    post,
+                    replyComposerParentId || null
+                  );
+                }
+              }}
+            >
+              <Send size={16} />
+              Reply
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showProgress && isTeacher && selectedAssignment && (
+        <div className="group-compose-modal">
+          <div
+            className="group-compose-backdrop"
+            onClick={() => setShowProgress(false)}
+          />
+
+          <div className="group-compose-sheet class-progress-sheet">
+            <div className="group-compose-header">
+              <div>
+                <p className="eyebrow">
+                  {selectedAssignment.title}
+                </p>
+                <h2>Student Progress</h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowProgress(false)}
+                aria-label="Close"
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            {progressLoading ? (
+              <p className="muted">Loading progress...</p>
+            ) : studentProgress.length ? (
+              <div className="class-progress-list">
+                {studentProgress.map((student) => (
+                  <div
+                    key={student.userId}
+                    className="class-progress-row"
+                  >
+                    <Link to={`/read/public/${student.userId}`}>
+                      <strong>{memberName(student)}</strong>
+                    </Link>
+
+                    <div>
+                      <ProgressBar
+                        value={student.assignmentPercent}
+                      />
+                      <small className="muted">
+                        {student.assignmentPercent}% ·{" "}
+                        {student.complete
                           ? "Complete"
-                          : myAssignmentProgress[assignment.id]
-                              ?.progress
+                          : student.progress
                             ? "In progress"
                             : "Not started"}
                       </small>
                     </div>
-                  )}
 
-                  {isTeacher && (
-                    <div className="button-row">
-                      <button
-                        type="button"
-                        className="button secondary"
-                        onClick={() => {
-                          setSelectedAssignmentId(
-                            assignment.id
-                          );
-                        }}
-                      >
-                        <GraduationCap size={16} />
-                        Student Progress
-                      </button>
+                    <small className="muted">
+                      {student.progress?.updatedAtISO
+                        ? `Last read ${formatDateTime(
+                            student.progress.updatedAtISO
+                          )}`
+                        : "Not started"}
+                    </small>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="muted">No students are enrolled yet.</p>
+            )}
+          </div>
+        </div>
+      )}
 
-                      <button
-                        type="button"
-                        className="button secondary"
-                        onClick={() =>
-                          beginEditAssignment(assignment)
-                        }
-                      >
-                        <Pencil size={16} />
-                        Edit
-                      </button>
+      {showStudents && (
+        <div className="group-compose-modal">
+          <div
+            className="group-compose-backdrop"
+            onClick={() => setShowStudents(false)}
+          />
 
-                      <button
-                        type="button"
-                        className="button danger"
-                        onClick={() =>
-                          removeAssignment(assignment)
-                        }
-                        disabled={busy}
-                      >
-                        <Trash2 size={16} />
-                        Delete
-                      </button>
-                    </div>
-                  )}
-
-                  {isTeacher &&
-                    selectedAssignmentId === assignment.id && (
-                      <div
-                        style={{
-                          marginTop: "1rem",
-                          paddingTop: "1rem",
-                          borderTop:
-                            "1px solid var(--line)"
-                        }}
-                      >
-                        <h3>Student Progress</h3>
-
-                        {progressLoading ? (
-                          <p className="muted">
-                            Loading progress...
-                          </p>
-                        ) : studentProgress.length ? (
-                          <div className="stack-md">
-                            {studentProgress.map((student) => (
-                              <div
-                                key={student.userId}
-                                style={{
-                                  display: "grid",
-                                  gap: "0.55rem",
-                                  padding: "0.85rem 0",
-                                  borderBottom:
-                                    "1px solid var(--line)"
-                                }}
-                              >
-                                <Link
-                                  to={`/read/public/${student.userId}`}
-                                  style={{ width: "fit-content" }}
-                                >
-                                  <strong>{memberName(student)}</strong>
-                                </Link>
-
-                                <div>
-                                  <ProgressBar
-                                    value={student.assignmentPercent}
-                                  />
-                                  <small className="muted">
-                                    {student.assignmentPercent}% ·{" "}
-                                    {student.complete
-                                      ? "Complete"
-                                      : student.progress
-                                        ? "In progress"
-                                        : "Not started"}
-                                  </small>
-                                </div>
-
-                                <small className="muted">
-                                  {student.progress?.updatedAtISO
-                                    ? `Last read ${formatDateTime(
-                                        student.progress.updatedAtISO
-                                      )}`
-                                    : "Not started"}
-                                </small>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="muted">
-                            No students are enrolled yet.
-                          </p>
-                        )}
-                      </div>
-                    )}
-                </article>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {activeTab === "discussion" && (
-          <section className="panel classroom-spatial-section classroom-discussion-section" style={{ padding: "1.25rem" }}>
-            <p className="eyebrow">Class Discussion</p>
-            <h2>Discussion</h2>
-            <small className="classroom-swipe-cue">
-              Swipe left for {isTeacher ? "Students" : "Classmates"} · right for Assignments
-            </small>
-
-            <form
-              className="stack-md"
-              onSubmit={createTopic}
-              style={{ marginBottom: "1.25rem" }}
-            >
-              <input
-                value={topicTitle}
-                onChange={(event) =>
-                  setTopicTitle(event.target.value)
-                }
-                placeholder="Discussion title"
-                maxLength={120}
-                style={{
-                  width: "100%",
-                  padding: "0.75rem",
-                  border: "1px solid var(--line)",
-                  borderRadius: 12
-                }}
-              />
-
-              <textarea
-                rows={4}
-                value={topicBody}
-                onChange={(event) =>
-                  setTopicBody(event.target.value)
-                }
-                placeholder="Start a class discussion..."
-                maxLength={3000}
-                style={{
-                  width: "100%",
-                  padding: "0.75rem",
-                  border: "1px solid var(--line)",
-                  borderRadius: 12
-                }}
-              />
+          <div className="group-compose-sheet class-roster-sheet">
+            <div className="group-compose-header">
+              <div>
+                <p className="eyebrow">Class</p>
+                <h2>
+                  {isTeacher ? "Students & Teachers" : "Classmates"}
+                </h2>
+              </div>
 
               <button
-                className="button primary"
-                disabled={busy}
+                type="button"
+                onClick={() => setShowStudents(false)}
+                aria-label="Close"
               >
-                <Send size={16} />
-                Post Discussion
+                <X size={19} />
               </button>
-            </form>
-
-            {!forumPosts.length && (
-              <p className="muted">
-                No class discussions yet.
-              </p>
-            )}
-
-            <div className="stack-md">
-              {forumPosts.map((post) => {
-                const replies =
-                  forumReplies[post.id] || [];
-                const open = openTopicId === post.id;
-
-                return (
-                  <article
-                    key={post.id}
-                    style={{
-                      padding: "1rem",
-                      border: "1px solid var(--line)",
-                      borderRadius: 18
-                    }}
-                  >
-                    <h3>{post.title}</h3>
-                    <p>{post.body}</p>
-
-                    <div className="button-row">
-                      <button
-                        type="button"
-                        className="button secondary"
-                        onClick={() => toggleTopic(post)}
-                      >
-                        <MessageCircle size={16} />
-                        {open
-                          ? "Close"
-                          : `Replies${
-                              post.replyCount
-                                ? ` (${post.replyCount})`
-                                : ""
-                            }`}
-                      </button>
-
-                      {(post.canDelete || isTeacher) && (
-                        <button
-                          type="button"
-                          className="button danger"
-                          onClick={() => removeTopic(post)}
-                        >
-                          <Trash2 size={16} />
-                          Delete
-                        </button>
-                      )}
-                    </div>
-
-                    {open && (
-                      <div
-                        style={{
-                          marginTop: "1rem",
-                          paddingTop: "1rem",
-                          borderTop:
-                            "1px solid var(--line)"
-                        }}
-                      >
-                        {replies.map((reply) => (
-                          <div
-                            key={reply.id}
-                            style={{
-                              padding: "0.75rem 0",
-                              borderBottom:
-                                "1px solid var(--line)"
-                            }}
-                          >
-                            <strong>
-                              {reply.authorProfile?.displayName ||
-                                reply.authorProfile?.username ||
-                                "Reader"}
-                            </strong>
-                            <p>{reply.body || reply.note}</p>
-
-                            {(reply.canDelete ||
-                              isTeacher) && (
-                              <button
-                                type="button"
-                                className="button danger"
-                                onClick={() =>
-                                  removeReply(post, reply)
-                                }
-                              >
-                                <Trash2 size={14} />
-                                Delete
-                              </button>
-                            )}
-                          </div>
-                        ))}
-
-                        <textarea
-                          rows={3}
-                          value={replyText}
-                          onChange={(event) =>
-                            setReplyText(
-                              event.target.value
-                            )
-                          }
-                          placeholder="Reply..."
-                          style={{
-                            width: "100%",
-                            marginTop: "0.75rem",
-                            padding: "0.75rem",
-                            border:
-                              "1px solid var(--line)",
-                            borderRadius: 12
-                          }}
-                        />
-
-                        <button
-                          type="button"
-                          className="button primary"
-                          onClick={() => sendReply(post)}
-                          disabled={
-                            busy || !replyText.trim()
-                          }
-                          style={{ marginTop: "0.75rem" }}
-                        >
-                          <Send size={15} />
-                          Reply
-                        </button>
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
             </div>
-          </section>
-        )}
 
-        {activeTab === "students" && (
-          <section className="panel classroom-spatial-section classroom-students-section" style={{ padding: "1.25rem" }}>
-            <p className="eyebrow">
-              {isTeacher ? "Class Roster" : "Classmates"}
-            </p>
-            <h2>{isTeacher ? "Students & Teachers" : "Classmates"}</h2>
-            <small className="classroom-swipe-cue">
-              {isTeacher
-                ? "Swipe left for Settings · right for Discussion"
-                : "Swipe right for Discussion"}
-            </small>
+            <div className="class-roster-summary">
+              <span>
+                <GraduationCap size={14} />
+                {teacherCount} {teacherCount === 1 ? "teacher" : "teachers"}
+              </span>
+              <span>
+                <Users size={14} />
+                {studentCount} {studentCount === 1 ? "student" : "students"}
+              </span>
+              <span>{classRoleLabel(myRole)}</span>
+            </div>
 
-            <div className="stack-md">
+            <div className="class-roster-list">
               {members.map((member) => (
                 <div
                   key={member.userId}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: "1rem",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    padding: "0.8rem 0",
-                    borderBottom:
-                      "1px solid var(--line)"
-                  }}
+                  className="class-roster-row"
                 >
-                  <Link
-                    to={`/read/public/${member.userId}`}
-                    style={{ display: "block" }}
-                  >
+                  <Link to={`/read/public/${member.userId}`}>
                     <strong>{memberName(member)}</strong>
-                    <small
-                      className="muted"
-                      style={{ display: "block" }}
-                    >
-                      {classRoleLabel(member.role)}
-                    </small>
+                    <small>{classRoleLabel(member.role)}</small>
                   </Link>
 
-                  {isOwner &&
-                    member.role !== "owner" && (
-                      <div className="button-row">
-                        <select
-                          value={
-                            member.role === "admin"
-                              ? "teacher"
-                              : "student"
-                          }
-                          onChange={(event) =>
-                            changeClassRole(
-                              member,
-                              event.target.value
-                            )
-                          }
-                          disabled={busy}
-                          style={{
-                            padding: "0.65rem",
-                            border:
-                              "1px solid var(--line)",
-                            borderRadius: 12
-                          }}
-                        >
-                          <option value="student">
-                            Student
-                          </option>
-                          <option value="teacher">
-                            Teacher
-                          </option>
-                        </select>
+                  {isOwner && member.role !== "owner" && (
+                    <div className="class-roster-tools">
+                      <select
+                        value={
+                          member.role === "admin"
+                            ? "teacher"
+                            : "student"
+                        }
+                        onChange={(event) =>
+                          changeClassRole(
+                            member,
+                            event.target.value
+                          )
+                        }
+                        disabled={busy}
+                      >
+                        <option value="student">Student</option>
+                        <option value="teacher">Teacher</option>
+                      </select>
 
-                        <button
-                          type="button"
-                          className="button danger"
-                          onClick={() =>
-                            removeStudent(member)
-                          }
-                          disabled={busy}
-                        >
-                          <UserMinus size={15} />
-                          Remove
-                        </button>
-                      </div>
-                    )}
+                      <button
+                        type="button"
+                        className="icon-link danger"
+                        onClick={() => removeStudent(member)}
+                        disabled={busy}
+                        title="Remove"
+                      >
+                        <UserMinus size={16} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
 
             {isTeacher && inviteableFriends.length > 0 && (
-              <div
-                style={{
-                  marginTop: "1.5rem",
-                  paddingTop: "1rem",
-                  borderTop: "1px solid var(--line)"
-                }}
-              >
+              <div className="class-invite-list">
                 <h3>Invite to class</h3>
 
-                <div className="stack-md">
-                  {inviteableFriends.map((friend) => (
-                    <div
-                      key={friend.otherUserId}
-                      style={{
-                        display: "flex",
-                        justifyContent:
-                          "space-between",
-                        gap: "1rem",
-                        alignItems: "center"
-                      }}
+                {inviteableFriends.map((friend) => (
+                  <div key={friend.otherUserId}>
+                    <span>
+                      {friend.profile?.displayName || "Reader"}
+                    </span>
+                    <button
+                      type="button"
+                      className="button secondary"
+                      onClick={() => invite(friend)}
+                      disabled={busy}
                     >
-                      <span>
-                        {friend.profile?.displayName ||
-                          "Reader"}
-                      </span>
-
-                      <button
-                        type="button"
-                        className="button secondary"
-                        onClick={() => invite(friend)}
-                        disabled={busy}
-                      >
-                        Invite
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                      Invite
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
-          </section>
-        )}
+          </div>
+        </div>
+      )}
 
-        {activeTab === "settings" && isTeacher && (
-          <section className="panel classroom-spatial-section classroom-settings-section" style={{ padding: "1.25rem" }}>
-            <p className="eyebrow">Class Management</p>
-            <h2>Settings</h2>
-            <small className="classroom-swipe-cue">
-              Swipe right for Students
-            </small>
+      {showSettings && isTeacher && (
+        <div className="group-compose-modal">
+          <div
+            className="group-compose-backdrop"
+            onClick={() => setShowSettings(false)}
+          />
 
-            <form
-              className="stack-md"
-              onSubmit={saveSettings}
-            >
-              <label>
-                Class name
-                <input
-                  value={settingsForm.name}
-                  onChange={(event) =>
-                    setSettingsForm((current) => ({
-                      ...current,
-                      name: event.target.value
-                    }))
-                  }
-                  style={{
-                    width: "100%",
-                    padding: "0.75rem",
-                    border: "1px solid var(--line)",
-                    borderRadius: 12
-                  }}
-                />
-              </label>
-
-              <label>
-                Description
-                <textarea
-                  rows={4}
-                  value={settingsForm.description}
-                  onChange={(event) =>
-                    setSettingsForm((current) => ({
-                      ...current,
-                      description:
-                        event.target.value
-                    }))
-                  }
-                  style={{
-                    width: "100%",
-                    padding: "0.75rem",
-                    border: "1px solid var(--line)",
-                    borderRadius: 12
-                  }}
-                />
-              </label>
-
+          <form
+            className="group-compose-sheet class-settings-sheet"
+            onSubmit={saveSettings}
+          >
+            <div className="group-compose-header">
               <div>
-                <span
-                  style={{
-                    display: "block",
-                    marginBottom: "0.55rem",
-                    fontWeight: 700
-                  }}
-                >
-                  Class avatar
-                </span>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "repeat(auto-fit, minmax(84px, 1fr))",
-                    gap: "0.65rem"
-                  }}
-                >
-                  {GROUP_AVATARS.map((avatar) => {
-                    const selected =
-                      settingsForm.avatar === avatar.id ||
-                      settingsForm.avatar === avatar.image;
-
-                    return (
-                      <button
-                        key={avatar.id}
-                        type="button"
-                        onClick={() =>
-                          setSettingsForm((current) => ({
-                            ...current,
-                            avatar: avatar.id
-                          }))
-                        }
-                        aria-pressed={selected}
-                        title={avatar.name}
-                        style={{
-                          padding: "0.45rem",
-                          border: selected
-                            ? "3px solid var(--primary)"
-                            : "1px solid var(--line)",
-                          borderRadius: 16,
-                          background: "#fff"
-                        }}
-                      >
-                        <img
-                          src={avatar.image}
-                          alt={avatar.name}
-                          style={{
-                            width: "100%",
-                            aspectRatio: "1 / 1",
-                            objectFit: "cover",
-                            borderRadius: 12
-                          }}
-                        />
-                        <small
-                          style={{
-                            display: "block",
-                            marginTop: "0.35rem"
-                          }}
-                        >
-                          {avatar.name}
-                        </small>
-                      </button>
-                    );
-                  })}
-                </div>
+                <p className="eyebrow">Class Management</p>
+                <h2>Settings</h2>
               </div>
 
-              <label>
-                Visibility
-                <select
-                  value={settingsForm.visibility}
-                  onChange={(event) =>
-                    setSettingsForm((current) => ({
-                      ...current,
-                      visibility:
-                        event.target.value
-                    }))
-                  }
-                  style={{
-                    width: "100%",
-                    padding: "0.75rem",
-                    border: "1px solid var(--line)",
-                    borderRadius: 12
-                  }}
-                >
-                  <option value="private">
-                    Private
-                  </option>
-                  <option value="public">
-                    Public
-                  </option>
-                </select>
-              </label>
-
-              <label>
-                Joining
-                <select
-                  value={settingsForm.joinPolicy}
-                  onChange={(event) =>
-                    setSettingsForm((current) => ({
-                      ...current,
-                      joinPolicy:
-                        event.target.value
-                    }))
-                  }
-                  style={{
-                    width: "100%",
-                    padding: "0.75rem",
-                    border: "1px solid var(--line)",
-                    borderRadius: 12
-                  }}
-                >
-                  <option value="invite_only">
-                    Invite only
-                  </option>
-                  <option value="request_to_join">
-                    Request to join
-                  </option>
-                  <option value="open">
-                    Open
-                  </option>
-                </select>
-              </label>
-
               <button
-                className="button primary"
-                disabled={busy}
+                type="button"
+                onClick={() => setShowSettings(false)}
+                aria-label="Close"
               >
-                <Settings size={16} />
-                Save Class Settings
+                <X size={19} />
               </button>
-            </form>
-          </section>
-        )}
-      </div>
+            </div>
+
+            <label>
+              Class name
+              <input
+                value={settingsForm.name}
+                onChange={(event) =>
+                  setSettingsForm((current) => ({
+                    ...current,
+                    name: event.target.value
+                  }))
+                }
+              />
+            </label>
+
+            <label>
+              Description
+              <textarea
+                rows={4}
+                value={settingsForm.description}
+                onChange={(event) =>
+                  setSettingsForm((current) => ({
+                    ...current,
+                    description: event.target.value
+                  }))
+                }
+              />
+            </label>
+
+            <div>
+              <strong>Class avatar</strong>
+              <div className="class-avatar-grid">
+                {GROUP_AVATARS.map((avatarOption) => {
+                  const selected =
+                    settingsForm.avatar === avatarOption.id ||
+                    settingsForm.avatar === avatarOption.image;
+
+                  return (
+                    <button
+                      key={avatarOption.id}
+                      type="button"
+                      className={selected ? "active" : ""}
+                      onClick={() =>
+                        setSettingsForm((current) => ({
+                          ...current,
+                          avatar: avatarOption.id
+                        }))
+                      }
+                    >
+                      <img
+                        src={avatarOption.image}
+                        alt={avatarOption.name}
+                      />
+                      <small>{avatarOption.name}</small>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <label>
+              Visibility
+              <select
+                value={settingsForm.visibility}
+                onChange={(event) =>
+                  setSettingsForm((current) => ({
+                    ...current,
+                    visibility: event.target.value
+                  }))
+                }
+              >
+                <option value="private">Private</option>
+                <option value="public">Public</option>
+              </select>
+            </label>
+
+            <label>
+              Joining
+              <select
+                value={settingsForm.joinPolicy}
+                onChange={(event) =>
+                  setSettingsForm((current) => ({
+                    ...current,
+                    joinPolicy: event.target.value
+                  }))
+                }
+              >
+                <option value="invite_only">Invite only</option>
+                <option value="request_to_join">Request to join</option>
+                <option value="open">Open</option>
+              </select>
+            </label>
+
+            <button
+              className="button primary"
+              disabled={busy}
+            >
+              <Settings size={16} />
+              Save Class Settings
+            </button>
+          </form>
+        </div>
+      )}
     </main>
   );
 }
