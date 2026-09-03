@@ -223,7 +223,8 @@ export async function createGroupForumPost(
   {
     title,
     body,
-    sourceChainEntry = null
+    sourceChainEntry = null,
+    sourceAssignment = null
   }
 ) {
   const { user } = await requireMembership(groupId);
@@ -317,6 +318,25 @@ export async function createGroupForumPost(
     sourceParagraphPreview:
       sourceChainEntry?.paragraphPreview
         ? String(sourceChainEntry.paragraphPreview).slice(0, 1000)
+        : null,
+
+    /*
+     * Optional classroom provenance. This keeps discussions
+     * attached to the assignment that created their Level 1.
+     */
+    sourceAssignmentId:
+      sourceAssignment?.id
+        ? String(sourceAssignment.id)
+        : null,
+
+    sourceAssignmentTitle:
+      sourceAssignment?.title
+        ? String(sourceAssignment.title).slice(0, 300)
+        : null,
+
+    sourceAssignmentBookId:
+      sourceAssignment?.bookId
+        ? String(sourceAssignment.bookId)
         : null,
 
     createdAtISO: now,
