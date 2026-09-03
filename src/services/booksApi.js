@@ -20,6 +20,24 @@ let memoryBookPool = null;
 let bookPoolPromise = null;
 let nextRandomBook = null;
 
+const BOOK_DETAIL_CACHE_PREFIX =
+  "litChain.bookDetail.";
+
+const BOOK_DETAIL_CACHE_MAX_AGE =
+  1000 * 60 * 60 * 24 * 30;
+
+const READER_CACHE_NAME =
+  "litChain.readerText.v1";
+
+const memoryBookDetails =
+  new Map();
+
+const memoryStructuredBooks =
+  new Map();
+
+const memoryReadableTexts =
+  new Map();
+
 
 /* ============================================================
    FORMAT HELPERS
@@ -1339,7 +1357,179 @@ export async function prefetchSearchBooks(
    INDIVIDUAL BOOK
 ============================================================ */
 
-export async function getBookById(
+function getBookDetailCacheKey(
+  bookId
+) {
+  return (
+    BOOK_DETAIL_CACHE_PREFIX +
+    String(bookId)
+  );
+}
+
+
+function readCachedBookDetail(
+  bookId
+) {
+  const id =
+    String(bookId || "");
+
+  if (!id) {
+    return null;
+  }
+
+  if (
+    memoryBookDetails.has(
+      id
+    )
+  ) {
+    return memoryBookDetails.get(
+      id
+    );
+  }
+
+  try {
+    const raw =
+      localStorage.getItem(
+        getBookDetailCacheKey(
+          id
+        )
+      );
+
+    if (raw) {
+      const cached =
+        JSON.parse(raw);
+
+      if (
+        cached?.book
+      ) {
+        const normalized =
+          normalizeBook(
+            cached.book
+          );
+
+        memoryBookDetails.set(
+          id,
+          normalized
+        );
+
+        return {
+          book:
+            normalized,
+          cachedAt:
+            Number(
+              cached.cachedAt
+            ) || 0
+        };
+      }
+    }
+  } catch {
+    try {
+      localStorage.removeItem(
+        getBookDetailCacheKey(
+          id
+        )
+      );
+    } catch {
+      // Ignore cache cleanup failures.
+    }
+  }
+
+  /*
+   * The random/search pool often already contains enough metadata
+   * to open the reader. Reading it directly avoids turning a cache
+   * hit into another Gutendex request.
+   */
+  try {
+    const rawPool =
+      localStorage.getItem(
+        CACHE_KEY
+      );
+
+    if (rawPool) {
+      const pool =
+        JSON.parse(
+          rawPool
+        );
+
+      const match =
+        Array.isArray(pool)
+          ? pool.find(
+              (book) =>
+                String(
+                  book?.id
+                ) === id
+            )
+          : null;
+
+      if (match) {
+        const normalized =
+          normalizeBook(
+            match
+          );
+
+        memoryBookDetails.set(
+          id,
+          normalized
+        );
+
+        return {
+          book:
+            normalized,
+          cachedAt: 0
+        };
+      }
+    }
+  } catch {
+    // A malformed pool should not block opening the book.
+  }
+
+  return null;
+}
+
+
+function saveCachedBookDetail(
+  book
+) {
+  if (!book?.id) {
+    return;
+  }
+
+  const normalized =
+    normalizeBook(
+      book
+    );
+
+  const id =
+    String(
+      normalized.id
+    );
+
+  memoryBookDetails.set(
+    id,
+    normalized
+  );
+
+  try {
+    localStorage.setItem(
+      getBookDetailCacheKey(
+        id
+      ),
+      JSON.stringify({
+        cachedAt:
+          Date.now(),
+        book:
+          normalized
+      })
+    );
+  } catch {
+    /*
+     * Storage pressure should never prevent a book from opening.
+     */
+  }
+}
+
+
+async function fetchBookDetail(
   bookId
 ) {
   const response =
@@ -1356,10 +1546,62 @@ export async function getBookById(
   }
 
   const book =
-    await response.json();
+    normalizeBook(
+      await response.json()
+    );
 
-  return normalizeBook(
+  saveCachedBookDetail(
     book
+  );
+
+  return book;
+}
+
+
+export async function getBookById(
+  bookId
+) {
+  const id =
+    String(bookId || "");
+
+  if (!id) {
+    throw new Error(
+      "Missing book ID."
+    );
+  }
+
+  const cached =
+    readCachedBookDetail(
+      id
+    );
+
+  if (
+    cached?.book
+  ) {
+    const fresh =
+      cached.cachedAt > 0 &&
+      Date.now() -
+        cached.cachedAt <
+        BOOK_DETAIL_CACHE_MAX_AGE;
+
+    /*
+     * Return cached metadata immediately. Metadata changes rarely,
+     * so a stale entry is still useful for rendering while Gutendex
+     * refreshes quietly in the background.
+     */
+    if (!fresh) {
+      void fetchBookDetail(
+        id
+      ).catch(
+        () => {}
+      );
+    }
+
+    return cached.book;
+  }
+
+  return fetchBookDetail(
+    id
   );
 }
 
@@ -1367,6 +1609,68 @@ export async function getBookById(
 /* ============================================================
    READER TEXT
 ============================================================ */
+
+async function getReaderCache() {
+  if (
+    typeof caches ===
+    "undefined"
+  ) {
+    return null;
+  }
+
+  try {
+    return await caches.open(
+      READER_CACHE_NAME
+    );
+  } catch {
+    return null;
+  }
+}
+
+
+async function readCachedResponse(
+  url
+) {
+  const cache =
+    await getReaderCache();
+
+  if (!cache) {
+    return null;
+  }
+
+  try {
+    return await cache.match(
+      url
+    );
+  } catch {
+    return null;
+  }
+}
+
+
+async function saveResponseToReaderCache(
+  url,
+  response
+) {
+  const cache =
+    await getReaderCache();
+
+  if (!cache) {
+    return;
+  }
+
+  try {
+    await cache.put(
+      url,
+      response.clone()
+    );
+  } catch {
+    /*
+     * Quota/private-mode failures should not block reading.
+     */
+  }
+}
+
 
 export async function getReadableText(
   book
@@ -1379,10 +1683,47 @@ export async function getReadableText(
     );
   }
 
+  const id =
+    String(
+      book.id
+    );
+
+  if (
+    memoryReadableTexts.has(
+      id
+    )
+  ) {
+    return memoryReadableTexts.get(
+      id
+    );
+  }
+
   const proxyUrl =
     `/api/book-text?id=${encodeURIComponent(
-      book.id
+      id
     )}`;
+
+  const cachedResponse =
+    await readCachedResponse(
+      proxyUrl
+    );
+
+  if (cachedResponse) {
+    const cachedText =
+      await cachedResponse.text();
+
+    if (
+      cachedText?.trim().length >=
+      100
+    ) {
+      memoryReadableTexts.set(
+        id,
+        cachedText
+      );
+
+      return cachedText;
+    }
+  }
 
   const response =
     await fetch(
@@ -1400,6 +1741,9 @@ export async function getReadableText(
     );
   }
 
+  const responseForCache =
+    response.clone();
+
   const text =
     await response.text();
 
@@ -1412,6 +1756,16 @@ export async function getReadableText(
       "Book text was empty or too short."
     );
   }
+
+  memoryReadableTexts.set(
+    id,
+    text
+  );
+
+  void saveResponseToReaderCache(
+    proxyUrl,
+    responseForCache
+  );
 
   return text;
 }
@@ -1428,11 +1782,57 @@ export async function getStructuredBookText(
     );
   }
 
+  const id =
+    String(
+      book.id
+    );
+
+  if (
+    memoryStructuredBooks.has(
+      id
+    )
+  ) {
+    return memoryStructuredBooks.get(
+      id
+    );
+  }
+
+  const url =
+    `/api/book?id=${encodeURIComponent(
+      id
+    )}`;
+
+  /*
+   * Book text is effectively immutable for a Gutenberg edition.
+   * Cache-first makes a previously opened book available without
+   * another Worker/Gutenberg round trip.
+   */
+  const cachedResponse =
+    await readCachedResponse(
+      url
+    );
+
+  if (cachedResponse) {
+    try {
+      const cachedBook =
+        await cachedResponse.json();
+
+      if (cachedBook) {
+        memoryStructuredBooks.set(
+          id,
+          cachedBook
+        );
+
+        return cachedBook;
+      }
+    } catch {
+      // Fall through to the network if a cached response is invalid.
+    }
+  }
+
   const response =
     await fetch(
-      `/api/book?id=${encodeURIComponent(
-        book.id
-      )}`
+      url
     );
 
   if (
@@ -1451,5 +1851,21 @@ export async function getStructuredBookText(
     );
   }
 
-  return response.json();
+  const responseForCache =
+    response.clone();
+
+  const structuredBook =
+    await response.json();
+
+  memoryStructuredBooks.set(
+    id,
+    structuredBook
+  );
+
+  void saveResponseToReaderCache(
+    url,
+    responseForCache
+  );
+
+  return structuredBook;
 }
