@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import SEO from "../components/SEO.jsx";
+import ShareInviteCard from "../components/ShareInviteCard.jsx";
 
 import {
   getAuthorName,
@@ -37,6 +38,8 @@ import {
   getFriends,
   getGroupMembers,
   inviteFriendToGroup,
+  getOrCreateGroupShareInvite,
+  rotateGroupShareInvite,
   removeGroupMember,
   setGroupMemberRole
 } from "../services/storage.js";
@@ -172,6 +175,9 @@ export default function Classroom({ initialGroup }) {
   const [showSettings, setShowSettings] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
 
+  const [shareInvite, setShareInvite] = useState(null);
+  const [shareInviteLoading, setShareInviteLoading] = useState(false);
+
   const [bookSearchQuery, setBookSearchQuery] = useState("");
   const [bookSearchResults, setBookSearchResults] = useState([]);
   const [bookSearchStatus, setBookSearchStatus] = useState(
@@ -205,6 +211,11 @@ export default function Classroom({ initialGroup }) {
   const canTeach = ["owner", "admin", "moderator"].includes(myRole);
   const canManageClass = ["owner", "admin"].includes(myRole);
   const isOwner = myRole === "owner";
+
+  const shareInviteUrl =
+    shareInvite?.token && typeof window !== "undefined"
+      ? `${window.location.origin}/read/join/${shareInvite.token}`
+      : "";
 
   const selectedAssignment =
     assignments[assignmentIndex] || null;
@@ -304,6 +315,38 @@ export default function Classroom({ initialGroup }) {
       active = false;
     };
   }, [groupId]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadShareInvite() {
+      if (!showStudents || !canManageClass) {
+        return;
+      }
+
+      try {
+        setShareInviteLoading(true);
+        const loaded = await getOrCreateGroupShareInvite(groupId);
+        if (active) setShareInvite(loaded);
+      } catch (error) {
+        console.error("Could not prepare class share link:", error);
+        if (active) {
+          setStatus(
+            error?.message ||
+              "We couldn't prepare the class share link."
+          );
+        }
+      } finally {
+        if (active) setShareInviteLoading(false);
+      }
+    }
+
+    loadShareInvite();
+
+    return () => {
+      active = false;
+    };
+  }, [showStudents, canManageClass, groupId]);
 
   useEffect(() => {
     setDiscussionIndex(0);
@@ -1136,6 +1179,29 @@ export default function Classroom({ initialGroup }) {
       setStatus(error?.message || "We couldn't send that invitation.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function regenerateShareInvite() {
+    const confirmed = window.confirm(
+      "Create a new class invitation link? The current QR code and link will stop working immediately."
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setShareInviteLoading(true);
+      setStatus("");
+      const next = await rotateGroupShareInvite(groupId);
+      setShareInvite(next);
+      setStatus("New class invitation link created.");
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't create a new class invitation link."
+      );
+    } finally {
+      setShareInviteLoading(false);
     }
   }
 
@@ -2272,6 +2338,17 @@ export default function Classroom({ initialGroup }) {
               <span>{classRoleLabel(myRole)}</span>
             </div>
 
+            {canManageClass && (
+              <ShareInviteCard
+                title="Invite students"
+                description="Anyone with this QR code or link can join this class as a Student. Create a new link at any time to revoke the old one."
+                url={shareInviteUrl}
+                shareText={`Join ${group?.name || "my class"} on Lit Chain.`}
+                loading={shareInviteLoading}
+                onRegenerate={regenerateShareInvite}
+              />
+            )}
+
             <div className="class-roster-list">
               {members.map((member) => (
                 <div
@@ -2339,7 +2416,7 @@ export default function Classroom({ initialGroup }) {
               ))}
             </div>
 
-            {canTeach && inviteableFriends.length > 0 && (
+            {canManageClass && inviteableFriends.length > 0 && (
               <div className="class-invite-list">
                 <h3>Invite to class</h3>
 

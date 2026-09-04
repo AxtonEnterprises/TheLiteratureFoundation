@@ -53,6 +53,8 @@ import {
   getGroupJoinRequests,
   getGroupMembers,
   inviteFriendToGroup,
+  getOrCreateGroupShareInvite,
+  rotateGroupShareInvite,
   leaveGroup,
   respondToGroupJoinRequest,
   setGroupMemberRole,
@@ -103,6 +105,7 @@ import {
 } from "../services/groupModeration.js";
 
 import SEO from "../components/SEO.jsx";
+import ShareInviteCard from "../components/ShareInviteCard.jsx";
 
 function formatDate(value) {
   if (!value) return "";
@@ -454,6 +457,16 @@ export default function Group() {
   ] = useState(null);
 
   const [
+    shareInvite,
+    setShareInvite
+  ] = useState(null);
+
+  const [
+    shareInviteLoading,
+    setShareInviteLoading
+  ] = useState(false);
+
+  const [
     settings,
     setSettings
   ] = useState({
@@ -645,6 +658,66 @@ export default function Group() {
       myRole,
       "deleteGroup"
     );
+
+  const shareInviteUrl =
+    shareInvite?.token && typeof window !== "undefined"
+      ? `${window.location.origin}/read/join/${shareInvite.token}`
+      : "";
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadShareInvite() {
+      if (activeTab !== "members" || !canInvite) {
+        return;
+      }
+
+      try {
+        setShareInviteLoading(true);
+        const loaded = await getOrCreateGroupShareInvite(groupId);
+        if (active) setShareInvite(loaded);
+      } catch (error) {
+        console.error("Could not prepare group share link:", error);
+        if (active) {
+          setStatus(
+            error?.message ||
+              "We couldn't prepare the group share link."
+          );
+        }
+      } finally {
+        if (active) setShareInviteLoading(false);
+      }
+    }
+
+    loadShareInvite();
+
+    return () => {
+      active = false;
+    };
+  }, [activeTab, canInvite, groupId]);
+
+  async function regenerateShareInvite() {
+    const confirmed = window.confirm(
+      "Create a new group invitation link? The current QR code and link will stop working immediately."
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setShareInviteLoading(true);
+      setStatus("");
+      const next = await rotateGroupShareInvite(groupId);
+      setShareInvite(next);
+      setStatus("New group invitation link created.");
+    } catch (error) {
+      setStatus(
+        error?.message ||
+          "We couldn't create a new invitation link."
+      );
+    } finally {
+      setShareInviteLoading(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -2967,6 +3040,17 @@ export default function Group() {
                 )}
               </div>
             </section>
+
+            {canInvite && (
+              <ShareInviteCard
+                title="Invite members"
+                description="Anyone with this QR code or link can join this group as a Member. Create a new link at any time to revoke the old one."
+                url={shareInviteUrl}
+                shareText={`Join ${group?.name || "my reading group"} on Lit Chain.`}
+                loading={shareInviteLoading}
+                onRegenerate={regenerateShareInvite}
+              />
+            )}
 
             {canInvite && (
               <section className="panel profile-panel">

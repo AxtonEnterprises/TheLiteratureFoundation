@@ -80,6 +80,7 @@ import {
 
 import ReadersHere from "../components/ReadersHere.jsx";
 import SEO from "../components/SEO.jsx";
+import ShareInviteCard from "../components/ShareInviteCard.jsx";
 
 
 const PROFILE_TABS = [
@@ -838,6 +839,12 @@ export default function Profile() {
     getProfileAvatar(
       profile?.avatar
     );
+
+
+  const profileShareUrl =
+    user && typeof window !== "undefined"
+      ? `${window.location.origin}/read/public/${user.uid}`
+      : "";
 
 
   const completedBooks =
@@ -2904,6 +2911,13 @@ export default function Profile() {
                 {socialStatus}
               </p>
             )}
+
+            <ShareInviteCard
+              title="Share your profile"
+              description="Let someone scan your QR code or open the link to view your Lit Chain profile and add you as a friend."
+              url={profileShareUrl}
+              shareText={`View ${profile?.displayName || "my"} Lit Chain profile.`}
+            />
 
             <form
               onSubmit={
