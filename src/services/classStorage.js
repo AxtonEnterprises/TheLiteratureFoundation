@@ -280,6 +280,19 @@ function totalTestPoints(questions) {
   );
 }
 
+function readingAssignmentPoints(assignment) {
+  return Math.max(
+    Math.round(Number(assignment?.totalPoints) || 100),
+    1
+  );
+}
+
+function assignmentGradeMaxPoints(assignment) {
+  return assignmentType(assignment) === "test"
+    ? Math.max(Number(assignment?.totalPoints) || totalTestPoints(assignment?.questions), 0)
+    : readingAssignmentPoints(assignment);
+}
+
 export async function getClassAssignments(classId) {
   const assignmentsRef = collection(
     db,
@@ -386,6 +399,7 @@ export async function createClassAssignment(classId, assignment) {
     dueAt: assignment.dueAt || null,
     startParagraphIndex,
     endParagraphIndex,
+    totalPoints: readingAssignmentPoints(assignment),
     assignedBy: user.uid,
     createdAtISO,
     createdAt: serverTimestamp()
@@ -498,6 +512,7 @@ export async function updateClassAssignment(
             Number(updates.endParagraphIndex) || 0,
             startParagraphIndex
           ),
+    totalPoints: readingAssignmentPoints(updates),
     updatedAtISO: new Date().toISOString(),
     updatedAt: serverTimestamp()
   });
@@ -913,10 +928,15 @@ export async function getMyClassAssignmentProgress(
 
       const progress = byBook.get(String(assignment.bookId)) || null;
       const percent = assignmentRangePercent(progress, assignment);
+      const maxPoints = assignmentGradeMaxPoints(assignment);
+      const score = Math.round((maxPoints * percent / 100) * 10) / 10;
       result[assignment.id] = {
         progress,
         assignmentPercent: percent,
-        complete: percent >= 100
+        complete: percent >= 100,
+        graded: true,
+        score,
+        maxPoints
       };
     })
   );
@@ -965,11 +985,114 @@ export async function getClassAssignmentProgress(
     const progress = progressByUser.get(String(member.userId)) || null;
     const assignmentPercent = assignmentRangePercent(progress, assignment);
 
+    const maxPoints = assignmentGradeMaxPoints(assignment);
+    const score = Math.round((maxPoints * assignmentPercent / 100) * 10) / 10;
+
     return {
       ...member,
       progress,
       assignmentPercent,
-      complete: assignmentPercent >= 100
+      complete: assignmentPercent >= 100,
+      graded: true,
+      score,
+      maxPoints
     };
   });
 }
+
+/* ============================================================
+   CLASS GRADES
+============================================================ */
+
+function buildGradeRow(assignment, progressRow) {
+  const type = assignmentType(assignment);
+  const maxPoints = assignmentGradeMaxPoints(assignment);
+
+  if (type === "test") {
+    const graded = Boolean(progressRow?.graded);
+    return {
+      assignmentId: assignment.id,
+      title: assignment.title || "Test",
+      type,
+      dueAt: assignment.dueAt || null,
+      graded,
+      pending: Boolean(progressRow?.complete) && !graded,
+      score: graded ? Math.max(Number(progressRow?.score) || 0, 0) : null,
+      maxPoints,
+      percent: graded && maxPoints > 0
+        ? Math.round(((Number(progressRow?.score) || 0) / maxPoints) * 1000) / 10
+        : null
+    };
+  }
+
+  const percent = Math.min(Math.max(Number(progressRow?.assignmentPercent) || 0, 0), 100);
+  const score = Math.round((maxPoints * percent / 100) * 10) / 10;
+  return {
+    assignmentId: assignment.id,
+    title: assignment.title || "Reading assignment",
+    type,
+    dueAt: assignment.dueAt || null,
+    graded: true,
+    pending: false,
+    score,
+    maxPoints,
+    percent
+  };
+}
+
+function summarizeGrades(rows) {
+  const counted = (rows || []).filter((row) => row.graded);
+  const earned = Math.round(counted.reduce((sum, row) => sum + (Number(row.score) || 0), 0) * 10) / 10;
+  const possible = Math.round(counted.reduce((sum, row) => sum + (Number(row.maxPoints) || 0), 0) * 10) / 10;
+  const percent = possible > 0
+    ? Math.round((earned / possible) * 1000) / 10
+    : 0;
+
+  return {
+    earned,
+    possible,
+    percent,
+    countedAssignments: counted.length,
+    pendingAssignments: (rows || []).filter((row) => row.pending).length,
+    totalAssignments: (rows || []).length
+  };
+}
+
+export async function getMyClassGrades(classId, assignments) {
+  const progress = await getMyClassAssignmentProgress(classId, assignments);
+  const rows = (assignments || []).map((assignment) =>
+    buildGradeRow(assignment, progress?.[assignment.id] || null)
+  );
+
+  return { rows, summary: summarizeGrades(rows) };
+}
+
+export async function getClassGrades(classId, members, assignments) {
+  const students = (members || []).filter(
+    (member) =>
+      !["owner", "admin", "moderator"].includes(member.role) &&
+      !["removed", "suspended"].includes(member.status)
+  );
+
+  const assignmentRows = await Promise.all(
+    (assignments || []).map((assignment) =>
+      getClassAssignmentProgress(classId, members, assignment)
+    )
+  );
+
+  return students.map((student) => {
+    const rows = (assignments || []).map((assignment, index) => {
+      const progressRow = (assignmentRows[index] || []).find(
+        (row) => String(row.userId) === String(student.userId)
+      );
+      return buildGradeRow(assignment, progressRow || null);
+    });
+
+    return {
+      ...student,
+      grades: rows,
+      gradeSummary: summarizeGrades(rows)
+    };
+  });
+}
+
