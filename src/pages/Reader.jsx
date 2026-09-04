@@ -577,17 +577,37 @@ export default function Reader() {
                   return result;
                 }
 
+                const currentVerifiedValue =
+                  Number(
+                    current.verifiedParagraphIndex
+                  );
+
+                const resultVerifiedValue =
+                  Number(
+                    result.verifiedParagraphIndex
+                  );
+
+                const currentVerified =
+                  Number.isFinite(
+                    currentVerifiedValue
+                  )
+                    ? currentVerifiedValue
+                    : -1;
+
+                const resultVerified =
+                  Number.isFinite(
+                    resultVerifiedValue
+                  )
+                    ? resultVerifiedValue
+                    : -1;
+
                 return {
                   ...current,
                   ...result,
                   verifiedParagraphIndex:
                     Math.max(
-                      Number(
-                        current.verifiedParagraphIndex
-                      ) || -1,
-                      Number(
-                        result.verifiedParagraphIndex
-                      ) || -1
+                      currentVerified,
+                      resultVerified
                     ),
                   percentComplete:
                     Math.max(
@@ -685,48 +705,47 @@ export default function Reader() {
   function goToVerifiedProgress() {
     if (
       loading ||
-      !paragraphs.length ||
-      !pages.length
+      !pages.length ||
+      !paragraphs.length
     ) {
       return;
     }
 
-    const storedVerified =
+    const verifiedValue =
       Number(
         verifiedReading?.verifiedParagraphIndex
       );
 
-    const derivedFromPercent =
-      progress > 0
-        ? Math.ceil(
-            (
-              progress /
-              100
-            ) *
-            paragraphs.length
-          ) - 1
-        : 0;
-
-    const target =
+    let targetParagraph =
       Number.isFinite(
-        storedVerified
+        verifiedValue
       )
-        ? storedVerified
-        : derivedFromPercent;
+        ? Math.floor(
+            verifiedValue
+          )
+        : Math.max(
+            Math.ceil(
+              (
+                progress /
+                100
+              ) *
+              paragraphs.length
+            ) - 1,
+            0
+          );
 
-    goToParagraph(
+    targetParagraph =
       Math.min(
         Math.max(
-          Math.floor(
-            target
-          ),
+          targetParagraph,
           0
         ),
         paragraphs.length - 1
-      )
-    );
+      );
 
-    setControlsVisible(true);
+    goToParagraph(
+      targetParagraph
+    );
   }
 
   async function handleSave() {
@@ -1057,24 +1076,15 @@ export default function Reader() {
 
           <button
             type="button"
+            className="ereader-progress-percent"
             onClick={goToVerifiedProgress}
             disabled={loading || !paragraphs.length}
-            aria-label={`Go to verified reading progress, ${progress}%`}
+            aria-label={
+              loading
+                ? "Verified reading progress"
+                : `Go to verified reading progress, ${progress}%`
+            }
             title="Go to your verified reading place"
-            style={{
-              appearance: "none",
-              border: 0,
-              padding: 0,
-              margin: 0,
-              background: "transparent",
-              color: "inherit",
-              font: "inherit",
-              fontWeight: "inherit",
-              cursor:
-                loading || !paragraphs.length
-                  ? "default"
-                  : "pointer"
-            }}
           >
             {loading ? "" : `${progress}%`}
           </button>
