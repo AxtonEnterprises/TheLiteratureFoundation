@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { onAuthStateChanged } from "firebase/auth";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -27,6 +28,7 @@ import {
   getJournalForBook,
   getMyGroups,
   getReadingProgress,
+  getFreshReadingProgress,
   registerParagraphRead,
   saveBook,
   saveReadingPosition,
@@ -72,6 +74,7 @@ export default function Reader() {
   const lastPaginationKeyRef = useRef("");
   const swipeStartRef = useRef(null);
   const suppressCanvasClickRef = useRef(false);
+  const userNavigatedRef = useRef(false);
   const readingTimeBankRef = useRef(0);
   const progressAtPageStartRef = useRef(0);
   const progressPulseTimeoutRef = useRef(null);
@@ -90,6 +93,9 @@ export default function Reader() {
 
   const sourceChainEntry = location.state?.sourceChainEntry || null;
   const addFromChain = Boolean(location.state?.addFromChain && sourceChainEntry);
+
+  const [authUser, setAuthUser] = useState(() => auth.currentUser);
+  const [authReady, setAuthReady] = useState(Boolean(auth.currentUser));
 
   const [book, setBook] = useState(location.state?.book || null);
   const [paragraphs, setParagraphs] = useState([]);
@@ -141,6 +147,15 @@ export default function Reader() {
   }, []);
 
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setAuthUser(user || null);
+      setAuthReady(true);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (progressPulseTimeoutRef.current) {
         window.clearTimeout(progressPulseTimeoutRef.current);
@@ -183,6 +198,7 @@ export default function Reader() {
       readingTimeBankRef.current = 0;
       progressAtPageStartRef.current = 0;
       lastPaginationKeyRef.current = "";
+      userNavigatedRef.current = false;
 
       try {
         const loadedBook = location.state?.book || await getBookById(id);
@@ -246,14 +262,22 @@ export default function Reader() {
     return () => { active = false; };
   }, [id, location.state, requestedParagraph, requestedNoteId]);
 
+  /*
+   * Load memberships as soon as authentication resolves. Class progress
+   * must not depend on whether the reader ever opens Notes.
+   */
   useEffect(() => {
-    if (!showAddNote && !showPageNotes) return;
-    if (myGroups.length) return;
+    if (!authReady) return;
+
+    if (!authUser) {
+      setMyGroups([]);
+      return;
+    }
 
     let active = true;
     getMyGroups()
       .then((groups) => {
-        if (active) setMyGroups(groups);
+        if (active) setMyGroups(groups || []);
       })
       .catch((error) => {
         console.error("Could not load reader groups:", error);
@@ -261,7 +285,7 @@ export default function Reader() {
       });
 
     return () => { active = false; };
-  }, [showAddNote, showPageNotes, myGroups.length]);
+  }, [authReady, authUser?.uid]);
 
   useEffect(() => {
     if (!book?.id || !progressLoaded) return;
@@ -371,6 +395,70 @@ export default function Reader() {
     fontSize
   ]);
 
+  /*
+   * The first render is local-first for speed. Once auth is ready, reconcile
+   * with Firestore so verified progress and a newer cross-device position
+   * appear without requiring the reader to be reopened.
+   */
+  useEffect(() => {
+    if (!authReady || !authUser || !book?.id || !progressLoaded || !pages.length) {
+      return;
+    }
+
+    let active = true;
+
+    getFreshReadingProgress(book.id)
+      .then((fresh) => {
+        if (!active || !fresh) return;
+
+        setVerifiedReading(fresh);
+
+        if (requestedParagraph !== null || userNavigatedRef.current) {
+          return;
+        }
+
+        const currentPositionTime = new Date(
+          verifiedReading?.positionUpdatedAtISO || 0
+        ).getTime();
+        const freshPositionTime = new Date(
+          fresh.positionUpdatedAtISO || 0
+        ).getTime();
+
+        if (freshPositionTime <= currentPositionTime) return;
+
+        const freshParagraph = Math.max(
+          0,
+          Math.min(
+            Number(fresh.paragraphIndex) || 0,
+            Math.max(paragraphs.length - 1, 0)
+          )
+        );
+
+        const freshPageIndex = pages.findIndex((page) =>
+          page.blocks.some((block) => block.paragraphIndex === freshParagraph)
+        );
+
+        if (freshPageIndex >= 0) {
+          readingAnchorRef.current = freshParagraph;
+          setSavedParagraphAnchor(freshParagraph);
+          setPageIndex(freshPageIndex);
+        }
+      })
+      .catch((error) => {
+        console.warn("Could not refresh cross-device reading progress:", error);
+      });
+
+    return () => { active = false; };
+  }, [
+    authReady,
+    authUser?.uid,
+    book?.id,
+    progressLoaded,
+    pages,
+    paragraphs.length,
+    requestedParagraph
+  ]);
+
   useEffect(() => {
     if (!progressLoaded || !pages.length) return;
 
@@ -448,7 +536,7 @@ export default function Reader() {
     const paragraphIndex =
       pages[pageIndex].startParagraphIndex;
 
-    if (auth.currentUser) {
+    if (authUser) {
       saveReadingPosition(
         book,
         paragraphIndex,
@@ -467,7 +555,8 @@ export default function Reader() {
     pageIndex,
     pages,
     paragraphs.length,
-    progressLoaded
+    progressLoaded,
+    authUser?.uid
   ]);
 
   /*
@@ -482,7 +571,7 @@ export default function Reader() {
     if (
       !book?.id ||
       !progressLoaded ||
-      !auth.currentUser ||
+      !authUser ||
       !paragraphs.length ||
       !currentParagraphIndexes.length
     ) {
@@ -627,22 +716,20 @@ export default function Reader() {
               }
             );
 
-            if (myGroups.length) {
-              syncClassReadingProgress({
-                groups: myGroups,
-                book,
-                paragraphIndex:
-                  result.verifiedParagraphIndex,
-                totalParagraphs: total,
-                percentComplete:
-                  result.percentComplete
-              }).catch((error) => {
-                console.error(
-                  "Could not sync verified class reading progress:",
-                  error
-                );
-              });
-            }
+            syncClassReadingProgress({
+              groups: myGroups,
+              book,
+              paragraphIndex:
+                result.verifiedParagraphIndex,
+              totalParagraphs: total,
+              percentComplete:
+                result.percentComplete
+            }).catch((error) => {
+              console.error(
+                "Could not sync verified class reading progress:",
+                error
+              );
+            });
           }
         } catch (error) {
           console.error(
@@ -667,11 +754,12 @@ export default function Reader() {
     myGroups,
     showToc,
     showPageNotes,
-    showAddNote
+    showAddNote,
+    authUser?.uid
   ]);
 
   useEffect(() => {
-    if (!book?.id || !progressLoaded || !auth.currentUser) return;
+    if (!book?.id || !progressLoaded || !authUser) return;
 
     updateReadingPresence({ book, percentComplete: progress }).catch(() => {});
     const interval = window.setInterval(() => {
@@ -679,7 +767,7 @@ export default function Reader() {
     }, 1000 * 60 * 3);
 
     return () => window.clearInterval(interval);
-  }, [book, progress, progressLoaded]);
+  }, [book, progress, progressLoaded, authUser?.uid]);
 
   useEffect(() => {
     const bookId = book?.id;
@@ -713,6 +801,7 @@ export default function Reader() {
   }
 
   function goToPage(next) {
+    userNavigatedRef.current = true;
     const safe = Math.min(Math.max(next, 0), totalPages - 1);
     if (safe !== pageIndex) {
       confirmProgressOnNavigation();
@@ -723,6 +812,7 @@ export default function Reader() {
   }
 
   function goToParagraph(paragraphIndex) {
+    userNavigatedRef.current = true;
     const target = Number(paragraphIndex);
     const targetPage = pages.findIndex((page) =>
       page.blocks.some((block) => block.paragraphIndex === target)
@@ -783,7 +873,7 @@ export default function Reader() {
   }
 
   async function handleSave() {
-    if (!book || !auth.currentUser) {
+    if (!book || !authUser) {
       setStatus("Log in to save this book to your account.");
       return;
     }
@@ -805,7 +895,7 @@ export default function Reader() {
       return;
     }
 
-    if (!auth.currentUser) {
+    if (!authUser) {
       setStatus("Log in to save journal entries.");
       return;
     }
