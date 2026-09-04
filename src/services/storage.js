@@ -985,82 +985,79 @@ export async function registerParagraphRead(
          * v2 verifier touches the record rather than resetting readers.
          */
         /*
-         * Verified progress must never move backward during a read
-         * cycle. Older records may have only paragraphIndex and/or
-         * percentComplete, so use the strongest trustworthy baseline.
+         * Keep verified progress monotonic.
          *
-         * IMPORTANT: once readingVersion === 2, paragraphIndex is only
-         * the reader's browsing position and must NOT be allowed to
-         * advance verified progress.
+         * readingVersion 1 / legacy:
+         *   paragraphIndex was the progress anchor.
+         *
+         * readingVersion 2:
+         *   paragraphIndex is only browsing position, so it must never
+         *   be used to move verified progress forward or backward.
          */
-        const storedVerified =
-          current.verifiedParagraphIndex !== undefined &&
-          current.verifiedParagraphIndex !== null
-            ? Number(
-                current.verifiedParagraphIndex
-              )
-            : -1;
-
-        const percentBaseline =
-          Number.isFinite(
-            Number(
-              current.percentComplete
-            )
-          ) &&
+        const storedVerifiedValue =
           Number(
-            current.percentComplete
-          ) > 0
-            ? Math.max(
-                0,
-                Math.min(
-                  total - 1,
-                  Math.ceil(
-                    (
-                      Math.min(
-                        Number(
-                          current.percentComplete
-                        ),
-                        100
-                      ) /
-                      100
-                    ) *
-                    total
-                  ) - 1
-                )
+            current.verifiedParagraphIndex
+          );
+
+        const storedVerified =
+          Number.isFinite(
+            storedVerifiedValue
+          )
+            ? Math.floor(
+                storedVerifiedValue
               )
             : -1;
 
-        const legacyPositionBaseline =
+        const legacyPositionValue =
+          Number(
+            current.paragraphIndex
+          );
+
+        const legacyPosition =
           Number(
             current.readingVersion
           ) === 2
             ? -1
-            : current.paragraphIndex !== undefined &&
-              current.paragraphIndex !== null
-              ? Number(
-                  current.paragraphIndex
+            : Number.isFinite(
+                legacyPositionValue
+              )
+              ? Math.floor(
+                  legacyPositionValue
                 )
               : -1;
+
+        const storedPercent =
+          Math.min(
+            100,
+            Math.max(
+              0,
+              Number(
+                current.percentComplete
+              ) || 0
+            )
+          );
+
+        const percentParagraph =
+          storedPercent > 0
+            ? Math.ceil(
+                (
+                  storedPercent /
+                  100
+                ) *
+                total
+              ) - 1
+            : -1;
 
         let verifiedParagraphIndex =
           Math.max(
             -1,
             Math.min(
               total - 1,
-              ...[
+              Math.max(
                 storedVerified,
-                percentBaseline,
-                legacyPositionBaseline
-              ]
-                .filter(
-                  Number.isFinite
-                )
-                .map(
-                  (value) =>
-                    Math.floor(
-                      value
-                    )
-                )
+                legacyPosition,
+                percentParagraph
+              )
             )
           );
 
@@ -1148,9 +1145,8 @@ export async function registerParagraphRead(
               );
 
         /*
-         * A reread intentionally begins a new 0–100% cycle.
-         * Otherwise, the stored percentage is a hard floor so a
-         * migration, stale device, or race can never reduce progress.
+         * Normal reading can never lower the saved percentage.
+         * A deliberate reread from paragraph 1 is the one exception.
          */
         const previousPercent =
           Math.min(
