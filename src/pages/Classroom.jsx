@@ -63,8 +63,10 @@ import {
   deleteClassAssignment,
   getClassAssignmentProgress,
   getClassAssignments,
+  getClassGrades,
   getClassTestAnswerKey,
   getMyClassAssignmentProgress,
+  getMyClassGrades,
   getMyClassTestSubmission,
   gradeClassTestSubmission,
   submitClassTest,
@@ -147,6 +149,12 @@ function scoreLabel(score, maxPoints) {
   return `${Number(score) || 0}/${Number(maxPoints) || 0} points`;
 }
 
+function gradePercentLabel(percent) {
+  const value = Number(percent);
+  if (!Number.isFinite(value)) return "Pending";
+  return `${Math.round(value * 10) / 10}%`;
+}
+
 function ProgressBar({ value }) {
   const safe = Math.min(Math.max(Number(value) || 0, 0), 100);
 
@@ -199,6 +207,9 @@ export default function Classroom({ initialGroup }) {
   const [editingAssignmentId, setEditingAssignmentId] = useState(null);
   const [showDiscussionComposer, setShowDiscussionComposer] = useState(false);
   const [showStudents, setShowStudents] = useState(false);
+  const [showGrades, setShowGrades] = useState(false);
+  const [gradesLoading, setGradesLoading] = useState(false);
+  const [gradebook, setGradebook] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
   const [showTest, setShowTest] = useState(false);
@@ -228,6 +239,7 @@ export default function Classroom({ initialGroup }) {
     dueAt: "",
     startParagraphIndex: 0,
     endParagraphIndex: "",
+    totalPoints: 100,
     questions: [makeQuestion(0)]
   });
 
@@ -532,6 +544,30 @@ export default function Classroom({ initialGroup }) {
     selectedAssignment
   ]);
 
+  useEffect(() => {
+    if (!showGrades) return;
+
+    let active = true;
+
+    async function loadGrades() {
+      try {
+        setGradesLoading(true);
+        const loaded = canTeach
+          ? await getClassGrades(groupId, members, assignments)
+          : await getMyClassGrades(groupId, assignments);
+        if (active) setGradebook(loaded);
+      } catch (error) {
+        console.error("Could not load grades:", error);
+        if (active) setStatus(error?.message || "We couldn't load grades.");
+      } finally {
+        if (active) setGradesLoading(false);
+      }
+    }
+
+    loadGrades();
+    return () => { active = false; };
+  }, [showGrades, canTeach, groupId, members, assignments]);
+
   function clearAssignmentForm() {
     setAssignmentForm({
       type: "reading",
@@ -621,6 +657,7 @@ export default function Classroom({ initialGroup }) {
           dueAt: assignment.dueAt || "",
           startParagraphIndex: 0,
           endParagraphIndex: "",
+          totalPoints: assignment.totalPoints || 0,
           questions: (assignment.questions || []).map((question, index) => ({
             ...question,
             id: question.id || `q${index + 1}`,
@@ -647,6 +684,7 @@ export default function Classroom({ initialGroup }) {
         dueAt: assignment.dueAt || "",
         startParagraphIndex: assignment.startParagraphIndex ?? 0,
         endParagraphIndex: assignment.endParagraphIndex ?? "",
+        totalPoints: assignment.totalPoints || 100,
         questions: [makeQuestion(0)]
       });
     }
@@ -1564,6 +1602,16 @@ export default function Classroom({ initialGroup }) {
           <Users size={19} />
         </button>
 
+        <button
+          type="button"
+          className="classroom-reel-icon"
+          onClick={() => setShowGrades(true)}
+          aria-label="Grades"
+          title="Grades"
+        >
+          <ClipboardCheck size={19} />
+        </button>
+
         {canManageClass && (
           <button
             type="button"
@@ -1637,14 +1685,17 @@ export default function Classroom({ initialGroup }) {
                               {assignment.questionCount || assignment.questions?.length || 0} questions · {assignment.totalPoints || 0} points
                             </span>
                           ) : (
-                            <span>
-                              Paragraph{" "}
-                              {Number(assignment.startParagraphIndex || 0) + 1}
-                              {assignment.endParagraphIndex !== null &&
-                              assignment.endParagraphIndex !== undefined
-                                ? `–${Number(assignment.endParagraphIndex) + 1}`
-                                : " onward"}
-                            </span>
+                            <>
+                              <span>
+                                Paragraph{" "}
+                                {Number(assignment.startParagraphIndex || 0) + 1}
+                                {assignment.endParagraphIndex !== null &&
+                                assignment.endParagraphIndex !== undefined
+                                  ? `–${Number(assignment.endParagraphIndex) + 1}`
+                                  : " onward"}
+                              </span>
+                              <span>{Number(assignment.totalPoints) || 100} points</span>
+                            </>
                           )}
                         </div>
 
@@ -2388,6 +2439,22 @@ export default function Classroom({ initialGroup }) {
                     }
                   />
                 </label>
+
+                <label>
+                  Points
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={assignmentForm.totalPoints}
+                    onChange={(event) =>
+                      setAssignmentForm((current) => ({
+                        ...current,
+                        totalPoints: event.target.value
+                      }))
+                    }
+                  />
+                </label>
               </div>
             ) : (
               <>
@@ -2467,6 +2534,7 @@ export default function Classroom({ initialGroup }) {
                             <div key={optionIndex} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: "0.5rem", alignItems: "center", marginTop: "0.45rem" }}>
                               <input
                                 type="radio"
+                                style={{ width: "auto", minWidth: 0, flex: "0 0 auto", margin: 0 }}
                                 name={`correct-${question.id}`}
                                 checked={Number(question.correctOptionIndex) === optionIndex}
                                 onChange={() => updateTestQuestion(question.id, { correctOptionIndex: optionIndex })}
@@ -2765,9 +2833,10 @@ export default function Classroom({ initialGroup }) {
                 {question.type === "multiple_choice" ? (
                   <div style={{ display: "grid", gap: "0.45rem" }}>
                     {(question.options || []).map((option, optionIndex) => (
-                      <label key={optionIndex} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                      <label key={optionIndex} style={{ display: "inline-flex", width: "fit-content", maxWidth: "100%", gap: "0.4rem", alignItems: "center", justifyContent: "flex-start", cursor: testSubmission ? "default" : "pointer" }}>
                         <input
                           type="radio"
+                          style={{ width: "auto", minWidth: 0, flex: "0 0 auto", margin: 0 }}
                           name={`answer-${question.id}`}
                           checked={Number(testAnswers[question.id]) === optionIndex}
                           disabled={Boolean(testSubmission)}
@@ -2859,6 +2928,106 @@ export default function Classroom({ initialGroup }) {
               <Save size={16} /> Save Grade
             </button>
           </form>
+        </div>
+      )}
+
+      {showGrades && (
+        <div className="group-compose-modal">
+          <div
+            className="group-compose-backdrop"
+            onClick={() => setShowGrades(false)}
+          />
+
+          <div className="group-compose-sheet class-progress-sheet">
+            <div className="group-compose-header">
+              <div>
+                <p className="eyebrow">Class</p>
+                <h2>Grades</h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowGrades(false)}
+                aria-label="Close"
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            {gradesLoading ? (
+              <p className="muted">Loading grades...</p>
+            ) : canTeach ? (
+              Array.isArray(gradebook) && gradebook.length ? (
+                <div style={{ display: "grid", gap: "1rem" }}>
+                  {gradebook.map((student) => (
+                    <section key={student.userId} className="panel" style={{ padding: "1rem" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "baseline", flexWrap: "wrap" }}>
+                        <Link to={`/read/public/${student.userId}`}>
+                          <strong>{memberName(student)}</strong>
+                        </Link>
+                        <strong>{gradePercentLabel(student.gradeSummary?.percent)}</strong>
+                      </div>
+                      <small className="muted">
+                        {student.gradeSummary?.earned || 0}/{student.gradeSummary?.possible || 0} graded points
+                        {student.gradeSummary?.pendingAssignments ? ` · ${student.gradeSummary.pendingAssignments} pending` : ""}
+                      </small>
+
+                      <div style={{ display: "grid", gap: "0.55rem", marginTop: "0.8rem" }}>
+                        {(student.grades || []).map((row) => (
+                          <div key={row.assignmentId} style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "center", borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: "0.55rem" }}>
+                            <div>
+                              <strong style={{ display: "block" }}>{row.title}</strong>
+                              <small className="muted">{row.type === "test" ? "Test" : "Reading"}</small>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                              <strong>{row.graded ? gradePercentLabel(row.percent) : "Pending"}</strong>
+                              <small className="muted" style={{ display: "block" }}>
+                                {row.graded ? `${row.score}/${row.maxPoints} pts` : `${row.maxPoints} pts`}
+                              </small>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted">No students are enrolled yet.</p>
+              )
+            ) : gradebook?.rows ? (
+              <div style={{ display: "grid", gap: "1rem" }}>
+                <section className="panel" style={{ padding: "1rem" }}>
+                  <small className="muted">Overall grade</small>
+                  <h2 style={{ margin: "0.2rem 0" }}>{gradePercentLabel(gradebook.summary?.percent)}</h2>
+                  <p className="muted" style={{ margin: 0 }}>
+                    {gradebook.summary?.earned || 0}/{gradebook.summary?.possible || 0} graded points
+                    {gradebook.summary?.pendingAssignments ? ` · ${gradebook.summary.pendingAssignments} pending` : ""}
+                  </p>
+                </section>
+
+                <div style={{ display: "grid", gap: "0.65rem" }}>
+                  {gradebook.rows.map((row) => (
+                    <section key={row.assignmentId} className="panel" style={{ padding: "0.9rem 1rem" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "center" }}>
+                        <div>
+                          <strong style={{ display: "block" }}>{row.title}</strong>
+                          <small className="muted">{row.type === "test" ? "Test" : "Reading"}</small>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <strong>{row.graded ? gradePercentLabel(row.percent) : "Pending"}</strong>
+                          <small className="muted" style={{ display: "block" }}>
+                            {row.graded ? `${row.score}/${row.maxPoints} pts` : `${row.maxPoints} pts`}
+                          </small>
+                        </div>
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="muted">No grades yet.</p>
+            )}
+          </div>
         </div>
       )}
 
