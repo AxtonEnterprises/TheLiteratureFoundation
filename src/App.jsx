@@ -1,8 +1,9 @@
 import { useEffect } from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
-import { db } from "./firebase";
+import { auth, db } from "./firebase";
 import Header from "./components/Header";
 import FoundationHome from "./pages/FoundationHome";
 import Home from "./pages/Home";
@@ -21,12 +22,34 @@ import GroupRouter from "./pages/GroupRouter";
 import Notifications from "./pages/Notifications";
 import DiscoverGroups from "./pages/DiscoverGroups";
 import Moderation from "./pages/Moderation";
+import JoinInvite from "./pages/JoinInvite.jsx";
 
 export default function App() {
   const location = useLocation();
+  const navigate = useNavigate();
   const isLitChain =
     location.pathname === "/read" ||
     location.pathname.startsWith("/read/");
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, (user) => {
+      if (!user) return;
+
+      const pendingPath = sessionStorage.getItem(
+        "litChain.pendingInvitePath"
+      );
+
+      if (!pendingPath) return;
+
+      sessionStorage.removeItem(
+        "litChain.pendingInvitePath"
+      );
+
+      if (location.pathname !== pendingPath) {
+        navigate(pendingPath, { replace: true });
+      }
+    });
+  }, [location.pathname, navigate]);
 
   useEffect(() => {
     async function testFirebase() {
@@ -64,6 +87,7 @@ export default function App() {
           <Route path="/read/public/:userId" element={<PublicProfile />} />
           <Route path="/read/about" element={<About />} />
           <Route path="/read/login" element={<Login />} />
+          <Route path="/read/join/:token" element={<JoinInvite />} />
 
           {/* Compatibility route for old Chain links. */}
           <Route path="/read/chain" element={<Navigate to="/read" replace />} />
