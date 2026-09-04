@@ -844,6 +844,9 @@ export default function Profile() {
     readingTimeline.filter(
       (item) =>
         Number(
+          item.completedReads
+        ) > 0 ||
+        Number(
           item.percentComplete
         ) >= 100
     ).length;
@@ -950,6 +953,9 @@ export default function Profile() {
           case "completed":
             return readingTimeline.filter(
               (item) =>
+                Number(
+                  item.completedReads
+                ) > 0 ||
                 Number(
                   item.percentComplete
                 ) >= 100
@@ -2427,6 +2433,16 @@ export default function Profile() {
                             100
                           );
 
+                        const completedReads =
+                          Math.max(
+                            0,
+                            Math.floor(
+                              Number(
+                                item.completedReads
+                              ) || 0
+                            )
+                          );
+
                         const bookId =
                           String(
                             item.bookId ||
@@ -2587,6 +2603,9 @@ export default function Profile() {
 
                                     <strong>
                                       {percent}%
+                                      {completedReads > 0
+                                        ? ` · Read ${completedReads}×`
+                                        : ""}
                                     </strong>
                                   </div>
 

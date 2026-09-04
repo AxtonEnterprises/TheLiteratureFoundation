@@ -27,8 +27,9 @@ import {
   getJournalForBook,
   getMyGroups,
   getReadingProgress,
+  registerParagraphRead,
   saveBook,
-  saveReadingProgress,
+  saveReadingPosition,
   updateJournalEntry,
   updateReadingPresence
 } from "../services/storage.js";
@@ -71,6 +72,7 @@ export default function Reader() {
   const lastPaginationKeyRef = useRef("");
   const swipeStartRef = useRef(null);
   const suppressCanvasClickRef = useRef(false);
+  const paragraphDwellRef = useRef(new Map());
 
   const requestedParagraph = useMemo(() => {
     const raw = searchParams.get("paragraph");
@@ -104,6 +106,7 @@ export default function Reader() {
   const [loading, setLoading] = useState(true);
   const [textLoaded, setTextLoaded] = useState(false);
   const [savedParagraphAnchor, setSavedParagraphAnchor] = useState(0);
+  const [verifiedReading, setVerifiedReading] = useState(null);
   const [progressLoaded, setProgressLoaded] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
 
@@ -160,11 +163,13 @@ export default function Reader() {
       setJournalEntries([]);
       setPageIndex(0);
       setSavedParagraphAnchor(0);
+      setVerifiedReading(null);
       setSelectedParagraphIndex(null);
       setFocusedNoteId(requestedNoteId);
       setShowPageNotes(false);
       setShowAddNote(false);
       readingAnchorRef.current = 0;
+      paragraphDwellRef.current = new Map();
       lastPaginationKeyRef.current = "";
 
       try {
@@ -208,6 +213,11 @@ export default function Reader() {
 
         readingAnchorRef.current = anchor;
         setSavedParagraphAnchor(anchor);
+        setVerifiedReading(
+          progressResult.status === "fulfilled"
+            ? progressResult.value || null
+            : null
+        );
         setTextLoaded(true);
       } catch (error) {
         console.error("Could not load reader:", error);
@@ -398,11 +408,15 @@ export default function Reader() {
   }, [focusedNoteId, showPageNotes, notesForCurrentPage]);
 
   const progress =
-    totalPages > 1
-      ? Math.round(((pageIndex + 1) / totalPages) * 100)
-      : paragraphs.length
-        ? 100
-        : 0;
+    Math.min(
+      Math.max(
+        Number(
+          verifiedReading?.percentComplete
+        ) || 0,
+        0
+      ),
+      100
+    );
 
   useEffect(() => {
     if (!book?.id || !progressLoaded || !pages[pageIndex]) return;
@@ -410,42 +424,14 @@ export default function Reader() {
     const paragraphIndex =
       pages[pageIndex].startParagraphIndex;
 
-    const visibleParagraphIndex = Math.max(
-      paragraphIndex,
-      ...pages[pageIndex].blocks.map(
-        (block) => Number(block.paragraphIndex) || 0
-      )
-    );
-
-    saveReadingProgress(
-      book,
-      paragraphIndex,
-      paragraphs.length,
-      progress
-    ).catch((error) => {
-      if (auth.currentUser) {
-        console.error(
-          "Could not save reading progress:",
-          error
-        );
-      }
-    });
-
-    /*
-     * Class progress uses the furthest paragraph actually visible
-     * on this page. classStorage keeps that value monotonic and
-     * writes it only to classes that assigned this specific book.
-     */
-    if (auth.currentUser && myGroups.length) {
-      syncClassReadingProgress({
-        groups: myGroups,
+    if (auth.currentUser) {
+      saveReadingPosition(
         book,
-        paragraphIndex: visibleParagraphIndex,
-        totalParagraphs: paragraphs.length,
-        percentComplete: progress
-      }).catch((error) => {
+        paragraphIndex,
+        paragraphs.length
+      ).catch((error) => {
         console.error(
-          "Could not sync class reading progress:",
+          "Could not save reading position:",
           error
         );
       });
@@ -457,9 +443,173 @@ export default function Reader() {
     pageIndex,
     pages,
     paragraphs.length,
-    progress,
+    progressLoaded
+  ]);
+
+  /*
+   * Verified progress is paragraph-based rather than page-based.
+   * Only the next sequential paragraph is eligible for credit.
+   * Dwell time pauses while a sheet is open or the app is hidden,
+   * but previously accumulated time for that paragraph is retained.
+   */
+  useEffect(() => {
+    if (
+      !book?.id ||
+      !progressLoaded ||
+      !auth.currentUser ||
+      !paragraphs.length ||
+      !currentParagraphIndexes.length
+    ) {
+      return;
+    }
+
+    const total = paragraphs.length;
+
+    const legacyVerified =
+      verifiedReading?.verifiedParagraphIndex !== undefined &&
+      verifiedReading?.verifiedParagraphIndex !== null
+        ? Number(verifiedReading.verifiedParagraphIndex)
+        : verifiedReading?.paragraphIndex !== undefined &&
+          verifiedReading?.paragraphIndex !== null
+          ? Number(verifiedReading.paragraphIndex)
+          : -1;
+
+    const verifiedIndex =
+      Math.max(
+        -1,
+        Math.min(
+          Number.isFinite(legacyVerified)
+            ? Math.floor(legacyVerified)
+            : -1,
+          total - 1
+        )
+      );
+
+    const cycleComplete =
+      verifiedReading?.cycleComplete === true ||
+      (
+        verifiedReading?.cycleComplete === undefined &&
+        Number(verifiedReading?.percentComplete) >= 100
+      );
+
+    const candidate =
+      cycleComplete
+        ? 0
+        : verifiedIndex + 1;
+
+    if (
+      candidate < 0 ||
+      candidate >= total ||
+      !currentParagraphIndexes.includes(candidate)
+    ) {
+      return;
+    }
+
+    const words =
+      String(paragraphs[candidate] || "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .length;
+
+    const requiredMs =
+      Math.min(
+        15000,
+        Math.max(
+          3000,
+          words * 180
+        )
+      );
+
+    let lastTick = performance.now();
+    let registering = false;
+
+    const interval = window.setInterval(
+      async () => {
+        const now = performance.now();
+        const delta = Math.max(0, now - lastTick);
+        lastTick = now;
+
+        if (
+          document.visibilityState !== "visible" ||
+          showToc ||
+          showPageNotes ||
+          showAddNote ||
+          registering
+        ) {
+          return;
+        }
+
+        const elapsed =
+          paragraphDwellRef.current.get(candidate) || 0;
+
+        const nextElapsed =
+          elapsed + delta;
+
+        paragraphDwellRef.current.set(
+          candidate,
+          nextElapsed
+        );
+
+        if (nextElapsed < requiredMs) {
+          return;
+        }
+
+        registering = true;
+
+        try {
+          const result =
+            await registerParagraphRead(
+              book,
+              candidate,
+              total
+            );
+
+          if (result?.advanced) {
+            paragraphDwellRef.current.delete(candidate);
+            setVerifiedReading(result);
+
+            if (myGroups.length) {
+              syncClassReadingProgress({
+                groups: myGroups,
+                book,
+                paragraphIndex:
+                  result.verifiedParagraphIndex,
+                totalParagraphs: total,
+                percentComplete:
+                  result.percentComplete
+              }).catch((error) => {
+                console.error(
+                  "Could not sync verified class reading progress:",
+                  error
+                );
+              });
+            }
+          }
+        } catch (error) {
+          console.error(
+            "Could not verify paragraph reading progress:",
+            error
+          );
+        } finally {
+          registering = false;
+        }
+      },
+      250
+    );
+
+    return () =>
+      window.clearInterval(interval);
+  }, [
+    book,
     progressLoaded,
-    myGroups
+    paragraphs,
+    currentParagraphIndexes,
+    verifiedReading,
+    myGroups,
+    showToc,
+    showPageNotes,
+    showAddNote
   ]);
 
   useEffect(() => {
