@@ -567,7 +567,40 @@ export default function Reader() {
 
           if (result?.advanced) {
             paragraphDwellRef.current.delete(candidate);
-            setVerifiedReading(result);
+
+            setVerifiedReading(
+              (current) => {
+                if (
+                  !current ||
+                  result.startedReread
+                ) {
+                  return result;
+                }
+
+                return {
+                  ...current,
+                  ...result,
+                  verifiedParagraphIndex:
+                    Math.max(
+                      Number(
+                        current.verifiedParagraphIndex
+                      ) || -1,
+                      Number(
+                        result.verifiedParagraphIndex
+                      ) || -1
+                    ),
+                  percentComplete:
+                    Math.max(
+                      Number(
+                        current.percentComplete
+                      ) || 0,
+                      Number(
+                        result.percentComplete
+                      ) || 0
+                    )
+                };
+              }
+            );
 
             if (myGroups.length) {
               syncClassReadingProgress({
@@ -647,6 +680,53 @@ export default function Reader() {
       readingAnchorRef.current = target;
       setPageIndex(targetPage);
     }
+  }
+
+  function goToVerifiedProgress() {
+    if (
+      loading ||
+      !paragraphs.length ||
+      !pages.length
+    ) {
+      return;
+    }
+
+    const storedVerified =
+      Number(
+        verifiedReading?.verifiedParagraphIndex
+      );
+
+    const derivedFromPercent =
+      progress > 0
+        ? Math.ceil(
+            (
+              progress /
+              100
+            ) *
+            paragraphs.length
+          ) - 1
+        : 0;
+
+    const target =
+      Number.isFinite(
+        storedVerified
+      )
+        ? storedVerified
+        : derivedFromPercent;
+
+    goToParagraph(
+      Math.min(
+        Math.max(
+          Math.floor(
+            target
+          ),
+          0
+        ),
+        paragraphs.length - 1
+      )
+    );
+
+    setControlsVisible(true);
   }
 
   async function handleSave() {
@@ -974,7 +1054,30 @@ export default function Reader() {
       <footer className={`ereader-bottombar ${controlsVisible ? "visible" : "hidden"}`}>
         <div className="ereader-progress-meta">
           <span>{loading ? "" : `Page ${pageIndex + 1} of ${totalPages}`}</span>
-          <span>{loading ? "" : `${progress}%`}</span>
+
+          <button
+            type="button"
+            onClick={goToVerifiedProgress}
+            disabled={loading || !paragraphs.length}
+            aria-label={`Go to verified reading progress, ${progress}%`}
+            title="Go to your verified reading place"
+            style={{
+              appearance: "none",
+              border: 0,
+              padding: 0,
+              margin: 0,
+              background: "transparent",
+              color: "inherit",
+              font: "inherit",
+              fontWeight: "inherit",
+              cursor:
+                loading || !paragraphs.length
+                  ? "default"
+                  : "pointer"
+            }}
+          >
+            {loading ? "" : `${progress}%`}
+          </button>
         </div>
 
         <input
