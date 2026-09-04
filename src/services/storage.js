@@ -1405,6 +1405,67 @@ export async function getReadingProgress(
   return progress;
 }
 
+export async function getFreshReadingProgress(
+  bookId
+) {
+  if (bookId === undefined || bookId === null) {
+    return null;
+  }
+
+  const user = await getCurrentUser();
+  const cached = readLocalReadingProgress(bookId);
+
+  if (!user) {
+    return cached;
+  }
+
+  const progressRef = doc(
+    db,
+    "users",
+    user.uid,
+    "readingProgress",
+    String(bookId)
+  );
+
+  const snapshot = await getDoc(progressRef);
+
+  if (!snapshot.exists()) {
+    return cached;
+  }
+
+  const remote = snapshot.data();
+  const localPositionTime = new Date(
+    cached?.positionUpdatedAtISO || 0
+  ).getTime();
+  const remotePositionTime = new Date(
+    remote?.positionUpdatedAtISO || 0
+  ).getTime();
+
+  /*
+   * Firestore is authoritative for verified progress. The only local field
+   * allowed to win is a browsing position that is demonstrably newer than
+   * the remote position write.
+   */
+  const merged = {
+    ...(cached || {}),
+    ...remote,
+    ...(
+      cached &&
+      localPositionTime > remotePositionTime &&
+      cached.paragraphIndex !== undefined
+        ? {
+            paragraphIndex: cached.paragraphIndex,
+            positionUpdatedAtISO: cached.positionUpdatedAtISO
+          }
+        : {}
+    )
+  };
+
+  writeLocalReadingProgress(bookId, merged);
+  return merged;
+}
+
+
 export async function getReadingTimeline() {
   const user =
     await getCurrentUser();

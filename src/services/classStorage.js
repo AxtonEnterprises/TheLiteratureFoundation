@@ -1,5 +1,6 @@
 import {
   collection,
+  collectionGroup,
   deleteDoc,
   doc,
   getDoc,
@@ -12,6 +13,8 @@ import {
   writeBatch,
   where
 } from "firebase/firestore";
+
+import { onAuthStateChanged } from "firebase/auth";
 
 import { auth, db } from "../firebase";
 import { createNotification } from "./notifications.js";
@@ -27,6 +30,52 @@ function requireUser() {
   }
 
   return user;
+}
+
+async function getCurrentUserForSync() {
+  if (auth.currentUser) return auth.currentUser;
+
+  return new Promise((resolve) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      unsubscribe();
+      resolve(user || null);
+    });
+  });
+}
+
+async function discoverCurrentUserClasses(userId) {
+  const membershipSnapshot = await getDocs(
+    query(
+      collectionGroup(db, "members"),
+      where("userId", "==", String(userId))
+    )
+  );
+
+  const memberships = membershipSnapshot.docs
+    .map((memberDoc) => memberDoc.data())
+    .filter(
+      (membership) =>
+        membership?.groupId &&
+        !["removed", "suspended"].includes(membership.status)
+    );
+
+  const groups = await Promise.all(
+    memberships.map(async (membership) => {
+      const groupSnapshot = await getDoc(
+        doc(db, "groups", String(membership.groupId))
+      );
+
+      if (!groupSnapshot.exists()) return null;
+
+      return {
+        id: groupSnapshot.id,
+        ...groupSnapshot.data(),
+        membership
+      };
+    })
+  );
+
+  return groups.filter((group) => group?.type === "class");
 }
 
 function cleanString(value) {
@@ -78,7 +127,7 @@ export function assignmentRangePercent(progress, assignment) {
   );
 }
 
-function assignmentNotificationMessage(groupName, assignment) {
+function assignmentNotificationMessage(groupName, assignment, action = "assigned") {
   const due = assignment.dueAt
     ? new Date(`${assignment.dueAt}T12:00:00`).toLocaleDateString(
         undefined,
@@ -89,15 +138,24 @@ function assignmentNotificationMessage(groupName, assignment) {
       )
     : "";
 
-  return `${groupName || "Your class"} assigned ${
-    assignment.title || "a book"
-  }${due ? ` — due ${due}` : ""}.`;
+  const label = assignmentType(assignment) === "test" ? "test" : "assignment";
+
+  if (action === "updated") {
+    return `${groupName || "Your class"} updated ${label} “${
+      assignment.title || "Untitled"
+    }”${due ? ` — due ${due}` : ""}.`;
+  }
+
+  return `${groupName || "Your class"} assigned ${label} “${
+    assignment.title || "Untitled"
+  }”${due ? ` — due ${due}` : ""}.`;
 }
 
 async function notifyStudentsOfAssignment(
   classId,
   assignmentId,
-  assignment
+  assignment,
+  action = "assigned"
 ) {
   const user = auth.currentUser;
 
@@ -128,7 +186,7 @@ async function notifyStudentsOfAssignment(
       .filter(
         (member) =>
           member.userId !== user.uid &&
-          !["owner", "admin"].includes(member.role) &&
+          !["owner", "admin", "moderator"].includes(member.role) &&
           !["removed", "suspended"].includes(member.status)
       )
       .map((member) => member.userId);
@@ -145,7 +203,8 @@ async function notifyStudentsOfAssignment(
           targetPath: `/read/groups/${classId}`,
           message: assignmentNotificationMessage(
             groupName,
-            assignment
+            assignment,
+            action
           )
         })
       )
@@ -155,6 +214,48 @@ async function notifyStudentsOfAssignment(
       "Could not send class assignment notifications:",
       error
     );
+  }
+}
+
+async function notifyStudentOfGrade(
+  classId,
+  assignmentId,
+  assignment,
+  recipientUserId,
+  score,
+  maxPoints
+) {
+  const grader = auth.currentUser;
+
+  if (!grader || !recipientUserId || grader.uid === recipientUserId) return;
+
+  try {
+    const groupSnapshot = await getDoc(
+      doc(db, "groups", String(classId))
+    );
+    const groupName = groupSnapshot.exists()
+      ? groupSnapshot.data()?.name || "Your class"
+      : "Your class";
+    const safeMax = Math.max(Number(maxPoints) || 0, 0);
+    const safeScore = Math.min(Math.max(Number(score) || 0, 0), safeMax || Number(score) || 0);
+    const percent = safeMax > 0
+      ? Math.round((safeScore / safeMax) * 100)
+      : 0;
+
+    await createNotification({
+      recipientUserId: String(recipientUserId),
+      type: "class_assignment",
+      actorUserId: grader.uid,
+      groupId: String(classId),
+      groupName,
+      postId: String(assignmentId),
+      targetPath: `/read/groups/${classId}`,
+      message: `${groupName} updated your grade for “${
+        assignment?.title || "Assignment"
+      }”: ${safeScore}/${safeMax} (${percent}%).`
+    });
+  } catch (error) {
+    console.warn("Could not send class grade notification:", error);
   }
 }
 
@@ -365,7 +466,7 @@ export async function createClassAssignment(classId, assignment) {
     );
     await batch.commit();
 
-    notifyStudentsOfAssignment(classId, assignmentRef.id, assignmentData);
+    await notifyStudentsOfAssignment(classId, assignmentRef.id, assignmentData);
     return assignmentRef.id;
   }
 
@@ -410,7 +511,7 @@ export async function createClassAssignment(classId, assignment) {
     .commit();
 
   invalidateAssignmentCache(classId, bookId);
-  notifyStudentsOfAssignment(classId, assignmentRef.id, assignmentData);
+  await notifyStudentsOfAssignment(classId, assignmentRef.id, assignmentData);
   return assignmentRef.id;
 }
 
@@ -489,6 +590,21 @@ export async function updateClassAssignment(
     );
 
     await batch.commit();
+
+    await notifyStudentsOfAssignment(
+      classId,
+      assignmentId,
+      {
+        ...oldData,
+        ...updates,
+        type: "test",
+        title,
+        questions,
+        questionCount: questions.length,
+        totalPoints: totalTestPoints(questions)
+      },
+      "updated"
+    );
     return;
   }
 
@@ -497,7 +613,7 @@ export async function updateClassAssignment(
     0
   );
 
-  await updateDoc(assignmentRef, {
+  const readingUpdate = {
     title,
     author: cleanString(updates.author),
     instructions: cleanString(updates.instructions),
@@ -515,7 +631,16 @@ export async function updateClassAssignment(
     totalPoints: readingAssignmentPoints(updates),
     updatedAtISO: new Date().toISOString(),
     updatedAt: serverTimestamp()
-  });
+  };
+
+  await updateDoc(assignmentRef, readingUpdate);
+
+  await notifyStudentsOfAssignment(
+    classId,
+    assignmentId,
+    { ...oldData, ...readingUpdate, type: "reading" },
+    "updated"
+  );
 
   if (oldData.bookId) {
     invalidateAssignmentCache(classId, oldData.bookId);
@@ -730,6 +855,15 @@ export async function gradeClassTestSubmission(
     gradedAt: serverTimestamp()
   });
 
+  await notifyStudentOfGrade(
+    classId,
+    assignmentId,
+    assignment,
+    String(userId),
+    score,
+    maxPoints
+  );
+
   return { id: String(userId), ...submission, graded: true, status: "graded", autoScore, manualScore, manualScores: normalizedManualScores, score, maxPoints, feedback: cleanString(feedback).slice(0, 5000), gradedBy: grader.uid, gradedAtISO: now };
 }
 
@@ -749,20 +883,23 @@ export async function syncClassReadingProgress({
   totalParagraphs,
   percentComplete
 }) {
-  const user = auth.currentUser;
+  if (!book?.id) return;
 
-  if (
-    !user ||
-    !book?.id ||
-    !Array.isArray(groups) ||
-    !groups.length
-  ) {
-    return;
+  const user = await getCurrentUserForSync();
+  if (!user) return;
+
+  let classes = Array.isArray(groups)
+    ? groups.filter((group) => group?.type === "class")
+    : [];
+
+  /*
+   * Reader membership loading is intentionally asynchronous. If verified
+   * progress advances before that list arrives, discover the user's classes
+   * here rather than silently dropping the class progress update.
+   */
+  if (!classes.length) {
+    classes = await discoverCurrentUserClasses(user.uid);
   }
-
-  const classes = groups.filter(
-    (group) => group?.type === "class"
-  );
 
   if (!classes.length) return;
 
