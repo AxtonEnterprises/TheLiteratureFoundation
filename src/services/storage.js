@@ -774,24 +774,40 @@ export async function deleteJournalEntry(
    READING PROGRESS
 ============================================================ */
 
-export async function saveReadingProgress(
+export async function saveReadingPosition(
   book,
   paragraphIndex,
-  totalParagraphs,
-  percentComplete
+  totalParagraphs
 ) {
   if (
     !book?.id ||
-    paragraphIndex ===
-      undefined ||
-    paragraphIndex ===
-      null
+    paragraphIndex === undefined ||
+    paragraphIndex === null
   ) {
-    return;
+    return null;
   }
 
   const user =
     await requireUser();
+
+  const total =
+    Math.max(
+      Math.floor(
+        Number(totalParagraphs) || 0
+      ),
+      0
+    );
+
+  const safeIndex =
+    Math.max(
+      0,
+      Math.min(
+        Math.floor(
+          Number(paragraphIndex) || 0
+        ),
+        Math.max(total - 1, 0)
+      )
+    );
 
   const progressRef =
     doc(
@@ -799,98 +815,411 @@ export async function saveReadingProgress(
       "users",
       user.uid,
       "readingProgress",
-      String(
-        book.id
-      )
+      String(book.id)
     );
 
   const now =
     new Date()
       .toISOString();
 
-  const safePercent =
-    Math.min(
-      Math.max(
-        Math.round(
-          percentComplete ||
-          0
-        ),
-        0
-      ),
-      100
-    );
+  const cached =
+    readLocalReadingProgress(
+      book.id
+    ) || {};
 
-  const progressData =
+  const localProgress =
     cleanForFirestore({
+      ...cached,
+
       bookId:
-        String(
-          book.id
-        ),
+        String(book.id),
 
       title:
         book.title ||
+        cached.title ||
         "Untitled",
 
       author:
         book.author ||
-        getAuthorName(
-          book
-        ) ||
+        cached.author ||
+        getAuthorName(book) ||
         "Unknown author",
 
       image:
         book.image ||
         book.cover ||
-        getCoverImageUrl(
-          book
-        ) ||
+        cached.image ||
+        getCoverImageUrl(book) ||
         null,
 
-      paragraphIndex,
+      paragraphIndex:
+        safeIndex,
 
       totalParagraphs:
-        totalParagraphs ||
+        total ||
+        cached.totalParagraphs ||
         0,
 
-      percentComplete:
-        safePercent,
+      readingVersion:
+        2,
 
-      updatedAtISO:
-        now,
-
-      ...(safePercent >=
-      100
-        ? {
-            completedAt:
-              now
-          }
-        : {})
+      positionUpdatedAtISO:
+        now
     });
 
   /*
-   * Reading position is local-first. The reader can restore this
-   * immediately on the next open while Firestore remains the
-   * cross-device source of truth.
+   * Position is intentionally independent of verified progress.
+   * A reader may jump anywhere in the book without earning credit.
    */
   writeLocalReadingProgress(
     book.id,
-    progressData
+    localProgress
   );
 
   await setDoc(
     progressRef,
     {
-      ...progressData,
+      bookId:
+        String(book.id),
 
-      updatedAt:
+      title:
+        localProgress.title,
+
+      author:
+        localProgress.author,
+
+      image:
+        localProgress.image,
+
+      paragraphIndex:
+        safeIndex,
+
+      totalParagraphs:
+        localProgress.totalParagraphs,
+
+      readingVersion:
+        2,
+
+      positionUpdatedAtISO:
+        now,
+
+      positionUpdatedAt:
         serverTimestamp()
     },
     {
       merge: true
     }
   );
+
+  return localProgress;
 }
 
+
+export async function registerParagraphRead(
+  book,
+  paragraphIndex,
+  totalParagraphs
+) {
+  if (
+    !book?.id ||
+    paragraphIndex === undefined ||
+    paragraphIndex === null ||
+    !Number(totalParagraphs)
+  ) {
+    return null;
+  }
+
+  const user =
+    await requireUser();
+
+  const total =
+    Math.max(
+      Math.floor(
+        Number(totalParagraphs) || 0
+      ),
+      1
+    );
+
+  const candidate =
+    Math.max(
+      0,
+      Math.min(
+        Math.floor(
+          Number(paragraphIndex) || 0
+        ),
+        total - 1
+      )
+    );
+
+  const progressRef =
+    doc(
+      db,
+      "users",
+      user.uid,
+      "readingProgress",
+      String(book.id)
+    );
+
+  const now =
+    new Date()
+      .toISOString();
+
+  const transactionResult =
+    await runTransaction(
+      db,
+      async (transaction) => {
+        const snapshot =
+          await transaction.get(
+            progressRef
+          );
+
+        const current =
+          snapshot.exists()
+            ? snapshot.data()
+            : {};
+
+        /*
+         * Migration behavior:
+         * Legacy progress used paragraphIndex/percentComplete as the
+         * user's progress. Preserve that baseline the first time the
+         * v2 verifier touches the record rather than resetting readers.
+         */
+        const legacyVerified =
+          current.verifiedParagraphIndex !== undefined &&
+          current.verifiedParagraphIndex !== null
+            ? Number(
+                current.verifiedParagraphIndex
+              )
+            : current.paragraphIndex !== undefined &&
+              current.paragraphIndex !== null
+              ? Number(
+                  current.paragraphIndex
+                )
+              : -1;
+
+        let verifiedParagraphIndex =
+          Math.max(
+            -1,
+            Math.min(
+              Number.isFinite(
+                legacyVerified
+              )
+                ? Math.floor(
+                    legacyVerified
+                  )
+                : -1,
+              total - 1
+            )
+          );
+
+        let completedReads =
+          Math.max(
+            0,
+            Math.floor(
+              Number(
+                current.completedReads ??
+                (
+                  Number(
+                    current.percentComplete
+                  ) >= 100
+                    ? 1
+                    : 0
+                )
+              ) || 0
+            )
+          );
+
+        let cycleComplete =
+          current.cycleComplete === true ||
+          (
+            current.cycleComplete === undefined &&
+            Number(
+              current.percentComplete
+            ) >= 100
+          );
+
+        let advanced = false;
+        let startedReread = false;
+
+        if (cycleComplete) {
+          /*
+           * Completion stays visible until paragraph 1 is actually
+           * read again. Opening a random middle page cannot start a
+           * new read cycle.
+           */
+          if (candidate === 0) {
+            verifiedParagraphIndex = 0;
+            cycleComplete =
+              total === 1;
+            startedReread = true;
+            advanced = true;
+
+            if (cycleComplete) {
+              completedReads += 1;
+            }
+          }
+        } else {
+          const expected =
+            verifiedParagraphIndex + 1;
+
+          if (candidate === expected) {
+            verifiedParagraphIndex =
+              candidate;
+            advanced = true;
+
+            if (
+              verifiedParagraphIndex >=
+              total - 1
+            ) {
+              cycleComplete = true;
+              completedReads += 1;
+            }
+          }
+        }
+
+        const percentComplete =
+          cycleComplete
+            ? 100
+            : Math.min(
+                99,
+                Math.max(
+                  0,
+                  Math.round(
+                    (
+                      (
+                        verifiedParagraphIndex + 1
+                      ) /
+                      total
+                    ) * 100
+                  )
+                )
+              );
+
+        const update =
+          cleanForFirestore({
+            bookId:
+              String(book.id),
+
+            title:
+              book.title ||
+              current.title ||
+              "Untitled",
+
+            author:
+              book.author ||
+              current.author ||
+              getAuthorName(book) ||
+              "Unknown author",
+
+            image:
+              book.image ||
+              book.cover ||
+              current.image ||
+              getCoverImageUrl(book) ||
+              null,
+
+            verifiedParagraphIndex,
+
+            totalParagraphs:
+              total,
+
+            percentComplete,
+
+            completedReads,
+
+            cycleComplete,
+
+            readingVersion:
+              2,
+
+            lastVerifiedAtISO:
+              advanced
+                ? now
+                : current.lastVerifiedAtISO ||
+                  null,
+
+            updatedAtISO:
+              advanced
+                ? now
+                : current.updatedAtISO ||
+                  now,
+
+            ...(cycleComplete && advanced
+              ? {
+                  completedAt:
+                    now
+                }
+              : {})
+          });
+
+        if (advanced) {
+          transaction.set(
+            progressRef,
+            {
+              ...update,
+
+              updatedAt:
+                serverTimestamp()
+            },
+            {
+              merge: true
+            }
+          );
+        }
+
+        return {
+          ...current,
+          ...update,
+          advanced,
+          startedReread
+        };
+      }
+    );
+
+  /*
+   * Preserve the freshest local reading position if a position write
+   * and verification transaction finish in the opposite order.
+   */
+  const cached =
+    readLocalReadingProgress(
+      book.id
+    ) || {};
+
+  const result = {
+    ...cached,
+    ...transactionResult,
+    paragraphIndex:
+      cached.paragraphIndex !== undefined &&
+      cached.paragraphIndex !== null
+        ? cached.paragraphIndex
+        : transactionResult.paragraphIndex
+  };
+
+  writeLocalReadingProgress(
+    book.id,
+    result
+  );
+
+  return result;
+}
+
+
+/*
+ * Backward-compatible alias for older callers. It now stores reading
+ * position only; verified progress can only advance through
+ * registerParagraphRead().
+ */
+export async function saveReadingProgress(
+  book,
+  paragraphIndex,
+  totalParagraphs
+) {
+  return saveReadingPosition(
+    book,
+    paragraphIndex,
+    totalParagraphs
+  );
+}
 
 export async function getReadingProgress(
   bookId
