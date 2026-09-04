@@ -1363,46 +1363,49 @@ export async function getReadingProgress(
   }
 
   /*
-   * First open on this device still checks Firestore so an existing
-   * cross-device position can be restored. Once found it is cached,
-   * making subsequent opens local-first.
+   * A cache miss must never block opening the book on Firestore/auth.
+   * Return immediately, then warm the cache in the background. The Reader
+   * performs an explicit fresh reconciliation after the text is visible, so
+   * cross-device progress is still restored without holding the loading UI.
    */
-  const user =
-    await getCurrentUser();
+  void (async () => {
+    try {
+      const user =
+        await getCurrentUser();
 
-  if (!user) {
-    return null;
-  }
+      if (!user) {
+        return;
+      }
 
-  const progressRef =
-    doc(
-      db,
-      "users",
-      user.uid,
-      "readingProgress",
-      String(bookId)
-    );
+      const progressRef =
+        doc(
+          db,
+          "users",
+          user.uid,
+          "readingProgress",
+          String(bookId)
+        );
 
-  const snapshot =
-    await getDoc(
-      progressRef
-    );
+      const snapshot =
+        await getDoc(
+          progressRef
+        );
 
-  if (
-    !snapshot.exists()
-  ) {
-    return null;
-  }
+      if (snapshot.exists()) {
+        writeLocalReadingProgress(
+          bookId,
+          snapshot.data()
+        );
+      }
+    } catch (error) {
+      console.warn(
+        `Could not warm reading progress cache for book ${bookId}:`,
+        error
+      );
+    }
+  })();
 
-  const progress =
-    snapshot.data();
-
-  writeLocalReadingProgress(
-    bookId,
-    progress
-  );
-
-  return progress;
+  return null;
 }
 
 export async function getFreshReadingProgress(
