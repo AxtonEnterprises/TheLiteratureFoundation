@@ -40,6 +40,7 @@ import {
   getFriends,
   getGroupMembers,
   inviteFriendToGroup,
+  ensureGeneralClassDiscussion,
   getOrCreateGroupShareInvite,
   rotateGroupShareInvite,
   removeGroupMember,
@@ -194,6 +195,7 @@ export default function Classroom({ initialGroup }) {
 
   const [assignmentIndex, setAssignmentIndex] = useState(0);
   const [discussionIndex, setDiscussionIndex] = useState(0);
+  const [discussionScope, setDiscussionScope] = useState("assignment");
   const [classDepth, setClassDepth] = useState(0);
   const [spatialSwipeStart, setSpatialSwipeStart] = useState(null);
 
@@ -268,12 +270,30 @@ export default function Classroom({ initialGroup }) {
   const selectedAssignment =
     assignments[assignmentIndex] || null;
 
+  const generalDiscussion = useMemo(() => {
+    return forumPosts.find((post) =>
+      post.isGeneralClassDiscussion === true ||
+      String(post.title || "").trim().toLowerCase() === "general class discussion"
+    ) || null;
+  }, [forumPosts]);
+
   const discussions = useMemo(() => {
+    if (discussionScope === "general") {
+      return generalDiscussion ? [generalDiscussion] : [];
+    }
+
     if (!selectedAssignment) return [];
 
     const firstAssignmentId = assignments[0]?.id || null;
 
     return forumPosts.filter((post) => {
+      if (
+        post.isGeneralClassDiscussion === true ||
+        String(post.title || "").trim().toLowerCase() === "general class discussion"
+      ) {
+        return false;
+      }
+
       if (post.sourceAssignmentId) {
         return String(post.sourceAssignmentId) === String(selectedAssignment.id);
       }
@@ -284,7 +304,13 @@ export default function Classroom({ initialGroup }) {
        */
       return String(selectedAssignment.id) === String(firstAssignmentId);
     });
-  }, [forumPosts, assignments, selectedAssignment]);
+  }, [
+    forumPosts,
+    assignments,
+    selectedAssignment,
+    discussionScope,
+    generalDiscussion
+  ]);
 
   const selectedDiscussion =
     discussions[discussionIndex] || null;
@@ -320,9 +346,26 @@ export default function Classroom({ initialGroup }) {
       getGroupForumPosts(groupId)
     ]);
 
+    let nextForumPosts = loadedForumPosts;
+
+    if (
+      canTeach &&
+      !loadedForumPosts.some((post) =>
+        post.isGeneralClassDiscussion === true ||
+        String(post.title || "").trim().toLowerCase() === "general class discussion"
+      )
+    ) {
+      try {
+        await ensureGeneralClassDiscussion(groupId);
+        nextForumPosts = await getGroupForumPosts(groupId);
+      } catch (error) {
+        console.warn("Could not initialize general class discussion:", error);
+      }
+    }
+
     setMembers(loadedMembers);
     setAssignments(loadedAssignments);
-    setForumPosts(loadedForumPosts);
+    setForumPosts(nextForumPosts);
 
     setAssignmentIndex((current) =>
       Math.max(
@@ -397,12 +440,14 @@ export default function Classroom({ initialGroup }) {
   }, [showStudents, canManageClass, groupId]);
 
   useEffect(() => {
+    if (discussionScope === "general") return;
+
     setDiscussionIndex(0);
     setReplyModePostId(null);
     setReplyLevels([]);
     setReplyComposerParentId(undefined);
     setClassDepth(0);
-  }, [selectedAssignment?.id]);
+  }, [selectedAssignment?.id, discussionScope]);
 
   useEffect(() => {
     if (canTeach || !assignments.length) {
@@ -1258,6 +1303,14 @@ export default function Classroom({ initialGroup }) {
   }
 
   async function removeTopic(post) {
+    if (
+      post?.isGeneralClassDiscussion === true ||
+      String(post?.title || "").trim().toLowerCase() === "general class discussion"
+    ) {
+      setStatus("The General Class Discussion is permanent and cannot be deleted.");
+      return;
+    }
+
     if (!window.confirm("Delete this class discussion?")) return;
 
     try {
@@ -1401,6 +1454,7 @@ export default function Classroom({ initialGroup }) {
       }
 
       if (classDepth === 0) {
+        setDiscussionScope("assignment");
         setClassDepth(1);
         setDiscussionIndex(0);
         return;
@@ -1612,6 +1666,23 @@ export default function Classroom({ initialGroup }) {
           <ClipboardCheck size={19} />
         </button>
 
+        <button
+          type="button"
+          className="classroom-reel-icon"
+          onClick={() => {
+            setDiscussionScope("general");
+            setDiscussionIndex(0);
+            setReplyModePostId(null);
+            setReplyLevels([]);
+            setReplyComposerParentId(undefined);
+            setClassDepth(1);
+          }}
+          aria-label="General Class Discussion"
+          title="General Class Discussion"
+        >
+          <MessageCircle size={19} />
+        </button>
+
         {canManageClass && (
           <button
             type="button"
@@ -1809,6 +1880,7 @@ export default function Classroom({ initialGroup }) {
                           type="button"
                           className="classroom-swipe-level-cue"
                           onClick={() => {
+                            setDiscussionScope("assignment");
                             setDiscussionIndex(0);
                             setClassDepth(1);
                           }}
@@ -1866,25 +1938,37 @@ export default function Classroom({ initialGroup }) {
             {!discussions.length ? (
               <div className="classroom-reel-empty">
                 <MessageCircle size={40} />
-                <h2>No discussions yet</h2>
+                <h2>
+                  {discussionScope === "general"
+                    ? "General Class Discussion unavailable"
+                    : "No discussions yet"}
+                </h2>
                 <p className="muted">
-                  Start a discussion about{" "}
-                  <strong>{selectedAssignment?.title || "this assignment"}</strong>.
+                  {discussionScope === "general"
+                    ? "A teacher or aide can initialize the permanent class-wide discussion by reopening this class."
+                    : (
+                      <>
+                        Start a discussion about{" "}
+                        <strong>{selectedAssignment?.title || "this assignment"}</strong>.
+                      </>
+                    )}
                 </p>
 
-                {canTeach ? (
-                  <button
-                    type="button"
-                    className="button primary"
-                    onClick={() => setShowDiscussionComposer(true)}
-                  >
-                    <Plus size={16} />
-                    New Discussion
-                  </button>
-                ) : (
-                  <p className="muted">
-                    Teachers and aides can start discussions. Students can participate by replying.
-                  </p>
+                {discussionScope !== "general" && (
+                  canTeach ? (
+                    <button
+                      type="button"
+                      className="button primary"
+                      onClick={() => setShowDiscussionComposer(true)}
+                    >
+                      <Plus size={16} />
+                      New Discussion
+                    </button>
+                  ) : (
+                    <p className="muted">
+                      Teachers and aides can start discussions. Students can participate by replying.
+                    </p>
+                  )
                 )}
 
                 <button
@@ -1893,7 +1977,7 @@ export default function Classroom({ initialGroup }) {
                   onClick={() => setClassDepth(0)}
                 >
                   <ArrowLeft size={15} />
-                  Assignment
+                  {discussionScope === "general" ? "Class" : "Assignment"}
                 </button>
               </div>
             ) : (
@@ -1924,7 +2008,9 @@ export default function Classroom({ initialGroup }) {
                               : ""}
                           </span>
 
-                          {(post.canDelete || canTeach) && (
+                          {(post.canDelete || canTeach) &&
+                            !post.isGeneralClassDiscussion &&
+                            String(post.title || "").trim().toLowerCase() !== "general class discussion" && (
                             <button
                               type="button"
                               className="icon-link danger"
@@ -1938,7 +2024,9 @@ export default function Classroom({ initialGroup }) {
 
                         <div className="group-discussion-copy">
                           <p className="eyebrow">
-                            Discussion · Level 1
+                            {discussionScope === "general"
+                              ? "General Discussion · Level 1"
+                              : "Discussion · Level 1"}
                           </p>
                           <h2>{post.title}</h2>
                           <p>{post.body}</p>
@@ -1996,7 +2084,9 @@ export default function Classroom({ initialGroup }) {
                           onClick={() => setClassDepth(0)}
                         >
                           <ArrowLeft size={15} />
-                          {selectedAssignment?.title || "Assignment"}
+                          {discussionScope === "general"
+                            ? "Class"
+                            : selectedAssignment?.title || "Assignment"}
                         </button>
                       </div>
                     </article>
@@ -2026,15 +2116,17 @@ export default function Classroom({ initialGroup }) {
               </div>
             )}
 
-            <button
-              type="button"
-              className="group-new-discussion-fab"
-              onClick={() => setShowDiscussionComposer(true)}
-              aria-label="New discussion"
-              title="New discussion"
-            >
-              <Plus size={22} />
-            </button>
+            {discussionScope !== "general" && (
+              <button
+                type="button"
+                className="group-new-discussion-fab"
+                onClick={() => setShowDiscussionComposer(true)}
+                aria-label="New discussion"
+                title="New discussion"
+              >
+                <Plus size={22} />
+              </button>
+            )}
           </>
         )}
 
@@ -2600,7 +2692,7 @@ export default function Classroom({ initialGroup }) {
         </div>
       )}
 
-      {showDiscussionComposer && selectedAssignment && canTeach && (
+      {showDiscussionComposer && discussionScope === "assignment" && selectedAssignment && canTeach && (
         <div className="group-compose-modal">
           <div
             className="group-compose-backdrop"
