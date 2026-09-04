@@ -358,6 +358,13 @@ function classTeacher(groupId) {
      ];
 }
 
+function classStudent(groupId) {
+  return isGroupMember(groupId)
+   && get(
+     /databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)
+   ).data.role == "member";
+}
+
 function validStudentProgressCreate(progressId, data) {
   return data.keys().hasOnly([
       "userId",
@@ -409,9 +416,83 @@ match /groups/{groupId}/assignments/{assignmentId} {
  allow read:
   if classMember(groupId);
 
-    allow create, update, delete:
-     if platformWriteAllowed()
-     && classTeacher(groupId);
+ allow create, update, delete:
+  if platformWriteAllowed()
+  && classTeacher(groupId);
+
+ /*
+  * Test answer keys are deliberately separated from the
+  * student-readable assignment document.
+  */
+ match /answerKey/{answerKeyId} {
+  allow read:
+   if classTeacher(groupId);
+
+  allow create, update, delete:
+   if platformWriteAllowed()
+   && classTeacher(groupId);
+ }
+
+ /*
+  * A student's test submission is immutable after submit.
+  * Teachers/aides may add grading fields without changing
+  * the student's identity, answers, or submission time.
+  */
+ match /submissions/{userId} {
+  allow read:
+   if classTeacher(groupId)
+   || (
+     signedIn()
+     && request.auth.uid == userId
+     && classMember(groupId)
+   );
+
+  allow create:
+   if platformWriteAllowed()
+   && classStudent(groupId)
+   && request.auth.uid == userId
+   && request.resource.data.keys().hasOnly([
+     "assignmentId",
+     "userId",
+     "answers",
+     "status",
+     "graded",
+     "score",
+     "maxPoints",
+     "submittedAtISO",
+     "submittedAt"
+   ])
+   && request.resource.data.assignmentId == assignmentId
+   && request.resource.data.userId == userId
+   && request.resource.data.answers is map
+   && request.resource.data.status == "submitted"
+   && request.resource.data.graded == false
+   && request.resource.data.score == null
+   && request.resource.data.maxPoints is int
+   && request.resource.data.maxPoints >= 0
+   && request.resource.data.submittedAtISO is string
+   && request.resource.data.submittedAtISO.size() <= 64
+   && request.resource.data.submittedAt is timestamp
+   && exists(
+     /databases/$(database)/documents/groups/$(groupId)/assignments/$(assignmentId)
+   )
+   && get(
+     /databases/$(database)/documents/groups/$(groupId)/assignments/$(assignmentId)
+   ).data.type == "test";
+
+  allow update:
+   if platformWriteAllowed()
+   && classTeacher(groupId)
+   && request.resource.data.assignmentId == resource.data.assignmentId
+   && request.resource.data.userId == resource.data.userId
+   && request.resource.data.answers == resource.data.answers
+   && request.resource.data.submittedAtISO == resource.data.submittedAtISO
+   && request.resource.data.submittedAt == resource.data.submittedAt;
+
+  allow delete:
+   if platformWriteAllowed()
+   && classTeacher(groupId);
+ }
 }
 
 match /groups/{groupId}/studentProgress/{progressId} {
