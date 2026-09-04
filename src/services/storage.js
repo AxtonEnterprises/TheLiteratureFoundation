@@ -1037,27 +1037,28 @@ export async function registerParagraphRead(
             )
           );
 
-        const percentParagraph =
-          storedPercent > 0
-            ? Math.ceil(
-                (
-                  storedPercent /
-                  100
-                ) *
-                total
-              ) - 1
-            : -1;
+        /*
+         * Percent is display data only after the paragraph verifier
+         * exists. Never convert a rounded percentage back into a
+         * paragraph number: doing so can skip the next expected
+         * paragraph and permanently stall sequential verification.
+         *
+         * For true legacy records only, paragraphIndex remains the
+         * conservative migration baseline.
+         */
+        const hasVerifiedParagraph =
+          Number.isFinite(
+            storedVerifiedValue
+          );
 
         let verifiedParagraphIndex =
           Math.max(
             -1,
             Math.min(
               total - 1,
-              Math.max(
-                storedVerified,
-                legacyPosition,
-                percentParagraph
-              )
+              hasVerifiedParagraph
+                ? storedVerified
+                : legacyPosition
             )
           );
 
