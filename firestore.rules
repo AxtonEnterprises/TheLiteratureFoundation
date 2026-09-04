@@ -1477,6 +1477,46 @@ function validGroupForumVoteAggregateUpdate(groupId, targetType, targetId) {
 }
 
     /* ========================================================
+   SHARE-LINK INVITATIONS
+   ======================================================== */
+
+/*
+ * Share-link tokens are high-entropy document IDs.
+ * Signed-in users may fetch an exact token they already possess,
+ * but listing the token collection is prohibited.
+ */
+match /groupShareInvites/{token} {
+  allow get:
+    if signedIn();
+
+  allow list:
+    if false;
+
+  allow create:
+    if platformWriteAllowed()
+    && token == request.resource.data.token
+    && request.resource.data.groupId is string
+    && request.resource.data.groupId.size() > 0
+    && request.resource.data.groupType in ["group", "class"]
+    && request.resource.data.status == "active"
+    && request.resource.data.createdBy == request.auth.uid
+    && isGroupAdmin(request.resource.data.groupId);
+
+  allow update:
+    if platformWriteAllowed()
+    && token == resource.data.token
+    && request.resource.data.token == resource.data.token
+    && request.resource.data.groupId == resource.data.groupId
+    && request.resource.data.groupType == resource.data.groupType
+    && request.resource.data.status in ["active", "revoked"]
+    && isGroupAdmin(resource.data.groupId);
+
+  allow delete:
+    if false;
+}
+
+
+/* ========================================================
     GROUPS / CLASSES
     ======================================================== */
 
@@ -1540,6 +1580,37 @@ match /groups/{groupId} {
      && isGroupOwner(groupId);
 
 /* ======================================================
+      SHARE LINK MANAGEMENT
+      ====================================================== */
+
+   match /shareInvite/{shareInviteId} {
+    allow read:
+     if isGroupAdmin(groupId);
+
+    allow create, update:
+     if platformWriteAllowed()
+     && isGroupAdmin(groupId)
+     && shareInviteId == "current"
+     && request.resource.data.groupId == groupId
+     && request.resource.data.token is string
+     && request.resource.data.token.size() >= 32
+     && request.resource.data.status == "active"
+     && existsAfter(
+       /databases/$(database)/documents/groupShareInvites/$(request.resource.data.token)
+     )
+     && getAfter(
+       /databases/$(database)/documents/groupShareInvites/$(request.resource.data.token)
+     ).data.groupId == groupId
+     && getAfter(
+       /databases/$(database)/documents/groupShareInvites/$(request.resource.data.token)
+     ).data.status == "active";
+
+    allow delete:
+     if platformWriteAllowed()
+     && isGroupAdmin(groupId);
+   }
+
+/* ======================================================
       GROUP MEMBERS
       ====================================================== */
 
@@ -1584,6 +1655,23 @@ allow create:
       && get(
         /databases/$(database)/documents/groups/$(groupId)/invites/$(userId)
       ).data.status == "pending"
+   )
+   ||
+   (
+      request.auth.uid == userId
+      && request.resource.data.role == "member"
+      && request.resource.data.status == "active"
+      && request.resource.data.inviteToken is string
+      && request.resource.data.inviteToken.size() >= 32
+      && exists(
+        /databases/$(database)/documents/groupShareInvites/$(request.resource.data.inviteToken)
+      )
+      && get(
+        /databases/$(database)/documents/groupShareInvites/$(request.resource.data.inviteToken)
+      ).data.groupId == groupId
+      && get(
+        /databases/$(database)/documents/groupShareInvites/$(request.resource.data.inviteToken)
+      ).data.status == "active"
    )
    ||
    (
