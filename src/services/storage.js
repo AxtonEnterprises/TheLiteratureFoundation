@@ -774,40 +774,24 @@ export async function deleteJournalEntry(
    READING PROGRESS
 ============================================================ */
 
-export async function saveReadingPosition(
+export async function saveReadingProgress(
   book,
   paragraphIndex,
-  totalParagraphs
+  totalParagraphs,
+  percentComplete
 ) {
   if (
     !book?.id ||
-    paragraphIndex === undefined ||
-    paragraphIndex === null
+    paragraphIndex ===
+      undefined ||
+    paragraphIndex ===
+      null
   ) {
-    return null;
+    return;
   }
 
   const user =
     await requireUser();
-
-  const total =
-    Math.max(
-      Math.floor(
-        Number(totalParagraphs) || 0
-      ),
-      0
-    );
-
-  const safeIndex =
-    Math.max(
-      0,
-      Math.min(
-        Math.floor(
-          Number(paragraphIndex) || 0
-        ),
-        Math.max(total - 1, 0)
-      )
-    );
 
   const progressRef =
     doc(
@@ -815,486 +799,98 @@ export async function saveReadingPosition(
       "users",
       user.uid,
       "readingProgress",
-      String(book.id)
+      String(
+        book.id
+      )
     );
 
   const now =
     new Date()
       .toISOString();
 
-  const cached =
-    readLocalReadingProgress(
-      book.id
-    ) || {};
+  const safePercent =
+    Math.min(
+      Math.max(
+        Math.round(
+          percentComplete ||
+          0
+        ),
+        0
+      ),
+      100
+    );
 
-  const localProgress =
+  const progressData =
     cleanForFirestore({
-      ...cached,
-
       bookId:
-        String(book.id),
+        String(
+          book.id
+        ),
 
       title:
         book.title ||
-        cached.title ||
         "Untitled",
 
       author:
         book.author ||
-        cached.author ||
-        getAuthorName(book) ||
+        getAuthorName(
+          book
+        ) ||
         "Unknown author",
 
       image:
         book.image ||
         book.cover ||
-        cached.image ||
-        getCoverImageUrl(book) ||
+        getCoverImageUrl(
+          book
+        ) ||
         null,
 
-      paragraphIndex:
-        safeIndex,
+      paragraphIndex,
 
       totalParagraphs:
-        total ||
-        cached.totalParagraphs ||
+        totalParagraphs ||
         0,
 
-      readingVersion:
-        2,
+      percentComplete:
+        safePercent,
 
-      positionUpdatedAtISO:
-        now
+      updatedAtISO:
+        now,
+
+      ...(safePercent >=
+      100
+        ? {
+            completedAt:
+              now
+          }
+        : {})
     });
 
   /*
-   * Position is intentionally independent of verified progress.
-   * A reader may jump anywhere in the book without earning credit.
+   * Reading position is local-first. The reader can restore this
+   * immediately on the next open while Firestore remains the
+   * cross-device source of truth.
    */
   writeLocalReadingProgress(
     book.id,
-    localProgress
+    progressData
   );
 
   await setDoc(
     progressRef,
     {
-      bookId:
-        String(book.id),
+      ...progressData,
 
-      title:
-        localProgress.title,
-
-      author:
-        localProgress.author,
-
-      image:
-        localProgress.image,
-
-      paragraphIndex:
-        safeIndex,
-
-      totalParagraphs:
-        localProgress.totalParagraphs,
-
-      readingVersion:
-        2,
-
-      positionUpdatedAtISO:
-        now,
-
-      positionUpdatedAt:
+      updatedAt:
         serverTimestamp()
     },
     {
       merge: true
     }
   );
-
-  return localProgress;
 }
 
-
-export async function registerParagraphRead(
-  book,
-  paragraphIndex,
-  totalParagraphs
-) {
-  if (
-    !book?.id ||
-    paragraphIndex === undefined ||
-    paragraphIndex === null ||
-    !Number(totalParagraphs)
-  ) {
-    return null;
-  }
-
-  const user =
-    await requireUser();
-
-  const total =
-    Math.max(
-      Math.floor(
-        Number(totalParagraphs) || 0
-      ),
-      1
-    );
-
-  const candidate =
-    Math.max(
-      0,
-      Math.min(
-        Math.floor(
-          Number(paragraphIndex) || 0
-        ),
-        total - 1
-      )
-    );
-
-  const progressRef =
-    doc(
-      db,
-      "users",
-      user.uid,
-      "readingProgress",
-      String(book.id)
-    );
-
-  const now =
-    new Date()
-      .toISOString();
-
-  const transactionResult =
-    await runTransaction(
-      db,
-      async (transaction) => {
-        const snapshot =
-          await transaction.get(
-            progressRef
-          );
-
-        const current =
-          snapshot.exists()
-            ? snapshot.data()
-            : {};
-
-        /*
-         * Migration behavior:
-         * Legacy progress used paragraphIndex/percentComplete as the
-         * user's progress. Preserve that baseline the first time the
-         * v2 verifier touches the record rather than resetting readers.
-         */
-        /*
-         * Keep verified progress monotonic.
-         *
-         * readingVersion 1 / legacy:
-         *   paragraphIndex was the progress anchor.
-         *
-         * readingVersion 2:
-         *   paragraphIndex is only browsing position, so it must never
-         *   be used to move verified progress forward or backward.
-         */
-        const storedVerifiedValue =
-          Number(
-            current.verifiedParagraphIndex
-          );
-
-        const storedVerified =
-          Number.isFinite(
-            storedVerifiedValue
-          )
-            ? Math.floor(
-                storedVerifiedValue
-              )
-            : -1;
-
-        const legacyPositionValue =
-          Number(
-            current.paragraphIndex
-          );
-
-        const legacyPosition =
-          Number(
-            current.readingVersion
-          ) === 2
-            ? -1
-            : Number.isFinite(
-                legacyPositionValue
-              )
-              ? Math.floor(
-                  legacyPositionValue
-                )
-              : -1;
-
-        const storedPercent =
-          Math.min(
-            100,
-            Math.max(
-              0,
-              Number(
-                current.percentComplete
-              ) || 0
-            )
-          );
-
-        /*
-         * Percent is display data only after the paragraph verifier
-         * exists. Never convert a rounded percentage back into a
-         * paragraph number: doing so can skip the next expected
-         * paragraph and permanently stall sequential verification.
-         *
-         * For true legacy records only, paragraphIndex remains the
-         * conservative migration baseline.
-         */
-        const hasVerifiedParagraph =
-          Number.isFinite(
-            storedVerifiedValue
-          );
-
-        let verifiedParagraphIndex =
-          Math.max(
-            -1,
-            Math.min(
-              total - 1,
-              hasVerifiedParagraph
-                ? storedVerified
-                : legacyPosition
-            )
-          );
-
-        let completedReads =
-          Math.max(
-            0,
-            Math.floor(
-              Number(
-                current.completedReads ??
-                (
-                  Number(
-                    current.percentComplete
-                  ) >= 100
-                    ? 1
-                    : 0
-                )
-              ) || 0
-            )
-          );
-
-        let cycleComplete =
-          current.cycleComplete === true ||
-          (
-            current.cycleComplete === undefined &&
-            Number(
-              current.percentComplete
-            ) >= 100
-          );
-
-        let advanced = false;
-        let startedReread = false;
-
-        if (cycleComplete) {
-          /*
-           * Completion stays visible until paragraph 1 is actually
-           * read again. Opening a random middle page cannot start a
-           * new read cycle.
-           */
-          if (candidate === 0) {
-            verifiedParagraphIndex = 0;
-            cycleComplete =
-              total === 1;
-            startedReread = true;
-            advanced = true;
-
-            if (cycleComplete) {
-              completedReads += 1;
-            }
-          }
-        } else {
-          const expected =
-            verifiedParagraphIndex + 1;
-
-          if (candidate === expected) {
-            verifiedParagraphIndex =
-              candidate;
-            advanced = true;
-
-            if (
-              verifiedParagraphIndex >=
-              total - 1
-            ) {
-              cycleComplete = true;
-              completedReads += 1;
-            }
-          }
-        }
-
-        const calculatedPercent =
-          cycleComplete
-            ? 100
-            : Math.min(
-                99.9,
-                Math.max(
-                  0,
-                  Math.round(
-                    (
-                      (
-                        (
-                          verifiedParagraphIndex + 1
-                        ) /
-                        total
-                      ) * 100
-                    ) * 10
-                  ) / 10
-                )
-              );
-
-        /*
-         * Normal reading can never lower the saved percentage.
-         * A deliberate reread from paragraph 1 is the one exception.
-         */
-        const previousPercent =
-          Math.min(
-            100,
-            Math.max(
-              0,
-              Number(
-                current.percentComplete
-              ) || 0
-            )
-          );
-
-        const percentComplete =
-          startedReread
-            ? calculatedPercent
-            : Math.max(
-                previousPercent,
-                calculatedPercent
-              );
-
-        const update =
-          cleanForFirestore({
-            bookId:
-              String(book.id),
-
-            title:
-              book.title ||
-              current.title ||
-              "Untitled",
-
-            author:
-              book.author ||
-              current.author ||
-              getAuthorName(book) ||
-              "Unknown author",
-
-            image:
-              book.image ||
-              book.cover ||
-              current.image ||
-              getCoverImageUrl(book) ||
-              null,
-
-            verifiedParagraphIndex,
-
-            totalParagraphs:
-              total,
-
-            percentComplete,
-
-            completedReads,
-
-            cycleComplete,
-
-            readingVersion:
-              2,
-
-            lastVerifiedAtISO:
-              advanced
-                ? now
-                : current.lastVerifiedAtISO ||
-                  null,
-
-            updatedAtISO:
-              advanced
-                ? now
-                : current.updatedAtISO ||
-                  now,
-
-            ...(cycleComplete && advanced
-              ? {
-                  completedAt:
-                    now
-                }
-              : {})
-          });
-
-        if (advanced) {
-          transaction.set(
-            progressRef,
-            {
-              ...update,
-
-              updatedAt:
-                serverTimestamp()
-            },
-            {
-              merge: true
-            }
-          );
-        }
-
-        return {
-          ...current,
-          ...update,
-          advanced,
-          startedReread
-        };
-      }
-    );
-
-  /*
-   * Preserve the freshest local reading position if a position write
-   * and verification transaction finish in the opposite order.
-   */
-  const cached =
-    readLocalReadingProgress(
-      book.id
-    ) || {};
-
-  const result = {
-    ...cached,
-    ...transactionResult,
-    paragraphIndex:
-      cached.paragraphIndex !== undefined &&
-      cached.paragraphIndex !== null
-        ? cached.paragraphIndex
-        : transactionResult.paragraphIndex
-  };
-
-  writeLocalReadingProgress(
-    book.id,
-    result
-  );
-
-  return result;
-}
-
-
-/*
- * Backward-compatible alias for older callers. It now stores reading
- * position only; verified progress can only advance through
- * registerParagraphRead().
- */
-export async function saveReadingProgress(
-  book,
-  paragraphIndex,
-  totalParagraphs
-) {
-  return saveReadingPosition(
-    book,
-    paragraphIndex,
-    totalParagraphs
-  );
-}
 
 export async function getReadingProgress(
   bookId
@@ -6448,3 +6044,366 @@ export async function getGroupsMarginsFeed() {
     );
 }
 
+
+/* ============================================================
+   SHARE LINKS / QR INVITATIONS
+============================================================ */
+
+function createShareInviteToken() {
+  const bytes = new Uint8Array(24);
+
+  if (!globalThis.crypto?.getRandomValues) {
+    throw new Error(
+      "Secure sharing is unavailable in this browser."
+    );
+  }
+
+  globalThis.crypto.getRandomValues(bytes);
+
+  return Array.from(bytes)
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function requireGroupShareManager(groupId) {
+  const user = await requireUser();
+  const membership = await getGroupMemberRecord(groupId, user.uid);
+
+  if (
+    !membership ||
+    membership.status === "removed" ||
+    membership.status === "suspended" ||
+    !["owner", "admin"].includes(membership.role)
+  ) {
+    throw new Error(
+      "Only the group owner or an admin can manage the share link."
+    );
+  }
+
+  return { user, membership };
+}
+
+export async function getOrCreateGroupShareInvite(groupId) {
+  const cleanGroupId = String(groupId || "");
+  const { user } = await requireGroupShareManager(cleanGroupId);
+
+  const groupRef = doc(db, "groups", cleanGroupId);
+  const currentRef = doc(
+    db,
+    "groups",
+    cleanGroupId,
+    "shareInvite",
+    "current"
+  );
+
+  const newToken = createShareInviteToken();
+  const now = new Date().toISOString();
+
+  return runTransaction(db, async (transaction) => {
+    const [groupSnapshot, currentSnapshot] = await Promise.all([
+      transaction.get(groupRef),
+      transaction.get(currentRef)
+    ]);
+
+    if (!groupSnapshot.exists()) {
+      throw new Error("This group no longer exists.");
+    }
+
+    if (currentSnapshot.exists()) {
+      const current = currentSnapshot.data();
+      const currentToken = String(current.token || "");
+
+      if (currentToken) {
+        const currentTokenRef = doc(
+          db,
+          "groupShareInvites",
+          currentToken
+        );
+        const currentTokenSnapshot = await transaction.get(currentTokenRef);
+
+        if (
+          currentTokenSnapshot.exists() &&
+          currentTokenSnapshot.data()?.status === "active" &&
+          String(currentTokenSnapshot.data()?.groupId || "") === cleanGroupId
+        ) {
+          return {
+            token: currentToken,
+            groupId: cleanGroupId,
+            groupType:
+              groupSnapshot.data()?.type === "class" ? "class" : "group"
+          };
+        }
+      }
+    }
+
+    const tokenRef = doc(db, "groupShareInvites", newToken);
+    const groupType =
+      groupSnapshot.data()?.type === "class" ? "class" : "group";
+
+    transaction.set(tokenRef, {
+      token: newToken,
+      groupId: cleanGroupId,
+      groupType,
+      status: "active",
+      createdBy: user.uid,
+      createdAtISO: now,
+      updatedAtISO: now,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+
+    transaction.set(
+      currentRef,
+      {
+        groupId: cleanGroupId,
+        token: newToken,
+        groupType,
+        status: "active",
+        createdBy: user.uid,
+        updatedAtISO: now,
+        updatedAt: serverTimestamp()
+      },
+      { merge: true }
+    );
+
+    return {
+      token: newToken,
+      groupId: cleanGroupId,
+      groupType
+    };
+  });
+}
+
+export async function rotateGroupShareInvite(groupId) {
+  const cleanGroupId = String(groupId || "");
+  const { user } = await requireGroupShareManager(cleanGroupId);
+
+  const groupRef = doc(db, "groups", cleanGroupId);
+  const currentRef = doc(
+    db,
+    "groups",
+    cleanGroupId,
+    "shareInvite",
+    "current"
+  );
+
+  const newToken = createShareInviteToken();
+  const now = new Date().toISOString();
+
+  return runTransaction(db, async (transaction) => {
+    const [groupSnapshot, currentSnapshot] = await Promise.all([
+      transaction.get(groupRef),
+      transaction.get(currentRef)
+    ]);
+
+    if (!groupSnapshot.exists()) {
+      throw new Error("This group no longer exists.");
+    }
+
+    if (currentSnapshot.exists()) {
+      const oldToken = String(currentSnapshot.data()?.token || "");
+
+      if (oldToken) {
+        const oldTokenRef = doc(db, "groupShareInvites", oldToken);
+        const oldSnapshot = await transaction.get(oldTokenRef);
+
+        if (oldSnapshot.exists()) {
+          transaction.update(oldTokenRef, {
+            status: "revoked",
+            revokedBy: user.uid,
+            revokedAtISO: now,
+            updatedAtISO: now,
+            updatedAt: serverTimestamp()
+          });
+        }
+      }
+    }
+
+    const groupType =
+      groupSnapshot.data()?.type === "class" ? "class" : "group";
+    const tokenRef = doc(db, "groupShareInvites", newToken);
+
+    transaction.set(tokenRef, {
+      token: newToken,
+      groupId: cleanGroupId,
+      groupType,
+      status: "active",
+      createdBy: user.uid,
+      createdAtISO: now,
+      updatedAtISO: now,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+
+    transaction.set(
+      currentRef,
+      {
+        groupId: cleanGroupId,
+        token: newToken,
+        groupType,
+        status: "active",
+        createdBy: user.uid,
+        updatedAtISO: now,
+        updatedAt: serverTimestamp()
+      },
+      { merge: true }
+    );
+
+    return {
+      token: newToken,
+      groupId: cleanGroupId,
+      groupType
+    };
+  });
+}
+
+export async function getGroupShareInvite(token) {
+  const user = await getCurrentUser();
+
+  if (!user || !token) {
+    return null;
+  }
+
+  const cleanToken = String(token);
+  const inviteSnapshot = await getDoc(
+    doc(db, "groupShareInvites", cleanToken)
+  );
+
+  if (!inviteSnapshot.exists()) {
+    return null;
+  }
+
+  const invite = inviteSnapshot.data();
+
+  if (
+    invite.status !== "active" ||
+    String(invite.token || "") !== cleanToken ||
+    !invite.groupId
+  ) {
+    return null;
+  }
+
+  const groupSnapshot = await getDoc(
+    doc(db, "groups", String(invite.groupId))
+  );
+
+  if (!groupSnapshot.exists()) {
+    return null;
+  }
+
+  const membership = await getGroupMemberRecord(
+    invite.groupId,
+    user.uid
+  );
+
+  return {
+    id: inviteSnapshot.id,
+    ...invite,
+    group: {
+      id: groupSnapshot.id,
+      ...groupSnapshot.data()
+    },
+    membership
+  };
+}
+
+export async function acceptGroupShareInvite(token) {
+  const user = await requireUser();
+  const cleanToken = String(token || "");
+
+  if (!cleanToken) {
+    throw new Error("This invitation link is invalid.");
+  }
+
+  const inviteRef = doc(db, "groupShareInvites", cleanToken);
+  const now = new Date().toISOString();
+
+  const result = await runTransaction(db, async (transaction) => {
+    const inviteSnapshot = await transaction.get(inviteRef);
+
+    if (!inviteSnapshot.exists()) {
+      throw new Error("This invitation link is invalid or has expired.");
+    }
+
+    const invite = inviteSnapshot.data();
+
+    if (
+      invite.status !== "active" ||
+      String(invite.token || "") !== cleanToken ||
+      !invite.groupId
+    ) {
+      throw new Error("This invitation link is no longer active.");
+    }
+
+    const cleanGroupId = String(invite.groupId);
+    const groupRef = doc(db, "groups", cleanGroupId);
+    const memberRef = doc(
+      db,
+      "groups",
+      cleanGroupId,
+      "members",
+      user.uid
+    );
+    const banRef = doc(
+      db,
+      "groups",
+      cleanGroupId,
+      "bans",
+      user.uid
+    );
+
+    const [groupSnapshot, memberSnapshot, banSnapshot] = await Promise.all([
+      transaction.get(groupRef),
+      transaction.get(memberRef),
+      transaction.get(banRef)
+    ]);
+
+    if (!groupSnapshot.exists()) {
+      throw new Error("This group no longer exists.");
+    }
+
+    if (banSnapshot.exists()) {
+      throw new Error("You cannot join this group with this account.");
+    }
+
+    if (memberSnapshot.exists()) {
+      const existing = memberSnapshot.data();
+
+      if (
+        existing.status !== "removed" &&
+        existing.status !== "suspended"
+      ) {
+        return {
+          alreadyMember: true,
+          groupId: cleanGroupId,
+          groupType:
+            groupSnapshot.data()?.type === "class" ? "class" : "group"
+        };
+      }
+
+      throw new Error(
+        "Your previous membership must be restored by a group administrator."
+      );
+    }
+
+    transaction.set(memberRef, {
+      groupId: cleanGroupId,
+      userId: user.uid,
+      role: "member",
+      status: "active",
+      joinedVia: "share_link",
+      inviteToken: cleanToken,
+      joinedAtISO: now,
+      joinedAt: serverTimestamp()
+    });
+
+    return {
+      alreadyMember: false,
+      groupId: cleanGroupId,
+      groupType:
+        groupSnapshot.data()?.type === "class" ? "class" : "group"
+    };
+  });
+
+  return result;
+}
