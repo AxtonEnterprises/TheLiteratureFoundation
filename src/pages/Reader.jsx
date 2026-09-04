@@ -201,24 +201,41 @@ export default function Reader() {
       userNavigatedRef.current = false;
 
       try {
-        const loadedBook = location.state?.book || await getBookById(id);
-        if (!active) return;
-        setBook(loadedBook);
+        /*
+         * Reader text only needs the book ID. Do not make an assignment link
+         * wait for the external metadata API before /api/book can start. This
+         * also prevents a slow metadata request from leaving the Reader stuck
+         * on “Opening book…”.
+         */
+        const routedBook = location.state?.book || null;
+        const readerBook = routedBook || {
+          id: String(id),
+          title: "Opening book…",
+          author: ""
+        };
 
-        const [structuredResult, progressResult] = await Promise.allSettled([
-          getStructuredBookText(loadedBook),
-          getReadingProgress(loadedBook.id)
-        ]);
-        if (!active) return;
+        setBook(readerBook);
 
-        if (structuredResult.status !== "fulfilled") {
-          throw structuredResult.reason;
+        if (!routedBook) {
+          void getBookById(id)
+            .then((loadedBook) => {
+              if (active && loadedBook) setBook(loadedBook);
+            })
+            .catch((error) => {
+              console.warn("Could not load book metadata:", error);
+            });
         }
 
-        const structuredBook = structuredResult.value;
+        const progressPromise = getReadingProgress(readerBook.id);
+        const structuredBook = await getStructuredBookText(readerBook);
+        if (!active) return;
+
         const loadedParagraphs = structuredBook.paragraphs || [];
         setParagraphs(loadedParagraphs);
         setChapters(structuredBook.chapters || []);
+
+        const savedProgress = await progressPromise.catch(() => null);
+        if (!active) return;
 
         let anchor = 0;
 
@@ -229,23 +246,18 @@ export default function Reader() {
             Math.max(loadedParagraphs.length - 1, 0)
           );
         } else if (
-          progressResult.status === "fulfilled" &&
-          progressResult.value?.paragraphIndex !== undefined &&
-          progressResult.value?.paragraphIndex !== null
+          savedProgress?.paragraphIndex !== undefined &&
+          savedProgress?.paragraphIndex !== null
         ) {
           anchor = Math.min(
-            Math.max(Number(progressResult.value.paragraphIndex) || 0, 0),
+            Math.max(Number(savedProgress.paragraphIndex) || 0, 0),
             Math.max(loadedParagraphs.length - 1, 0)
           );
         }
 
         readingAnchorRef.current = anchor;
         setSavedParagraphAnchor(anchor);
-        setVerifiedReading(
-          progressResult.status === "fulfilled"
-            ? progressResult.value || null
-            : null
-        );
+        setVerifiedReading(savedProgress || null);
         setTextLoaded(true);
       } catch (error) {
         console.error("Could not load reader:", error);
