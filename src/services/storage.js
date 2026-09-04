@@ -4607,12 +4607,11 @@ export async function createGroup({
   );
 
   const generalDiscussionRef = doc(
-    collection(
-      db,
-      "groups",
-      groupRef.id,
-      "forumPosts"
-    )
+    db,
+    "groups",
+    groupRef.id,
+    "forumPosts",
+    "general-class-discussion"
   );
 
   const now = new Date().toISOString();
@@ -4723,6 +4722,100 @@ export async function createGroup({
   );
 
   return groupData;
+}
+
+
+export async function ensureGeneralClassDiscussion(groupId) {
+  const user = await requireUser();
+  const cleanGroupId = String(groupId || "");
+
+  if (!cleanGroupId) {
+    throw new Error("Missing class ID.");
+  }
+
+  const [groupSnapshot, membership] = await Promise.all([
+    getDoc(doc(db, "groups", cleanGroupId)),
+    getGroupMemberRecord(cleanGroupId, user.uid)
+  ]);
+
+  if (!groupSnapshot.exists()) {
+    throw new Error("Class not found.");
+  }
+
+  if (groupSnapshot.data()?.type !== "class") {
+    throw new Error("General Class Discussion is only available for classes.");
+  }
+
+  if (
+    !membership ||
+    ["removed", "suspended"].includes(membership.status) ||
+    !["owner", "admin", "moderator"].includes(membership.role)
+  ) {
+    throw new Error("Only teachers and aides can initialize the class discussion.");
+  }
+
+  const forumRef = collection(
+    db,
+    "groups",
+    cleanGroupId,
+    "forumPosts"
+  );
+
+  const forumSnapshot = await getDocs(forumRef);
+  const existing = forumSnapshot.docs.find((forumDoc) => {
+    const data = forumDoc.data();
+
+    return (
+      data?.isGeneralClassDiscussion === true ||
+      String(data?.title || "").trim().toLowerCase() ===
+        "general class discussion"
+    );
+  });
+
+  if (existing) {
+    return {
+      id: existing.id,
+      ...existing.data()
+    };
+  }
+
+  const now = new Date().toISOString();
+  const generalDiscussionRef = doc(
+    db,
+    "groups",
+    cleanGroupId,
+    "forumPosts",
+    "general-class-discussion"
+  );
+
+  const discussion = {
+    id: generalDiscussionRef.id,
+    groupId: cleanGroupId,
+    userId: user.uid,
+    title: "General Class Discussion",
+    body:
+      "Use this discussion for class-wide questions, announcements, and conversation.",
+    pinned: false,
+    locked: false,
+    isGeneralClassDiscussion: true,
+    forumUpCount: 0,
+    forumDownCount: 0,
+    forumScore: 0,
+    createdAtISO: now,
+    updatedAtISO: now
+  };
+
+  await setDoc(
+    generalDiscussionRef,
+    {
+      ...discussion,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    },
+    { merge: false }
+  );
+
+  return discussion;
 }
 
 
