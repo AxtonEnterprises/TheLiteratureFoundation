@@ -72,7 +72,9 @@ export default function Reader() {
   const lastPaginationKeyRef = useRef("");
   const swipeStartRef = useRef(null);
   const suppressCanvasClickRef = useRef(false);
-  const paragraphDwellRef = useRef(new Map());
+  const readingTimeBankRef = useRef(0);
+  const progressAtPageStartRef = useRef(0);
+  const progressPulseTimeoutRef = useRef(null);
 
   const requestedParagraph = useMemo(() => {
     const raw = searchParams.get("paragraph");
@@ -131,10 +133,19 @@ export default function Reader() {
   const [deletingEntryId, setDeletingEntryId] = useState(null);
 
   const [focusedNoteId, setFocusedNoteId] = useState(requestedNoteId);
+  const [progressPulse, setProgressPulse] = useState(false);
 
   useEffect(() => {
     document.body.classList.add("reader-mode");
     return () => document.body.classList.remove("reader-mode");
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (progressPulseTimeoutRef.current) {
+        window.clearTimeout(progressPulseTimeoutRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -169,7 +180,8 @@ export default function Reader() {
       setShowPageNotes(false);
       setShowAddNote(false);
       readingAnchorRef.current = 0;
-      paragraphDwellRef.current = new Map();
+      readingTimeBankRef.current = 0;
+      progressAtPageStartRef.current = 0;
       lastPaginationKeyRef.current = "";
 
       try {
@@ -418,6 +430,18 @@ export default function Reader() {
       100
     );
 
+  const progressDisplay =
+    progress.toFixed(1);
+
+  useEffect(() => {
+    if (!progressLoaded) return;
+    progressAtPageStartRef.current = progress;
+  }, [book?.id, progressLoaded]);
+
+  useEffect(() => {
+    readingTimeBankRef.current = 0;
+  }, [book?.id, pageIndex]);
+
   useEffect(() => {
     if (!book?.id || !progressLoaded || !pages[pageIndex]) return;
 
@@ -448,9 +472,11 @@ export default function Reader() {
 
   /*
    * Verified progress is paragraph-based rather than page-based.
-   * Only the next sequential paragraph is eligible for credit.
-   * Dwell time pauses while a sheet is open or the app is hidden,
-   * but previously accumulated time for that paragraph is retained.
+   * Exactly one second of active reading time earns one sequential
+   * paragraph. Reading time accumulates continuously on the current
+   * page, including while a Firestore verification is in flight.
+   * Jumping ahead never earns credit because only the next expected
+   * paragraph can be registered.
    */
   useEffect(() => {
     if (
@@ -465,22 +491,25 @@ export default function Reader() {
 
     const total = paragraphs.length;
 
-    const legacyVerified =
-      verifiedReading?.verifiedParagraphIndex !== undefined &&
-      verifiedReading?.verifiedParagraphIndex !== null
-        ? Number(verifiedReading.verifiedParagraphIndex)
-        : verifiedReading?.paragraphIndex !== undefined &&
-          verifiedReading?.paragraphIndex !== null
-          ? Number(verifiedReading.paragraphIndex)
-          : -1;
+    const storedVerifiedValue =
+      Number(
+        verifiedReading?.verifiedParagraphIndex
+      );
+
+    const legacyPositionValue =
+      Number(
+        verifiedReading?.paragraphIndex
+      );
 
     const verifiedIndex =
       Math.max(
         -1,
         Math.min(
-          Number.isFinite(legacyVerified)
-            ? Math.floor(legacyVerified)
-            : -1,
+          Number.isFinite(storedVerifiedValue)
+            ? Math.floor(storedVerifiedValue)
+            : Number.isFinite(legacyPositionValue)
+              ? Math.floor(legacyPositionValue)
+              : -1,
           total - 1
         )
       );
@@ -505,22 +534,7 @@ export default function Reader() {
       return;
     }
 
-    const words =
-      String(paragraphs[candidate] || "")
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean)
-        .length;
-
-    const requiredMs =
-      Math.min(
-        15000,
-        Math.max(
-          3000,
-          words * 180
-        )
-      );
-
+    const requiredMs = 1000;
     let lastTick = performance.now();
     let registering = false;
 
@@ -530,28 +544,21 @@ export default function Reader() {
         const delta = Math.max(0, now - lastTick);
         lastTick = now;
 
-        if (
-          document.visibilityState !== "visible" ||
-          showToc ||
-          showPageNotes ||
-          showAddNote ||
-          registering
-        ) {
-          return;
+        const activelyReading =
+          document.visibilityState === "visible" &&
+          !showToc &&
+          !showPageNotes &&
+          !showAddNote;
+
+        if (activelyReading) {
+          readingTimeBankRef.current += delta;
         }
 
-        const elapsed =
-          paragraphDwellRef.current.get(candidate) || 0;
-
-        const nextElapsed =
-          elapsed + delta;
-
-        paragraphDwellRef.current.set(
-          candidate,
-          nextElapsed
-        );
-
-        if (nextElapsed < requiredMs) {
+        if (
+          !activelyReading ||
+          registering ||
+          readingTimeBankRef.current < requiredMs
+        ) {
           return;
         }
 
@@ -566,7 +573,11 @@ export default function Reader() {
             );
 
           if (result?.advanced) {
-            paragraphDwellRef.current.delete(candidate);
+            readingTimeBankRef.current =
+              Math.max(
+                0,
+                readingTimeBankRef.current - requiredMs
+              );
 
             setVerifiedReading(
               (current) => {
@@ -588,16 +599,12 @@ export default function Reader() {
                   );
 
                 const currentVerified =
-                  Number.isFinite(
-                    currentVerifiedValue
-                  )
+                  Number.isFinite(currentVerifiedValue)
                     ? currentVerifiedValue
                     : -1;
 
                 const resultVerified =
-                  Number.isFinite(
-                    resultVerifiedValue
-                  )
+                  Number.isFinite(resultVerifiedValue)
                     ? resultVerifiedValue
                     : -1;
 
@@ -610,14 +617,12 @@ export default function Reader() {
                       resultVerified
                     ),
                   percentComplete:
-                    Math.max(
-                      Number(
-                        current.percentComplete
-                      ) || 0,
-                      Number(
-                        result.percentComplete
-                      ) || 0
-                    )
+                    result.startedReread
+                      ? Number(result.percentComplete) || 0
+                      : Math.max(
+                          Number(current.percentComplete) || 0,
+                          Number(result.percentComplete) || 0
+                        )
                 };
               }
             );
@@ -648,7 +653,7 @@ export default function Reader() {
           registering = false;
         }
       },
-      250
+      100
     );
 
     return () =>
@@ -684,8 +689,34 @@ export default function Reader() {
     };
   }, [book?.id]);
 
+  function confirmProgressOnNavigation() {
+    const previous =
+      Number(progressAtPageStartRef.current) || 0;
+
+    if (progress > previous + 0.0001) {
+      setProgressPulse(true);
+
+      if (progressPulseTimeoutRef.current) {
+        window.clearTimeout(
+          progressPulseTimeoutRef.current
+        );
+      }
+
+      progressPulseTimeoutRef.current =
+        window.setTimeout(() => {
+          setProgressPulse(false);
+          progressPulseTimeoutRef.current = null;
+        }, 1100);
+    }
+
+    progressAtPageStartRef.current = progress;
+  }
+
   function goToPage(next) {
     const safe = Math.min(Math.max(next, 0), totalPages - 1);
+    if (safe !== pageIndex) {
+      confirmProgressOnNavigation();
+    }
     const target = pages[safe]?.startParagraphIndex;
     if (target !== undefined) readingAnchorRef.current = target;
     setPageIndex(safe);
@@ -697,6 +728,9 @@ export default function Reader() {
       page.blocks.some((block) => block.paragraphIndex === target)
     );
     if (targetPage >= 0) {
+      if (targetPage !== pageIndex) {
+        confirmProgressOnNavigation();
+      }
       readingAnchorRef.current = target;
       setPageIndex(targetPage);
     }
@@ -1082,11 +1116,29 @@ export default function Reader() {
             aria-label={
               loading
                 ? "Verified reading progress"
-                : `Go to verified reading progress, ${progress}%`
+                : `Go to verified reading progress, ${progressDisplay}%`
             }
             title="Go to your verified reading place"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: progressPulse ? "0.25rem" : 0,
+              transform: progressPulse
+                ? "scale(1.08)"
+                : "scale(1)",
+              transition:
+                "transform 180ms ease, opacity 180ms ease",
+              opacity: progressPulse ? 1 : 0.92
+            }}
           >
-            {loading ? "" : `${progress}%`}
+            {loading ? "" : `${progressDisplay}%`}
+            {progressPulse && (
+              <Check
+                size={14}
+                strokeWidth={2.5}
+                aria-hidden="true"
+              />
+            )}
           </button>
         </div>
 

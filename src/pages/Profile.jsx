@@ -2433,6 +2433,9 @@ export default function Profile() {
                             100
                           );
 
+                        const percentDisplay =
+                          percent.toFixed(1);
+
                         const completedReads =
                           Math.max(
                             0,
@@ -2602,7 +2605,7 @@ export default function Profile() {
                                     />
 
                                     <strong>
-                                      {percent}%
+                                      {percentDisplay}%
                                       {completedReads > 0
                                         ? ` · Read ${completedReads}×`
                                         : ""}
