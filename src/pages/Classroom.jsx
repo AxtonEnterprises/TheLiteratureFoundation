@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   BookOpen,
   CalendarDays,
+  CheckCircle2,
+  ClipboardCheck,
   GraduationCap,
   Link2,
   MessageCircle,
@@ -61,7 +63,11 @@ import {
   deleteClassAssignment,
   getClassAssignmentProgress,
   getClassAssignments,
+  getClassTestAnswerKey,
   getMyClassAssignmentProgress,
+  getMyClassTestSubmission,
+  gradeClassTestSubmission,
+  submitClassTest,
   updateClassAssignment
 } from "../services/classStorage.js";
 
@@ -120,6 +126,27 @@ function classRoleLabel(role) {
   return "Student";
 }
 
+function assignmentType(assignment) {
+  return assignment?.type === "test" ? "test" : "reading";
+}
+
+function makeQuestion(index = 0) {
+  return {
+    id: `q${Date.now()}_${index}_${Math.random().toString(36).slice(2, 7)}`,
+    type: "multiple_choice",
+    prompt: "",
+    points: 1,
+    options: ["", ""],
+    correctOptionIndex: 0,
+    gradingNotes: ""
+  };
+}
+
+function scoreLabel(score, maxPoints) {
+  if (score === null || score === undefined) return "Awaiting grade";
+  return `${Number(score) || 0}/${Number(maxPoints) || 0} points`;
+}
+
 function ProgressBar({ value }) {
   const safe = Math.min(Math.max(Number(value) || 0, 0), 100);
 
@@ -174,6 +201,13 @@ export default function Classroom({ initialGroup }) {
   const [showStudents, setShowStudents] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
+  const [showTest, setShowTest] = useState(false);
+  const [testAnswers, setTestAnswers] = useState({});
+  const [testSubmission, setTestSubmission] = useState(null);
+  const [reviewStudent, setReviewStudent] = useState(null);
+  const [reviewAnswerKey, setReviewAnswerKey] = useState(null);
+  const [manualScores, setManualScores] = useState({});
+  const [gradeFeedback, setGradeFeedback] = useState("");
 
   const [shareInvite, setShareInvite] = useState(null);
   const [shareInviteLoading, setShareInviteLoading] = useState(false);
@@ -186,13 +220,15 @@ export default function Classroom({ initialGroup }) {
   const [bookSearchLoading, setBookSearchLoading] = useState(false);
 
   const [assignmentForm, setAssignmentForm] = useState({
+    type: "reading",
     bookId: "",
     title: "",
     author: "",
     instructions: "",
     dueAt: "",
     startParagraphIndex: 0,
-    endParagraphIndex: ""
+    endParagraphIndex: "",
+    questions: [makeQuestion(0)]
   });
 
   const [topicTitle, setTopicTitle] = useState("");
@@ -498,13 +534,15 @@ export default function Classroom({ initialGroup }) {
 
   function clearAssignmentForm() {
     setAssignmentForm({
+      type: "reading",
       bookId: "",
       title: "",
       author: "",
       instructions: "",
       dueAt: "",
       startParagraphIndex: 0,
-      endParagraphIndex: ""
+      endParagraphIndex: "",
+      questions: [makeQuestion(0)]
     });
 
     setEditingAssignmentId(null);
@@ -567,19 +605,144 @@ export default function Classroom({ initialGroup }) {
     setBookSearchStatus(`Selected “${book.title || "book"}.”`);
   }
 
-  function beginEditAssignment(assignment) {
-    setAssignmentForm({
-      bookId: assignment.bookId || "",
-      title: assignment.title || "",
-      author: assignment.author || "",
-      instructions: assignment.instructions || "",
-      dueAt: assignment.dueAt || "",
-      startParagraphIndex: assignment.startParagraphIndex ?? 0,
-      endParagraphIndex: assignment.endParagraphIndex ?? ""
-    });
+  async function beginEditAssignment(assignment) {
+    if (assignmentType(assignment) === "test") {
+      try {
+        setBusy(true);
+        const key = await getClassTestAnswerKey(groupId, assignment.id);
+        const answers = key?.answers || {};
+
+        setAssignmentForm({
+          type: "test",
+          bookId: "",
+          title: assignment.title || "",
+          author: "",
+          instructions: assignment.instructions || "",
+          dueAt: assignment.dueAt || "",
+          startParagraphIndex: 0,
+          endParagraphIndex: "",
+          questions: (assignment.questions || []).map((question, index) => ({
+            ...question,
+            id: question.id || `q${index + 1}`,
+            options: question.options || ["", ""],
+            correctOptionIndex:
+              answers?.[question.id]?.correctOptionIndex ?? 0,
+            gradingNotes:
+              answers?.[question.id]?.gradingNotes || ""
+          }))
+        });
+      } catch (error) {
+        setStatus(error?.message || "We couldn't load the test answer key.");
+        return;
+      } finally {
+        setBusy(false);
+      }
+    } else {
+      setAssignmentForm({
+        type: "reading",
+        bookId: assignment.bookId || "",
+        title: assignment.title || "",
+        author: assignment.author || "",
+        instructions: assignment.instructions || "",
+        dueAt: assignment.dueAt || "",
+        startParagraphIndex: assignment.startParagraphIndex ?? 0,
+        endParagraphIndex: assignment.endParagraphIndex ?? "",
+        questions: [makeQuestion(0)]
+      });
+    }
 
     setEditingAssignmentId(assignment.id);
     setShowCreateAssignment(true);
+  }
+
+  function updateTestQuestion(questionId, updates) {
+    setAssignmentForm((current) => ({
+      ...current,
+      questions: current.questions.map((question) =>
+        question.id === questionId
+          ? { ...question, ...updates }
+          : question
+      )
+    }));
+  }
+
+  function addTestQuestion() {
+    setAssignmentForm((current) => ({
+      ...current,
+      questions: [...current.questions, makeQuestion(current.questions.length)]
+    }));
+  }
+
+  function removeTestQuestion(questionId) {
+    setAssignmentForm((current) => ({
+      ...current,
+      questions:
+        current.questions.length > 1
+          ? current.questions.filter((question) => question.id !== questionId)
+          : current.questions
+    }));
+  }
+
+  function updateTestOption(questionId, optionIndex, value) {
+    setAssignmentForm((current) => ({
+      ...current,
+      questions: current.questions.map((question) => {
+        if (question.id !== questionId) return question;
+        const options = [...(question.options || [])];
+        options[optionIndex] = value;
+        return { ...question, options };
+      })
+    }));
+  }
+
+  function addTestOption(questionId) {
+    setAssignmentForm((current) => ({
+      ...current,
+      questions: current.questions.map((question) =>
+        question.id === questionId && (question.options || []).length < 8
+          ? { ...question, options: [...(question.options || []), ""] }
+          : question
+      )
+    }));
+  }
+
+  function removeTestOption(questionId, optionIndex) {
+    setAssignmentForm((current) => ({
+      ...current,
+      questions: current.questions.map((question) => {
+        if (question.id !== questionId || (question.options || []).length <= 2) {
+          return question;
+        }
+        const options = question.options.filter((_, index) => index !== optionIndex);
+        let correctOptionIndex = Number(question.correctOptionIndex) || 0;
+        if (correctOptionIndex === optionIndex) correctOptionIndex = 0;
+        if (correctOptionIndex > optionIndex) correctOptionIndex -= 1;
+        return { ...question, options, correctOptionIndex };
+      })
+    }));
+  }
+
+  function assignmentPayload() {
+    if (assignmentForm.type !== "test") return assignmentForm;
+
+    const answerKey = {};
+    const questions = assignmentForm.questions.map((question) => {
+      answerKey[question.id] = question.type === "multiple_choice"
+        ? { correctOptionIndex: Number(question.correctOptionIndex) || 0 }
+        : { gradingNotes: question.gradingNotes || "" };
+
+      return {
+        id: question.id,
+        type: question.type,
+        prompt: question.prompt,
+        points: question.points,
+        ...(question.type === "multiple_choice"
+          ? { options: question.options || [] }
+          : {})
+      };
+    });
+
+    return { ...assignmentForm, questions, answerKey };
   }
 
   async function saveAssignment(event) {
@@ -598,11 +761,11 @@ export default function Classroom({ initialGroup }) {
         await updateClassAssignment(
           groupId,
           editingAssignmentId,
-          assignmentForm
+          assignmentPayload()
         );
         setStatus("Assignment updated.");
       } else {
-        const id = await createClassAssignment(groupId, assignmentForm);
+        const id = await createClassAssignment(groupId, assignmentPayload());
         await refreshCore();
 
         const nextAssignments = await getClassAssignments(groupId);
@@ -634,6 +797,100 @@ export default function Classroom({ initialGroup }) {
       setStatus("Assignment deleted.");
     } catch (error) {
       setStatus(error?.message || "We couldn't delete that assignment.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openTest(assignment) {
+    try {
+      setBusy(true);
+      setStatus("");
+      const submission = await getMyClassTestSubmission(groupId, assignment.id);
+      setTestSubmission(submission);
+      setTestAnswers(submission?.answers || {});
+      setShowTest(true);
+    } catch (error) {
+      setStatus(error?.message || "We couldn't open that test.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitTest(event) {
+    event.preventDefault();
+    if (!selectedAssignment || assignmentType(selectedAssignment) !== "test") return;
+
+    if (!window.confirm("Submit this test? Answers cannot be changed after submission.")) {
+      return;
+    }
+
+    try {
+      setBusy(true);
+      const submission = await submitClassTest(
+        groupId,
+        selectedAssignment.id,
+        testAnswers
+      );
+      setTestSubmission(submission);
+      setStatus("Test submitted.");
+      const progress = await getMyClassAssignmentProgress(groupId, assignments);
+      setMyAssignmentProgress(progress);
+      const percentages = assignments.map((assignment) =>
+        Number(progress?.[assignment.id]?.assignmentPercent) || 0
+      );
+      setMyClassProgress({
+        percent: assignments.length
+          ? Math.round(percentages.reduce((sum, value) => sum + value, 0) / assignments.length)
+          : 0,
+        completed: percentages.filter((value) => value >= 100).length,
+        total: assignments.length
+      });
+    } catch (error) {
+      setStatus(error?.message || "We couldn't submit that test.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openStudentTestReview(student) {
+    try {
+      setBusy(true);
+      const key = await getClassTestAnswerKey(groupId, selectedAssignment.id);
+      setReviewAnswerKey(key?.answers || {});
+      setReviewStudent(student);
+      setManualScores(student.submission?.manualScores || {});
+      setGradeFeedback(student.submission?.feedback || "");
+    } catch (error) {
+      setStatus(error?.message || "We couldn't load that submission.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveTestGrade(event) {
+    event.preventDefault();
+    if (!reviewStudent || !selectedAssignment) return;
+
+    try {
+      setBusy(true);
+      await gradeClassTestSubmission(
+        groupId,
+        selectedAssignment.id,
+        reviewStudent.userId,
+        { manualScores, feedback: gradeFeedback }
+      );
+      const rows = await getClassAssignmentProgress(
+        groupId,
+        members,
+        selectedAssignment
+      );
+      setStudentProgress(rows);
+      setReviewStudent(null);
+      setReviewAnswerKey(null);
+      setStatus("Test graded.");
+    } catch (error) {
+      setStatus(error?.message || "We couldn't save that grade.");
     } finally {
       setBusy(false);
     }
@@ -1358,7 +1615,7 @@ export default function Classroom({ initialGroup }) {
                       className="classroom-assignment-reel"
                     >
                       <div className="classroom-assignment-card">
-                        <p className="eyebrow">Assignment · Level 0</p>
+                        <p className="eyebrow">{assignmentType(assignment) === "test" ? "Test" : "Assignment"} · Level 0</p>
 
                         <h1>{assignment.title}</h1>
 
@@ -1374,20 +1631,21 @@ export default function Classroom({ initialGroup }) {
                             {formatDate(assignment.dueAt)}
                           </span>
 
-                          <span>
-                            Paragraph{" "}
-                            {Number(
-                              assignment.startParagraphIndex || 0
-                            ) + 1}
-                            {assignment.endParagraphIndex !== null &&
-                            assignment.endParagraphIndex !== undefined
-                              ? `–${
-                                  Number(
-                                    assignment.endParagraphIndex
-                                  ) + 1
-                                }`
-                              : " onward"}
-                          </span>
+                          {assignmentType(assignment) === "test" ? (
+                            <span>
+                              <ClipboardCheck size={14} />
+                              {assignment.questionCount || assignment.questions?.length || 0} questions · {assignment.totalPoints || 0} points
+                            </span>
+                          ) : (
+                            <span>
+                              Paragraph{" "}
+                              {Number(assignment.startParagraphIndex || 0) + 1}
+                              {assignment.endParagraphIndex !== null &&
+                              assignment.endParagraphIndex !== undefined
+                                ? `–${Number(assignment.endParagraphIndex) + 1}`
+                                : " onward"}
+                            </span>
+                          )}
                         </div>
 
                         {assignment.instructions && (
@@ -1399,22 +1657,28 @@ export default function Classroom({ initialGroup }) {
                         {!canTeach && (
                           <div className="classroom-current-progress">
                             <div>
-                              <small>Your progress</small>
+                              <small>{assignmentType(assignment) === "test" ? "Your test" : "Your progress"}</small>
                               <strong>
-                                {mine?.assignmentPercent || 0}%
+                                {assignmentType(assignment) === "test"
+                                  ? (mine?.graded
+                                      ? scoreLabel(mine.score, mine.maxPoints)
+                                      : mine?.complete ? "Submitted" : "Not started")
+                                  : `${mine?.assignmentPercent || 0}%`}
                               </strong>
                             </div>
 
-                            <ProgressBar
-                              value={mine?.assignmentPercent || 0}
-                            />
+                            <ProgressBar value={mine?.assignmentPercent || 0} />
 
                             <small>
-                              {mine?.complete
-                                ? "Complete"
-                                : mine?.progress
-                                  ? "In progress"
-                                  : "Not started"}
+                              {assignmentType(assignment) === "test"
+                                ? mine?.graded
+                                  ? "Graded"
+                                  : mine?.complete ? "Submitted · awaiting grade" : "Not started"
+                                : mine?.complete
+                                  ? "Complete"
+                                  : mine?.progress
+                                    ? "In progress"
+                                    : "Not started"}
                             </small>
                           </div>
                         )}
@@ -1433,15 +1697,26 @@ export default function Classroom({ initialGroup }) {
                         )}
 
                         <div className="classroom-assignment-actions">
-                          <Link
-                            to={`/read/reader/${assignment.bookId}?paragraph=${
-                              assignment.startParagraphIndex || 0
-                            }`}
-                            className="button primary"
-                          >
-                            <BookOpen size={16} />
-                            Read
-                          </Link>
+                          {assignmentType(assignment) === "test" ? (
+                            !canTeach && (
+                              <button
+                                type="button"
+                                className="button primary"
+                                onClick={() => openTest(assignment)}
+                              >
+                                <ClipboardCheck size={16} />
+                                {mine?.complete ? "View Test" : "Take Test"}
+                              </button>
+                            )
+                          ) : (
+                            <Link
+                              to={`/read/reader/${assignment.bookId}?paragraph=${assignment.startParagraphIndex || 0}`}
+                              className="button primary"
+                            >
+                              <BookOpen size={16} />
+                              Read
+                            </Link>
+                          )}
 
                           {canTeach && (
                             <>
@@ -1957,6 +2232,26 @@ export default function Classroom({ initialGroup }) {
             </div>
 
             {!editingAssignmentId && (
+              <label>
+                Assignment type
+                <select
+                  value={assignmentForm.type}
+                  onChange={(event) =>
+                    setAssignmentForm((current) => ({
+                      ...current,
+                      type: event.target.value,
+                      bookId: event.target.value === "test" ? "" : current.bookId,
+                      author: event.target.value === "test" ? "" : current.author
+                    }))
+                  }
+                >
+                  <option value="reading">Reading</option>
+                  <option value="test">Test</option>
+                </select>
+              </label>
+            )}
+
+            {!editingAssignmentId && assignmentForm.type === "reading" && (
               <>
                 <label>
                   Find a book
@@ -2019,18 +2314,20 @@ export default function Classroom({ initialGroup }) {
               />
             </label>
 
-            <label>
-              Author
-              <input
-                value={assignmentForm.author}
-                onChange={(event) =>
-                  setAssignmentForm((current) => ({
-                    ...current,
-                    author: event.target.value
-                  }))
-                }
-              />
-            </label>
+            {assignmentForm.type === "reading" && (
+              <label>
+                Author
+                <input
+                  value={assignmentForm.author}
+                  onChange={(event) =>
+                    setAssignmentForm((current) => ({
+                      ...current,
+                      author: event.target.value
+                    }))
+                  }
+                />
+              </label>
+            )}
 
             <label>
               Instructions
@@ -2046,51 +2343,179 @@ export default function Classroom({ initialGroup }) {
               />
             </label>
 
-            <div className="class-assignment-form-grid">
-              <label>
-                Start paragraph
-                <input
-                  type="number"
-                  min="0"
-                  value={assignmentForm.startParagraphIndex}
-                  onChange={(event) =>
-                    setAssignmentForm((current) => ({
-                      ...current,
-                      startParagraphIndex: event.target.value
-                    }))
-                  }
-                />
-              </label>
+            {assignmentForm.type === "reading" ? (
+              <div className="class-assignment-form-grid">
+                <label>
+                  Start paragraph
+                  <input
+                    type="number"
+                    min="0"
+                    value={assignmentForm.startParagraphIndex}
+                    onChange={(event) =>
+                      setAssignmentForm((current) => ({
+                        ...current,
+                        startParagraphIndex: event.target.value
+                      }))
+                    }
+                  />
+                </label>
 
-              <label>
-                End paragraph
-                <input
-                  type="number"
-                  min="0"
-                  value={assignmentForm.endParagraphIndex}
-                  onChange={(event) =>
-                    setAssignmentForm((current) => ({
-                      ...current,
-                      endParagraphIndex: event.target.value
-                    }))
-                  }
-                />
-              </label>
+                <label>
+                  End paragraph
+                  <input
+                    type="number"
+                    min="0"
+                    value={assignmentForm.endParagraphIndex}
+                    onChange={(event) =>
+                      setAssignmentForm((current) => ({
+                        ...current,
+                        endParagraphIndex: event.target.value
+                      }))
+                    }
+                  />
+                </label>
 
-              <label>
-                Due date
-                <input
-                  type="date"
-                  value={assignmentForm.dueAt}
-                  onChange={(event) =>
-                    setAssignmentForm((current) => ({
-                      ...current,
-                      dueAt: event.target.value
-                    }))
-                  }
-                />
-              </label>
-            </div>
+                <label>
+                  Due date
+                  <input
+                    type="date"
+                    value={assignmentForm.dueAt}
+                    onChange={(event) =>
+                      setAssignmentForm((current) => ({
+                        ...current,
+                        dueAt: event.target.value
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+            ) : (
+              <>
+                <label>
+                  Due date
+                  <input
+                    type="date"
+                    value={assignmentForm.dueAt}
+                    onChange={(event) =>
+                      setAssignmentForm((current) => ({
+                        ...current,
+                        dueAt: event.target.value
+                      }))
+                    }
+                  />
+                </label>
+
+                <div className="class-test-builder">
+                  {(assignmentForm.questions || []).map((question, questionIndex) => (
+                    <section key={question.id} className="panel" style={{ padding: "1rem", marginBottom: "0.85rem" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "center" }}>
+                        <strong>Question {questionIndex + 1}</strong>
+                        <button
+                          type="button"
+                          className="icon-link danger"
+                          onClick={() => removeTestQuestion(question.id)}
+                          disabled={assignmentForm.questions.length <= 1}
+                          title="Remove question"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+
+                      <label>
+                        Question type
+                        <select
+                          value={question.type}
+                          onChange={(event) =>
+                            updateTestQuestion(question.id, {
+                              type: event.target.value,
+                              options: event.target.value === "multiple_choice"
+                                ? (question.options?.length ? question.options : ["", ""])
+                                : question.options
+                            })
+                          }
+                        >
+                          <option value="multiple_choice">Multiple choice</option>
+                          <option value="short_answer">Short answer</option>
+                        </select>
+                      </label>
+
+                      <label>
+                        Question
+                        <textarea
+                          rows={2}
+                          required
+                          value={question.prompt}
+                          onChange={(event) => updateTestQuestion(question.id, { prompt: event.target.value })}
+                        />
+                      </label>
+
+                      <label>
+                        Points
+                        <input
+                          type="number"
+                          min="1"
+                          max="1000"
+                          value={question.points}
+                          onChange={(event) => updateTestQuestion(question.id, { points: event.target.value })}
+                        />
+                      </label>
+
+                      {question.type === "multiple_choice" ? (
+                        <div>
+                          <strong>Answer choices</strong>
+                          {(question.options || []).map((option, optionIndex) => (
+                            <div key={optionIndex} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: "0.5rem", alignItems: "center", marginTop: "0.45rem" }}>
+                              <input
+                                type="radio"
+                                name={`correct-${question.id}`}
+                                checked={Number(question.correctOptionIndex) === optionIndex}
+                                onChange={() => updateTestQuestion(question.id, { correctOptionIndex: optionIndex })}
+                                aria-label={`Mark choice ${optionIndex + 1} correct`}
+                              />
+                              <input
+                                required
+                                value={option}
+                                placeholder={`Choice ${optionIndex + 1}`}
+                                onChange={(event) => updateTestOption(question.id, optionIndex, event.target.value)}
+                              />
+                              <button
+                                type="button"
+                                className="icon-link"
+                                onClick={() => removeTestOption(question.id, optionIndex)}
+                                disabled={(question.options || []).length <= 2}
+                                title="Remove choice"
+                              >
+                                <X size={15} />
+                              </button>
+                            </div>
+                          ))}
+                          <button type="button" className="button secondary" onClick={() => addTestOption(question.id)} style={{ marginTop: "0.6rem" }}>
+                            <Plus size={15} /> Add Choice
+                          </button>
+                          <small className="muted" style={{ display: "block", marginTop: "0.45rem" }}>
+                            Select the radio button beside the correct answer.
+                          </small>
+                        </div>
+                      ) : (
+                        <label>
+                          Answer key / grading notes
+                          <textarea
+                            rows={2}
+                            value={question.gradingNotes || ""}
+                            placeholder="Optional notes visible only to teachers and aides"
+                            onChange={(event) => updateTestQuestion(question.id, { gradingNotes: event.target.value })}
+                          />
+                        </label>
+                      )}
+                    </section>
+                  ))}
+
+                  <button type="button" className="button secondary" onClick={addTestQuestion}>
+                    <Plus size={16} /> Add Question
+                  </button>
+                </div>
+              </>
+            )}
 
             <button
               className="button primary"
@@ -2099,7 +2524,9 @@ export default function Classroom({ initialGroup }) {
               <Save size={16} />
               {editingAssignmentId
                 ? "Save Changes"
-                : "Create Assignment"}
+                : assignmentForm.type === "test"
+                  ? "Create Test"
+                  : "Create Assignment"}
             </button>
           </form>
         </div>
@@ -2265,26 +2692,38 @@ export default function Classroom({ initialGroup }) {
                     </Link>
 
                     <div>
-                      <ProgressBar
-                        value={student.assignmentPercent}
-                      />
+                      <ProgressBar value={student.assignmentPercent} />
                       <small className="muted">
-                        {student.assignmentPercent}% ·{" "}
-                        {student.complete
-                          ? "Complete"
-                          : student.progress
-                            ? "In progress"
-                            : "Not started"}
+                        {assignmentType(selectedAssignment) === "test"
+                          ? student.submission
+                            ? student.graded
+                              ? `Graded · ${scoreLabel(student.score, student.maxPoints)}`
+                              : "Submitted · awaiting grade"
+                            : "Not submitted"
+                          : `${student.assignmentPercent}% · ${student.complete ? "Complete" : student.progress ? "In progress" : "Not started"}`}
                       </small>
                     </div>
 
-                    <small className="muted">
-                      {student.progress?.updatedAtISO
-                        ? `Last read ${formatDateTime(
-                            student.progress.updatedAtISO
-                          )}`
-                        : "Not started"}
-                    </small>
+                    {assignmentType(selectedAssignment) === "test" ? (
+                      student.submission ? (
+                        <button
+                          type="button"
+                          className="button secondary"
+                          onClick={() => openStudentTestReview(student)}
+                        >
+                          <ClipboardCheck size={15} />
+                          {student.graded ? "Review Grade" : "Grade Test"}
+                        </button>
+                      ) : (
+                        <small className="muted">Not submitted</small>
+                      )
+                    ) : (
+                      <small className="muted">
+                        {student.progress?.updatedAtISO
+                          ? `Last read ${formatDateTime(student.progress.updatedAtISO)}`
+                          : "Not started"}
+                      </small>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2292,6 +2731,134 @@ export default function Classroom({ initialGroup }) {
               <p className="muted">No students are enrolled yet.</p>
             )}
           </div>
+        </div>
+      )}
+
+      {showTest && selectedAssignment && assignmentType(selectedAssignment) === "test" && !canTeach && (
+        <div className="group-compose-modal">
+          <div className="group-compose-backdrop" onClick={() => setShowTest(false)} />
+          <form className="group-compose-sheet" onSubmit={submitTest}>
+            <div className="group-compose-header">
+              <div>
+                <p className="eyebrow">Test</p>
+                <h2>{selectedAssignment.title}</h2>
+              </div>
+              <button type="button" onClick={() => setShowTest(false)} aria-label="Close">
+                <X size={19} />
+              </button>
+            </div>
+
+            {selectedAssignment.instructions && <p>{selectedAssignment.instructions}</p>}
+            {testSubmission && (
+              <div className="status">
+                <CheckCircle2 size={16} /> Submitted
+                {testSubmission.graded
+                  ? ` · ${scoreLabel(testSubmission.score, testSubmission.maxPoints)}`
+                  : " · Awaiting grade"}
+              </div>
+            )}
+
+            {(selectedAssignment.questions || []).map((question, index) => (
+              <section key={question.id} className="panel" style={{ padding: "1rem", marginBottom: "0.8rem" }}>
+                <strong>{index + 1}. {question.prompt}</strong>
+                <small className="muted" style={{ display: "block", marginBottom: "0.5rem" }}>{question.points} point{Number(question.points) === 1 ? "" : "s"}</small>
+                {question.type === "multiple_choice" ? (
+                  <div style={{ display: "grid", gap: "0.45rem" }}>
+                    {(question.options || []).map((option, optionIndex) => (
+                      <label key={optionIndex} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                        <input
+                          type="radio"
+                          name={`answer-${question.id}`}
+                          checked={Number(testAnswers[question.id]) === optionIndex}
+                          disabled={Boolean(testSubmission)}
+                          onChange={() => setTestAnswers((current) => ({ ...current, [question.id]: optionIndex }))}
+                        />
+                        <span>{option}</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <textarea
+                    rows={4}
+                    value={testAnswers[question.id] || ""}
+                    disabled={Boolean(testSubmission)}
+                    onChange={(event) => setTestAnswers((current) => ({ ...current, [question.id]: event.target.value }))}
+                    placeholder="Your answer"
+                  />
+                )}
+              </section>
+            ))}
+
+            {!testSubmission && (
+              <button className="button primary" disabled={busy}>
+                <Send size={16} /> Submit Test
+              </button>
+            )}
+          </form>
+        </div>
+      )}
+
+      {reviewStudent && selectedAssignment && assignmentType(selectedAssignment) === "test" && canTeach && (
+        <div className="group-compose-modal">
+          <div className="group-compose-backdrop" onClick={() => setReviewStudent(null)} />
+          <form className="group-compose-sheet" onSubmit={saveTestGrade}>
+            <div className="group-compose-header">
+              <div>
+                <p className="eyebrow">{selectedAssignment.title}</p>
+                <h2>Grade {memberName(reviewStudent)}</h2>
+              </div>
+              <button type="button" onClick={() => setReviewStudent(null)} aria-label="Close">
+                <X size={19} />
+              </button>
+            </div>
+
+            {(selectedAssignment.questions || []).map((question, index) => {
+              const answer = reviewStudent.submission?.answers?.[question.id];
+              const correctIndex = reviewAnswerKey?.[question.id]?.correctOptionIndex;
+              const isCorrect = question.type === "multiple_choice" && Number(answer) === Number(correctIndex);
+
+              return (
+                <section key={question.id} className="panel" style={{ padding: "1rem", marginBottom: "0.8rem" }}>
+                  <strong>{index + 1}. {question.prompt}</strong>
+                  {question.type === "multiple_choice" ? (
+                    <>
+                      <p>Student: <strong>{question.options?.[Number(answer)] ?? "No answer"}</strong></p>
+                      <small className="muted">
+                        {isCorrect ? `Correct · ${question.points} points` : `Incorrect · correct answer: ${question.options?.[Number(correctIndex)] ?? "—"}`}
+                      </small>
+                    </>
+                  ) : (
+                    <>
+                      <p style={{ whiteSpace: "pre-wrap" }}>{answer || "No answer"}</p>
+                      {reviewAnswerKey?.[question.id]?.gradingNotes && (
+                        <small className="muted">Answer key: {reviewAnswerKey[question.id].gradingNotes}</small>
+                      )}
+                      <label>
+                        Points awarded (max {question.points})
+                        <input
+                          type="number"
+                          min="0"
+                          max={question.points}
+                          step="0.5"
+                          value={manualScores[question.id] ?? ""}
+                          onChange={(event) => setManualScores((current) => ({ ...current, [question.id]: event.target.value }))}
+                        />
+                      </label>
+                    </>
+                  )}
+                </section>
+              );
+            })}
+
+            <label>
+              Feedback
+              <textarea rows={3} value={gradeFeedback} onChange={(event) => setGradeFeedback(event.target.value)} />
+            </label>
+
+            <button className="button primary" disabled={busy}>
+              <Save size={16} /> Save Grade
+            </button>
+          </form>
         </div>
       )}
 
