@@ -1,5 +1,4 @@
 import {
-  addDoc,
   collection,
   deleteDoc,
   doc,
@@ -10,6 +9,7 @@ import {
   runTransaction,
   serverTimestamp,
   updateDoc,
+  writeBatch,
   where
 } from "firebase/firestore";
 
@@ -210,8 +210,75 @@ function invalidateAssignmentCache(classId, bookId = null) {
 }
 
 /* ============================================================
-   ASSIGNMENTS
+   ASSIGNMENTS + TESTS
 ============================================================ */
+
+function assignmentType(assignment) {
+  return assignment?.type === "test" ? "test" : "reading";
+}
+
+function cleanTestQuestions(questions) {
+  if (!Array.isArray(questions)) return [];
+
+  return questions
+    .map((question, index) => {
+      const type = question?.type === "short_answer"
+        ? "short_answer"
+        : "multiple_choice";
+      const prompt = cleanString(question?.prompt);
+      const points = Math.max(Math.round(Number(question?.points) || 1), 1);
+      const id = cleanString(question?.id) || `q${index + 1}`;
+
+      if (!prompt) return null;
+
+      if (type === "multiple_choice") {
+        const options = Array.isArray(question?.options)
+          ? question.options.map(cleanString).filter(Boolean).slice(0, 8)
+          : [];
+
+        if (options.length < 2) return null;
+
+        return { id, type, prompt, points, options };
+      }
+
+      return { id, type, prompt, points };
+    })
+    .filter(Boolean)
+    .slice(0, 100);
+}
+
+function cleanAnswerKey(questions, answerKey = {}) {
+  const result = {};
+
+  for (const question of questions) {
+    const raw = answerKey?.[question.id] || {};
+
+    if (question.type === "multiple_choice") {
+      const correctOptionIndex = Math.max(
+        0,
+        Math.min(
+          question.options.length - 1,
+          Math.round(Number(raw.correctOptionIndex) || 0)
+        )
+      );
+
+      result[question.id] = { correctOptionIndex };
+    } else {
+      result[question.id] = {
+        gradingNotes: cleanString(raw.gradingNotes).slice(0, 3000)
+      };
+    }
+  }
+
+  return result;
+}
+
+function totalTestPoints(questions) {
+  return (questions || []).reduce(
+    (sum, question) => sum + Math.max(Number(question.points) || 0, 0),
+    0
+  );
+}
 
 export async function getClassAssignments(classId) {
   const assignmentsRef = collection(
@@ -227,20 +294,72 @@ export async function getClassAssignments(classId) {
 
   return snapshot.docs.map((assignmentDoc) => ({
     id: assignmentDoc.id,
+    type: assignmentType(assignmentDoc.data()),
     ...assignmentDoc.data()
   }));
 }
 
 export async function createClassAssignment(classId, assignment) {
   const user = requireUser();
-
-  const bookId = cleanString(assignment.bookId);
+  const type = assignmentType(assignment);
   const title = cleanString(assignment.title);
 
-  if (!bookId || !title) {
-    throw new Error(
-      "Choose a book before creating the assignment."
+  if (!title) {
+    throw new Error("Add a title before creating the assignment.");
+  }
+
+  const createdAtISO = new Date().toISOString();
+  const assignmentRef = doc(
+    collection(db, "groups", String(classId), "assignments")
+  );
+
+  if (type === "test") {
+    const questions = cleanTestQuestions(assignment.questions);
+
+    if (!questions.length) {
+      throw new Error("Add at least one complete test question.");
+    }
+
+    const answerKey = cleanAnswerKey(questions, assignment.answerKey);
+    const assignmentData = {
+      type: "test",
+      title,
+      author: "",
+      bookId: "",
+      instructions: cleanString(assignment.instructions),
+      dueAt: assignment.dueAt || null,
+      startParagraphIndex: 0,
+      endParagraphIndex: null,
+      questions,
+      questionCount: questions.length,
+      totalPoints: totalTestPoints(questions),
+      assignedBy: user.uid,
+      createdAtISO,
+      createdAt: serverTimestamp()
+    };
+
+    const batch = writeBatch(db);
+    batch.set(assignmentRef, assignmentData);
+    batch.set(
+      doc(assignmentRef, "answerKey", "current"),
+      {
+        assignmentId: assignmentRef.id,
+        answers: answerKey,
+        updatedBy: user.uid,
+        updatedAtISO: createdAtISO,
+        updatedAt: serverTimestamp()
+      }
     );
+    await batch.commit();
+
+    notifyStudentsOfAssignment(classId, assignmentRef.id, assignmentData);
+    return assignmentRef.id;
+  }
+
+  const bookId = cleanString(assignment.bookId);
+
+  if (!bookId) {
+    throw new Error("Choose a book before creating the reading assignment.");
   }
 
   const startParagraphIndex = Math.max(
@@ -258,9 +377,8 @@ export async function createClassAssignment(classId, assignment) {
           startParagraphIndex
         );
 
-  const createdAtISO = new Date().toISOString();
-
   const assignmentData = {
+    type: "reading",
     bookId,
     title,
     author: cleanString(assignment.author),
@@ -273,28 +391,31 @@ export async function createClassAssignment(classId, assignment) {
     createdAt: serverTimestamp()
   };
 
-  const assignmentRef = await addDoc(
-    collection(
+  await writeBatch(db)
+    .set(assignmentRef, assignmentData)
+    .commit();
+
+  invalidateAssignmentCache(classId, bookId);
+  notifyStudentsOfAssignment(classId, assignmentRef.id, assignmentData);
+  return assignmentRef.id;
+}
+
+export async function getClassTestAnswerKey(classId, assignmentId) {
+  requireUser();
+
+  const snapshot = await getDoc(
+    doc(
       db,
       "groups",
       String(classId),
-      "assignments"
-    ),
-    assignmentData
+      "assignments",
+      String(assignmentId),
+      "answerKey",
+      "current"
+    )
   );
 
-  invalidateAssignmentCache(classId, bookId);
-
-  notifyStudentsOfAssignment(
-    classId,
-    assignmentRef.id,
-    {
-      ...assignmentData,
-      createdAt: undefined
-    }
-  );
-
-  return assignmentRef.id;
+  return snapshot.exists() ? snapshot.data() : null;
 }
 
 export async function updateClassAssignment(
@@ -302,8 +423,7 @@ export async function updateClassAssignment(
   assignmentId,
   updates
 ) {
-  requireUser();
-
+  const user = requireUser();
   const assignmentRef = doc(
     db,
     "groups",
@@ -313,9 +433,50 @@ export async function updateClassAssignment(
   );
 
   const existing = await getDoc(assignmentRef);
-  const existingBookId = existing.exists()
-    ? existing.data()?.bookId
-    : null;
+  if (!existing.exists()) throw new Error("Assignment not found.");
+
+  const oldData = existing.data();
+  const type = assignmentType(oldData);
+  const title = cleanString(updates.title);
+
+  if (!title) throw new Error("Add an assignment title.");
+
+  if (type === "test") {
+    const questions = cleanTestQuestions(updates.questions);
+    if (!questions.length) {
+      throw new Error("Add at least one complete test question.");
+    }
+
+    const answers = cleanAnswerKey(questions, updates.answerKey);
+    const now = new Date().toISOString();
+    const batch = writeBatch(db);
+
+    batch.update(assignmentRef, {
+      title,
+      instructions: cleanString(updates.instructions),
+      dueAt: updates.dueAt || null,
+      questions,
+      questionCount: questions.length,
+      totalPoints: totalTestPoints(questions),
+      updatedAtISO: now,
+      updatedAt: serverTimestamp()
+    });
+
+    batch.set(
+      doc(assignmentRef, "answerKey", "current"),
+      {
+        assignmentId: String(assignmentId),
+        answers,
+        updatedBy: user.uid,
+        updatedAtISO: now,
+        updatedAt: serverTimestamp()
+      },
+      { merge: true }
+    );
+
+    await batch.commit();
+    return;
+  }
 
   const startParagraphIndex = Math.max(
     Number(updates.startParagraphIndex) || 0,
@@ -323,7 +484,7 @@ export async function updateClassAssignment(
   );
 
   await updateDoc(assignmentRef, {
-    title: cleanString(updates.title),
+    title,
     author: cleanString(updates.author),
     instructions: cleanString(updates.instructions),
     dueAt: updates.dueAt || null,
@@ -341,15 +502,12 @@ export async function updateClassAssignment(
     updatedAt: serverTimestamp()
   });
 
-  if (existingBookId) {
-    invalidateAssignmentCache(classId, existingBookId);
+  if (oldData.bookId) {
+    invalidateAssignmentCache(classId, oldData.bookId);
   }
 }
 
-export async function deleteClassAssignment(
-  classId,
-  assignmentId
-) {
+export async function deleteClassAssignment(classId, assignmentId) {
   requireUser();
 
   const assignmentRef = doc(
@@ -361,15 +519,203 @@ export async function deleteClassAssignment(
   );
 
   const existing = await getDoc(assignmentRef);
-  const existingBookId = existing.exists()
-    ? existing.data()?.bookId
-    : null;
+  const existingData = existing.exists() ? existing.data() : null;
+
+  if (assignmentType(existingData) === "test") {
+    const submissions = await getDocs(collection(assignmentRef, "submissions"));
+    await Promise.all(submissions.docs.map((item) => deleteDoc(item.ref)));
+    await deleteDoc(doc(assignmentRef, "answerKey", "current"));
+  }
 
   await deleteDoc(assignmentRef);
 
-  if (existingBookId) {
-    invalidateAssignmentCache(classId, existingBookId);
+  if (existingData?.bookId) {
+    invalidateAssignmentCache(classId, existingData.bookId);
   }
+}
+
+/* ============================================================
+   TEST SUBMISSIONS + GRADING
+============================================================ */
+
+export async function getMyClassTestSubmission(classId, assignmentId) {
+  const user = requireUser();
+  const snapshot = await getDoc(
+    doc(
+      db,
+      "groups",
+      String(classId),
+      "assignments",
+      String(assignmentId),
+      "submissions",
+      user.uid
+    )
+  );
+
+  return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
+}
+
+export async function submitClassTest(classId, assignmentId, answers) {
+  const user = requireUser();
+  const assignmentRef = doc(
+    db,
+    "groups",
+    String(classId),
+    "assignments",
+    String(assignmentId)
+  );
+  const assignmentSnapshot = await getDoc(assignmentRef);
+
+  if (!assignmentSnapshot.exists() || assignmentType(assignmentSnapshot.data()) !== "test") {
+    throw new Error("Test not found.");
+  }
+
+  const assignment = assignmentSnapshot.data();
+  const cleanAnswers = {};
+
+  for (const question of assignment.questions || []) {
+    const value = answers?.[question.id];
+
+    if (question.type === "multiple_choice") {
+      if (value === "" || value === null || value === undefined) continue;
+      const optionIndex = Number(value);
+      if (
+        Number.isInteger(optionIndex) &&
+        optionIndex >= 0 &&
+        optionIndex < (question.options || []).length
+      ) {
+        cleanAnswers[question.id] = optionIndex;
+      }
+    } else {
+      const text = cleanString(value).slice(0, 10000);
+      if (text) cleanAnswers[question.id] = text;
+    }
+  }
+
+  if (Object.keys(cleanAnswers).length !== (assignment.questions || []).length) {
+    throw new Error("Answer every question before submitting the test.");
+  }
+
+  const submissionRef = doc(assignmentRef, "submissions", user.uid);
+  const existing = await getDoc(submissionRef);
+  if (existing.exists()) {
+    throw new Error("This test has already been submitted.");
+  }
+
+  const submittedAtISO = new Date().toISOString();
+  await writeBatch(db)
+    .set(submissionRef, {
+      assignmentId: String(assignmentId),
+      userId: user.uid,
+      answers: cleanAnswers,
+      status: "submitted",
+      graded: false,
+      score: null,
+      maxPoints: Math.max(Number(assignment.totalPoints) || totalTestPoints(assignment.questions), 0),
+      submittedAtISO,
+      submittedAt: serverTimestamp()
+    })
+    .commit();
+
+  return getMyClassTestSubmission(classId, assignmentId);
+}
+
+export async function getClassTestSubmissions(classId, assignmentId) {
+  requireUser();
+  const snapshot = await getDocs(
+    collection(
+      db,
+      "groups",
+      String(classId),
+      "assignments",
+      String(assignmentId),
+      "submissions"
+    )
+  );
+
+  return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+}
+
+export async function gradeClassTestSubmission(
+  classId,
+  assignmentId,
+  userId,
+  { manualScores = {}, feedback = "" } = {}
+) {
+  const grader = requireUser();
+  const assignmentRef = doc(
+    db,
+    "groups",
+    String(classId),
+    "assignments",
+    String(assignmentId)
+  );
+  const answerKeyRef = doc(assignmentRef, "answerKey", "current");
+  const submissionRef = doc(assignmentRef, "submissions", String(userId));
+
+  const [assignmentSnapshot, answerKeySnapshot, submissionSnapshot] = await Promise.all([
+    getDoc(assignmentRef),
+    getDoc(answerKeyRef),
+    getDoc(submissionRef)
+  ]);
+
+  if (!assignmentSnapshot.exists() || !submissionSnapshot.exists()) {
+    throw new Error("Test submission not found.");
+  }
+  if (!answerKeySnapshot.exists()) {
+    throw new Error("This test does not have an answer key.");
+  }
+
+  const assignment = assignmentSnapshot.data();
+  const key = answerKeySnapshot.data()?.answers || {};
+  const submission = submissionSnapshot.data();
+  let autoScore = 0;
+  let manualScore = 0;
+  const normalizedManualScores = {};
+
+  for (const question of assignment.questions || []) {
+    const points = Math.max(Number(question.points) || 0, 0);
+
+    if (question.type === "multiple_choice") {
+      if (
+        Number(submission.answers?.[question.id]) ===
+        Number(key?.[question.id]?.correctOptionIndex)
+      ) {
+        autoScore += points;
+      }
+      continue;
+    }
+
+    const awarded = Math.min(
+      Math.max(Number(manualScores?.[question.id]) || 0, 0),
+      points
+    );
+    normalizedManualScores[question.id] = awarded;
+    manualScore += awarded;
+  }
+
+  const maxPoints = Math.max(
+    Number(assignment.totalPoints) || totalTestPoints(assignment.questions),
+    0
+  );
+  const score = Math.min(autoScore + manualScore, maxPoints);
+  const now = new Date().toISOString();
+
+  await updateDoc(submissionRef, {
+    graded: true,
+    status: "graded",
+    autoScore,
+    manualScore,
+    manualScores: normalizedManualScores,
+    score,
+    maxPoints,
+    feedback: cleanString(feedback).slice(0, 5000),
+    gradedBy: grader.uid,
+    gradedAtISO: now,
+    gradedAt: serverTimestamp()
+  });
+
+  return { id: String(userId), ...submission, graded: true, status: "graded", autoScore, manualScore, manualScores: normalizedManualScores, score, maxPoints, feedback: cleanString(feedback).slice(0, 5000), gradedBy: grader.uid, gradedAtISO: now };
 }
 
 /* ============================================================
@@ -546,27 +892,34 @@ export async function getMyClassAssignmentProgress(
   assignments
 ) {
   const rows = await getMyClassProgress(classId);
-
-  const byBook = new Map(
-    rows.map((row) => [String(row.bookId), row])
-  );
-
+  const byBook = new Map(rows.map((row) => [String(row.bookId), row]));
   const result = {};
 
-  for (const assignment of assignments || []) {
-    const progress =
-      byBook.get(String(assignment.bookId)) || null;
+  await Promise.all(
+    (assignments || []).map(async (assignment) => {
+      if (assignmentType(assignment) === "test") {
+        const submission = await getMyClassTestSubmission(classId, assignment.id);
+        result[assignment.id] = {
+          progress: submission,
+          submission,
+          assignmentPercent: submission ? 100 : 0,
+          complete: Boolean(submission),
+          graded: Boolean(submission?.graded),
+          score: submission?.score ?? null,
+          maxPoints: submission?.maxPoints ?? assignment.totalPoints ?? null
+        };
+        return;
+      }
 
-    result[assignment.id] = {
-      progress,
-      assignmentPercent: assignmentRangePercent(
+      const progress = byBook.get(String(assignment.bookId)) || null;
+      const percent = assignmentRangePercent(progress, assignment);
+      result[assignment.id] = {
         progress,
-        assignment
-      ),
-      complete:
-        assignmentRangePercent(progress, assignment) >= 100
-    };
-  }
+        assignmentPercent: percent,
+        complete: percent >= 100
+      };
+    })
+  );
 
   return result;
 }
@@ -576,32 +929,41 @@ export async function getClassAssignmentProgress(
   members,
   assignment
 ) {
-  const progressRows = await getClassBookProgress(
-    classId,
-    assignment.bookId
-  );
-
-  const progressByUser = new Map(
-    progressRows.map((row) => [
-      String(row.userId),
-      row
-    ])
-  );
-
   const students = members.filter(
     (member) =>
-      !["owner", "admin"].includes(member.role) &&
+      !["owner", "admin", "moderator"].includes(member.role) &&
       !["removed", "suspended"].includes(member.status)
   );
 
-  return students.map((member) => {
-    const progress =
-      progressByUser.get(String(member.userId)) || null;
-
-    const assignmentPercent = assignmentRangePercent(
-      progress,
-      assignment
+  if (assignmentType(assignment) === "test") {
+    const submissions = await getClassTestSubmissions(classId, assignment.id);
+    const byUser = new Map(
+      submissions.map((submission) => [String(submission.userId), submission])
     );
+
+    return students.map((member) => {
+      const submission = byUser.get(String(member.userId)) || null;
+      return {
+        ...member,
+        progress: submission,
+        submission,
+        assignmentPercent: submission ? 100 : 0,
+        complete: Boolean(submission),
+        graded: Boolean(submission?.graded),
+        score: submission?.score ?? null,
+        maxPoints: submission?.maxPoints ?? assignment.totalPoints ?? null
+      };
+    });
+  }
+
+  const progressRows = await getClassBookProgress(classId, assignment.bookId);
+  const progressByUser = new Map(
+    progressRows.map((row) => [String(row.userId), row])
+  );
+
+  return students.map((member) => {
+    const progress = progressByUser.get(String(member.userId)) || null;
+    const assignmentPercent = assignmentRangePercent(progress, assignment);
 
     return {
       ...member,
