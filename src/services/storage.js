@@ -1130,17 +1130,19 @@ export async function registerParagraphRead(
           cycleComplete
             ? 100
             : Math.min(
-                99,
+                99.9,
                 Math.max(
                   0,
                   Math.round(
                     (
                       (
-                        verifiedParagraphIndex + 1
-                      ) /
-                      total
-                    ) * 100
-                  )
+                        (
+                          verifiedParagraphIndex + 1
+                        ) /
+                        total
+                      ) * 100
+                    ) * 10
+                  ) / 10
                 )
               );
 
