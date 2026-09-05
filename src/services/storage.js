@@ -6051,13 +6051,26 @@ async function deleteCollectionDocuments(collectionRef) {
     return;
   }
 
-  const batch = writeBatch(db);
+  /*
+   * Keep cleanup batches below Firestore's 500-operation limit.
+   * This matters most for class test submissions, where a large
+   * class can create hundreds of documents below one assignment.
+   */
+  for (
+    let index = 0;
+    index < snapshot.docs.length;
+    index += 450
+  ) {
+    const batch = writeBatch(db);
 
-  snapshot.docs.forEach((document) => {
-    batch.delete(document.ref);
-  });
+    snapshot.docs
+      .slice(index, index + 450)
+      .forEach((document) => {
+        batch.delete(document.ref);
+      });
 
-  await batch.commit();
+    await batch.commit();
+  }
 }
 
 
@@ -6100,6 +6113,14 @@ export async function deleteGroupPermanently(groupId) {
     )
   );
 
+  /*
+   * General Class Discussion is protected by Firestore rules from
+   * ordinary deletion. Its replies can be removed now, but the post
+   * itself must remain until the final atomic batch that also deletes
+   * the parent class document.
+   */
+  const generalDiscussionDocs = [];
+
   for (const forumDoc of forumSnapshot.docs) {
     await deleteCollectionDocuments(
       collection(
@@ -6111,6 +6132,11 @@ export async function deleteGroupPermanently(groupId) {
         "replies"
       )
     );
+
+    if (forumDoc.data()?.isGeneralClassDiscussion === true) {
+      generalDiscussionDocs.push(forumDoc);
+      continue;
+    }
 
     await deleteDoc(forumDoc.ref);
   }
@@ -6135,9 +6161,13 @@ export async function deleteGroupPermanently(groupId) {
 
   /*
    * Classroom data.
-   * These may be empty for ordinary reading groups.
+   *
+   * Firestore does not cascade-delete nested subcollections, so each
+   * assignment's protected answer key and student submissions must be
+   * removed before deleting the assignment document itself. Without
+   * this pass, deleting a class could leave orphaned test data behind.
    */
-  await deleteCollectionDocuments(
+  const assignmentsSnapshot = await getDocs(
     collection(
       db,
       "groups",
@@ -6145,6 +6175,32 @@ export async function deleteGroupPermanently(groupId) {
       "assignments"
     )
   );
+
+  for (const assignmentDoc of assignmentsSnapshot.docs) {
+    await deleteCollectionDocuments(
+      collection(
+        db,
+        "groups",
+        String(groupId),
+        "assignments",
+        assignmentDoc.id,
+        "answerKey"
+      )
+    );
+
+    await deleteCollectionDocuments(
+      collection(
+        db,
+        "groups",
+        String(groupId),
+        "assignments",
+        assignmentDoc.id,
+        "submissions"
+      )
+    );
+
+    await deleteDoc(assignmentDoc.ref);
+  }
 
   await deleteCollectionDocuments(
     collection(
@@ -6198,12 +6254,17 @@ export async function deleteGroupPermanently(groupId) {
     ...moderationActionsSnapshot.docs
   ];
 
+  const finalProtectedDocs = [
+    ...protectedModerationDocs,
+    ...generalDiscussionDocs
+  ];
+
   /*
    * Firestore batches support at most 500 operations.
    * Keep room for the group document and final Owner membership.
    */
   if (
-    protectedModerationDocs.length >
+    finalProtectedDocs.length >
     448
   ) {
     throw new Error(
@@ -6261,10 +6322,10 @@ export async function deleteGroupPermanently(groupId) {
  */
 const finalBatch = writeBatch(db);
 
-protectedModerationDocs.forEach(
-  (moderationDoc) => {
+finalProtectedDocs.forEach(
+  (protectedDoc) => {
     finalBatch.delete(
-      moderationDoc.ref
+      protectedDoc.ref
     );
   }
 );
