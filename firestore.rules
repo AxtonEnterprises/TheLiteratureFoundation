@@ -2150,11 +2150,48 @@ match /forumPosts/{postId} {
   && request.resource.data.locked == false
   && request.resource.data.forumUpCount == 0
   && request.resource.data.forumDownCount == 0
-  && request.resource.data.forumScore == 0;
+  && request.resource.data.forumScore == 0
+  /*
+   * Only the reserved class-level document may claim the protected
+   * General Class Discussion flag. Ordinary forum posts cannot make
+   * themselves undeletable by adding this field.
+   */
+  && (
+    request.resource.data.get("isGeneralClassDiscussion", false) == false
+    || (
+      request.resource.data.get("isGeneralClassDiscussion", false) == true
+      && postId == "general-class-discussion"
+      && request.resource.data.title == "General Class Discussion"
+      && (
+        (
+          exists(
+            /databases/$(database)/documents/groups/$(groupId)
+          )
+          && get(
+            /databases/$(database)/documents/groups/$(groupId)
+          ).data.type == "class"
+        )
+        || (
+          existsAfter(
+            /databases/$(database)/documents/groups/$(groupId)
+          )
+          && getAfter(
+            /databases/$(database)/documents/groups/$(groupId)
+          ).data.type == "class"
+        )
+      )
+    )
+  );
 
  allow update:
   if platformWriteAllowed()
   && isGroupMember(groupId)
+  /*
+   * The protected flag is immutable. This prevents an authorized
+   * client from clearing it first and then deleting the general post.
+   */
+  && request.resource.data.get("isGeneralClassDiscussion", false) ==
+     resource.data.get("isGeneralClassDiscussion", false)
   && (
     validGroupForumVoteAggregateUpdate(
       groupId,
@@ -2194,6 +2231,17 @@ match /forumPosts/{postId} {
     || canDiscipline(
       groupId,
       resource.data.userId
+    )
+  )
+  /*
+   * General Class Discussion cannot be deleted while its class still
+   * exists. It may only disappear in the same atomic write that
+   * deletes the parent class itself.
+   */
+  && (
+    resource.data.get("isGeneralClassDiscussion", false) == false
+    || !existsAfter(
+      /databases/$(database)/documents/groups/$(groupId)
     )
   );
 
