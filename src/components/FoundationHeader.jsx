@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 const SUPPORT_URL =
   "https://buy.stripe.com/fZudR897C0DL9II8wm6oo00";
 
+const LIT_CHAIN_URL = "https://litchain.org";
+
 export default function FoundationHeader() {
   return (
     <header className="foundation-header">
@@ -18,9 +20,17 @@ export default function FoundationHeader() {
         className="foundation-nav"
         aria-label="Foundation navigation"
       >
-        <Link to="/#mission">Mission</Link>
-        <Link to="/#programs">Programs</Link>
-        <Link to="/#about-foundation">About</Link>
+        <a href="/#mission">Mission</a>
+        <a href="/#programs">Programs</a>
+        <a href="/#about-foundation">About</a>
+
+        <a
+          href={LIT_CHAIN_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Lit Chain
+        </a>
 
         <a
           href={SUPPORT_URL}
