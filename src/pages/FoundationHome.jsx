@@ -1,25 +1,26 @@
-import { Link } from "react-router-dom";
 import {
   BookOpen,
   GraduationCap,
   Heart,
   LibraryBig,
   MessageSquare,
-  Shuffle,
   ArrowRight
 } from "lucide-react";
+
 import FoundationHeader from "../components/FoundationHeader.jsx";
 import SEO from "../components/SEO.jsx";
 
 const SUPPORT_URL =
   "https://buy.stripe.com/fZudR897C0DL9II8wm6oo00";
 
+const LIT_CHAIN_URL = "https://litchain.org";
+
 export default function FoundationHome() {
   return (
     <div className="foundation-site">
       <SEO
         title="The Literature Foundation | Discover, Read, Learn"
-        description="The Literature Foundation expands access to literature through free reading tools, discovery, reflection, community, and lifelong learning."
+        description="The Literature Foundation expands access to literature through preservation, reading tools, education, community, and projects such as Lit Chain."
         path="/"
       />
 
@@ -34,19 +35,22 @@ export default function FoundationHome() {
           <h1>Literature belongs to everyone.</h1>
 
           <p className="foundation-lede">
-            Free access to timeless books, tools that make reading
-            easier, and new ways to turn reading into lifelong
-            learning.
+            The Literature Foundation expands access to literature,
+            supports preservation and education, and builds tools
+            that help people discover, read, discuss, and learn from
+            great books.
           </p>
 
           <div className="foundation-actions">
-            <Link
+            <a
               className="foundation-button primary"
-              to="/read"
+              href={LIT_CHAIN_URL}
+              target="_blank"
+              rel="noopener noreferrer"
             >
               <BookOpen size={19} />
               Open Lit Chain
-            </Link>
+            </a>
 
             <a
               className="foundation-button secondary"
@@ -72,75 +76,62 @@ export default function FoundationHome() {
         className="foundation-section foundation-random"
       >
         <div className="foundation-copy">
-          <p className="foundation-eyebrow">Lit Chain</p>
+          <p className="foundation-eyebrow">Our mission</p>
 
-          <h2>Read literature. Keep the conversation going.</h2>
+          <h2>
+            Preserve literature. Expand access. Deepen understanding.
+          </h2>
 
           <p>
-            Lit Chain brings discovery, reading, notes, reading
-            history, and literary community together in one place.
-            Find something unexpected, read in a focused interface,
-            save your progress, reflect on passages, and connect
-            with other readers.
+            We believe important literature should remain available
+            across generations and should be easier to discover,
+            read, discuss, and learn from.
           </p>
 
           <div className="foundation-feature-list">
             <div>
-              <Shuffle size={20} />
+              <LibraryBig size={20} />
               <span>
-                <strong>Discover freely</strong>
-                {" "}Find classics outside recommendation loops.
+                <strong>Preserve access</strong>{" "}
+                Support durable access to important literary works
+                and public-domain texts.
               </span>
             </div>
 
             <div>
               <BookOpen size={20} />
               <span>
-                <strong>Read deeply</strong>
-                {" "}Classic literature without a subscription.
+                <strong>Make reading easier</strong>{" "}
+                Build and support tools that reduce barriers between
+                readers and books.
               </span>
             </div>
 
             <div>
               <MessageSquare size={20} />
               <span>
-                <strong>Connect through literature</strong>
-                {" "}Share ideas, notes, and discussion with other readers.
+                <strong>Encourage discussion</strong>{" "}
+                Create places where readers can exchange ideas,
+                interpretations, notes, and questions.
               </span>
             </div>
 
             <div>
               <GraduationCap size={20} />
               <span>
-                <strong>Learn over time</strong>
-                {" "}Build toward comprehension and future proof-of-reading tools.
+                <strong>Advance learning</strong>{" "}
+                Connect reading with education, comprehension,
+                mentorship, and lifelong learning.
               </span>
             </div>
           </div>
-
-          <Link
-            className="foundation-text-link"
-            to="/read"
-          >
-            Open Lit Chain
-            <ArrowRight size={17} />
-          </Link>
         </div>
 
         <div className="foundation-product-card">
           <img
-            src="/branding/lit-chain-logo-horizontal.png"
-            alt="Lit Chain"
+            src="/branding/tlf-logo-horizontal-web.png"
+            alt="The Literature Foundation"
           />
-
-          <div className="mini-reader">
-            <small>TODAY'S DISCOVERY</small>
-            <h3>Pride and Prejudice</h3>
-            <p>Jane Austen</p>
-            <span>
-              It is a truth universally acknowledged...
-            </span>
-          </div>
         </div>
       </section>
 
@@ -150,42 +141,85 @@ export default function FoundationHome() {
       >
         <div className="foundation-section-heading">
           <p className="foundation-eyebrow">
-            What we build
+            What we support
           </p>
 
-          <h2>Discover. Read. Learn.</h2>
+          <h2>Programs and projects</h2>
         </div>
 
         <div className="foundation-pillars">
           <article>
             <span>01</span>
             <LibraryBig />
-            <h3>Discover</h3>
+            <h3>Access &amp; Preservation</h3>
             <p>
-              Make literature easier to encounter, browse, and
-              explore without paywalls or gatekeeping.
+              Support long-term access to important literature,
+              public-domain works, and literary resources.
             </p>
           </article>
 
           <article>
             <span>02</span>
             <BookOpen />
-            <h3>Read</h3>
+            <h3>Reading Tools</h3>
             <p>
-              Build reader-first tools for focused reading,
-              progress, notes, journaling, and discovery.
+              Develop reader-first technology that helps people
+              discover books, read deeply, save progress, and reflect.
             </p>
           </article>
 
           <article>
             <span>03</span>
             <GraduationCap />
-            <h3>Learn</h3>
+            <h3>Education &amp; Community</h3>
             <p>
-              Create pathways from reading to comprehension,
-              mentorship, community, and verifiable learning.
+              Build pathways from reading to discussion,
+              comprehension, classrooms, mentorship, and learning.
             </p>
           </article>
+        </div>
+      </section>
+
+      <section
+        id="lit-chain"
+        className="foundation-section foundation-random"
+      >
+        <div className="foundation-copy">
+          <p className="foundation-eyebrow">A Foundation project</p>
+
+          <h2>Lit Chain</h2>
+
+          <p>
+            Lit Chain is The Literature Foundation&apos;s social
+            reading platform: a place to discover literature, read
+            public-domain books, save notes and progress, participate
+            in groups and classes, and connect ideas across readers.
+          </p>
+
+          <a
+            className="foundation-text-link"
+            href={LIT_CHAIN_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Visit LitChain.org
+            <ArrowRight size={17} />
+          </a>
+        </div>
+
+        <div className="foundation-product-card">
+          <img
+            src="/branding/lit-chain-logo-horizontal.png"
+            alt="Lit Chain"
+          />
+
+          <div className="mini-reader">
+            <small>A PROJECT OF THE LITERATURE FOUNDATION</small>
+            <h3>Read. Connect. Continue the chain.</h3>
+            <p>
+              Discover, read, discuss, and learn together.
+            </p>
+          </div>
         </div>
       </section>
 
@@ -205,22 +239,21 @@ export default function FoundationHome() {
           <p className="foundation-eyebrow">About</p>
 
           <h2>
-            Preserving access. Expanding understanding.
+            Building lasting access to literature.
           </h2>
         </div>
 
         <div>
           <p>
-            The Literature Foundation is an organization focused
-            on increasing access to literature and building tools
-            that help people engage with books more deeply.
+            The Literature Foundation is an organization focused on
+            preserving access to literature and building tools that
+            help people engage with books more deeply.
           </p>
 
           <p>
-            We believe great literature should be easy to
-            discover, free to read when rights allow, and
-            connected to opportunities for reflection,
-            education, preservation, and community.
+            Our work centers on access, preservation, reading,
+            education, discussion, and technology that helps connect
+            readers with literature across generations.
           </p>
         </div>
       </section>
@@ -237,9 +270,8 @@ export default function FoundationHome() {
           <h2>Help keep literature open.</h2>
 
           <p>
-            Support free reading tools, public-domain access,
-            preservation, community features, and educational
-            development.
+            Support preservation, free reading tools, public-domain
+            access, educational development, and community projects.
           </p>
         </div>
 
@@ -264,17 +296,22 @@ export default function FoundationHome() {
           <div>
             <strong>The Literature Foundation</strong>
             <span>
-              Making literature easier to discover, read, discuss, and learn from.
+              Preserving access to literature and expanding the ways
+              people discover, read, discuss, and learn from it.
             </span>
           </div>
         </div>
 
         <div className="foundation-footer-links">
-          <Link to="/read">Lit Chain</Link>
-
-          <a href="#about-foundation">
-            About
+          <a
+            href={LIT_CHAIN_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Lit Chain
           </a>
+
+          <a href="#about-foundation">About</a>
 
           <a
             href={SUPPORT_URL}
@@ -284,13 +321,8 @@ export default function FoundationHome() {
             Support
           </a>
 
-          <Link to="/privacy">
-            Privacy
-          </Link>
-
-          <Link to="/terms">
-            Terms
-          </Link>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
 
           <a href="mailto:info@theliteraturefoundation.org">
             Contact

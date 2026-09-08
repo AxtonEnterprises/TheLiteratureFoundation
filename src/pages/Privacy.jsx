@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
-import FoundationHeader from "../components/FoundationHeader.jsx";
 
+import FoundationHeader from "../components/FoundationHeader.jsx";
 import SEO from "../components/SEO.jsx";
 
 export default function Privacy() {
@@ -8,7 +8,7 @@ export default function Privacy() {
     <main className="page-wrap">
       <SEO
         title="Privacy Policy | The Literature Foundation"
-        description="Privacy information for The Literature Foundation and Lit Chain."
+        description="Privacy information for The Literature Foundation website."
         path="/privacy"
       />
 
@@ -17,133 +17,98 @@ export default function Privacy() {
       <div className="stack-lg">
         <section className="hero-card small">
           <p className="eyebrow">Privacy</p>
-
           <h1>Privacy Policy</h1>
-
-          <p className="muted">
-            Last updated: August 27, 2026
-          </p>
+          <p className="muted">Last updated: September 7, 2026</p>
         </section>
 
         <section className="panel legal-page">
           <div className="legal-content">
+            <h2>About this policy</h2>
+            <p>
+              This Privacy Policy applies to The Literature Foundation website at
+              TheLiteratureFoundation.org. Lit Chain is a separate project with
+              its own website and privacy policy.
+            </p>
+
             <h2>Information we collect</h2>
-
             <p>
-              You may use portions of The Literature Foundation
-              and Lit Chain without creating an account. If you
-              create or use a Lit Chain account, we may process
-              information associated with your account, including
-              your email address and authentication information.
+              The Foundation website may receive information you voluntarily
+              provide, such as information included in emails, support requests,
+              or other direct communications.
             </p>
-
             <p>
-              Lit Chain may also store information you choose to
-              save, including saved books, reading progress, notes,
-              journal entries, group activity, and related reading
-              activity.
-            </p>
-
-            <h2>Authentication</h2>
-
-            <p>
-              Lit Chain uses Firebase Authentication to provide
-              account services. Users may sign in using an email
-              address and password or, where available, a Google
-              account.
-            </p>
-
-            <p>
-              Authentication providers may process information
-              according to their own privacy policies.
+              Basic technical information may also be processed by our hosting
+              and infrastructure providers as necessary to deliver and secure
+              the website.
             </p>
 
             <h2>How we use information</h2>
-
             <p>
-              We use information to operate Lit Chain, maintain
-              user accounts, synchronize saved reading information,
-              provide community features, improve our services,
-              protect the security of the service, and respond to
-              support requests.
+              We use information to operate the Foundation website, respond to
+              communications, improve our programs and projects, maintain
+              security, and support the Foundation&apos;s mission.
             </p>
 
-            <h2>Data storage</h2>
-
+            <h2>Payments and support</h2>
             <p>
-              Account and reading information may be stored using
-              Google Firebase services. Some information may also
-              be stored locally on your device to support app
-              functionality and offline or persistent use.
+              If you choose to financially support the Foundation, payment
+              information is processed by our payment provider. The Foundation
+              does not receive or store your full payment-card details.
             </p>
 
-            <h2>Public-domain book services</h2>
-
+            <h2>Third-party services</h2>
             <p>
-              Lit Chain may retrieve public-domain book
-              information and reading materials from third-party
-              services such as Project Gutenberg and related
-              public-domain book APIs.
+              The Foundation may use third-party services for hosting,
+              infrastructure, analytics, communications, or payments. Those
+              providers may process information according to their own policies
+              as necessary to provide their services.
             </p>
 
-            <h2>Community content</h2>
-
+            <h2>Lit Chain</h2>
             <p>
-              Some Lit Chain features allow users to create or
-              share notes, replies, group posts, profiles, and
-              other community content. Content you choose to make
-              public or share with a group may be visible to other
-              users according to the visibility settings of that
-              feature.
+              Lit Chain operates at{" "}
+              <a href="https://litchain.org" target="_blank" rel="noopener noreferrer">
+                LitChain.org
+              </a>{" "}
+              and has its own account, authentication, community, reading, and
+              data practices.
+            </p>
+            <p>
+              You can review the Lit Chain Privacy Policy at{" "}
+              <a href="https://litchain.org/privacy" target="_blank" rel="noopener noreferrer">
+                litchain.org/privacy
+              </a>.
             </p>
 
             <h2>Sharing of information</h2>
-
             <p>
-              We do not sell your personal information. Information
-              may be processed by service providers that are
-              necessary to operate the website and Lit Chain,
-              such as hosting, authentication, database, and
-              infrastructure providers.
-            </p>
-
-            <h2>Data choices</h2>
-
-            <p>
-              You may choose not to create an account. You may
-              contact us regarding questions about your account or
-              stored information.
+              We do not sell personal information. Information may be processed
+              by service providers that are necessary to operate the website or
+              fulfill services you request.
             </p>
 
             <h2>Children</h2>
-
             <p>
-              The service is intended to support reading and
-              education. We do not knowingly use the service to
-              solicit unnecessary personal information from
-              children.
+              The Foundation supports literacy and education but does not use
+              this website to intentionally solicit unnecessary personal
+              information from children.
             </p>
 
             <h2>Changes to this policy</h2>
-
             <p>
-              We may update this Privacy Policy as the service
-              changes. The date at the top of this page indicates
-              the most recent revision.
+              We may update this Privacy Policy as the Foundation website,
+              programs, or services change. The date above indicates the most
+              recent revision.
             </p>
 
             <h2>Contact</h2>
-
             <p>
               Questions about privacy may be sent to{" "}
               <a href="mailto:info@theliteraturefoundation.org">
                 info@theliteraturefoundation.org
               </a>.
             </p>
-
-            <p>
-              <Link to="/">Return to The Literature Foundation</Link>
-            </p>
+            <p><Link to="/">Return to The Literature Foundation</Link></p>
           </div>
         </section>
       </div>
