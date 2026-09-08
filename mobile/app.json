@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "Lit Chain",
+    "slug": "lit-chain",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "litchain",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "android": {
+      "package": "org.theliteraturefoundation.litchain"
+    },
+    "ios": {
+      "bundleIdentifier": "org.theliteraturefoundation.litchain",
+      "supportsTablet": true
+    },
+    "plugins": ["expo-router"]
+  }
+}
