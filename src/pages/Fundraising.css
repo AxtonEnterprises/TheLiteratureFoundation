@@ -1,0 +1,479 @@
+.fundraising-page {
+  --fundraising-teal: var(--foundation-teal, #3bb6b1);
+  --fundraising-gold: var(--foundation-gold, #ffc00e);
+  --fundraising-ink: #14212b;
+  --fundraising-muted: #61717c;
+  --fundraising-paper: var(--foundation-paper, #fbf7ef);
+}
+
+.fundraising-hero {
+  width: min(1160px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: clamp(72px, 9vw, 120px) 0 88px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: clamp(42px, 7vw, 90px);
+  align-items: center;
+}
+
+.fundraising-hero-copy h1 {
+  max-width: 760px;
+  margin: 12px 0 24px;
+  font-size: clamp(3rem, 7vw, 6.3rem);
+  line-height: 0.98;
+}
+
+.fundraising-lede {
+  max-width: 720px;
+  margin: 0;
+  color: var(--fundraising-muted);
+  font-size: clamp(1.05rem, 1.8vw, 1.28rem);
+  line-height: 1.75;
+}
+
+.fundraising-hero-actions {
+  margin-top: 32px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.fundraising-text-link {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 800;
+}
+
+.fundraising-goal-card {
+  padding: clamp(28px, 4vw, 42px);
+  background: #fff;
+  border: 1px solid rgba(20, 33, 43, 0.1);
+  border-radius: 30px;
+  box-shadow: 0 28px 70px rgba(20, 33, 43, 0.09);
+}
+
+.fundraising-goal-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  color: var(--fundraising-muted);
+  font-size: 0.8rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.fundraising-amount {
+  margin-top: 16px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2.4rem, 5vw, 4rem);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.fundraising-amount span {
+  display: block;
+  margin-top: 8px;
+  color: var(--fundraising-muted);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.fundraising-progress {
+  height: 14px;
+  margin: 24px 0 26px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8ece9;
+}
+
+.fundraising-progress span {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    var(--fundraising-teal),
+    var(--fundraising-gold)
+  );
+}
+
+.fundraising-milestone {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(59, 182, 177, 0.08);
+}
+
+.fundraising-milestone svg {
+  flex: 0 0 auto;
+  color: var(--fundraising-teal);
+}
+
+.fundraising-milestone strong,
+.fundraising-milestone span {
+  display: block;
+}
+
+.fundraising-milestone span {
+  margin-top: 4px;
+  color: var(--fundraising-muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.fundraising-spots {
+  margin-top: 24px;
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  color: var(--fundraising-muted);
+}
+
+.fundraising-spots strong {
+  color: var(--fundraising-ink);
+  font-size: 2rem;
+}
+
+.fundraising-section {
+  padding: 96px max(20px, calc((100% - 1160px) / 2));
+}
+
+.fundraising-section-heading {
+  max-width: 760px;
+}
+
+.fundraising-section-heading h2,
+.fundraising-proof h2,
+.fundraising-business h2,
+.fundraising-transparency h2,
+.fundraising-final-cta h2 {
+  margin: 10px 0 18px;
+  font-size: clamp(2.3rem, 5vw, 4.4rem);
+  line-height: 1.05;
+}
+
+.fundraising-section-heading > p:last-child {
+  color: var(--fundraising-muted);
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+
+.fundraising-founders {
+  background: #fff;
+}
+
+.fundraising-tier-grid {
+  margin-top: 50px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.fundraising-tier {
+  position: relative;
+  min-height: 235px;
+  padding: 28px 22px;
+  border: 1px solid rgba(20, 33, 43, 0.11);
+  border-radius: 24px;
+  background: #fffdf8;
+}
+
+.fundraising-tier.featured {
+  border: 2px solid var(--fundraising-teal);
+  box-shadow: 0 20px 50px rgba(59, 182, 177, 0.13);
+  transform: translateY(-10px);
+}
+
+.fundraising-tier-badge {
+  position: absolute;
+  top: -13px;
+  left: 20px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: var(--fundraising-teal);
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fundraising-tier-amount {
+  color: var(--fundraising-teal);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 2.2rem;
+  font-weight: 700;
+}
+
+.fundraising-tier h3 {
+  margin-top: 16px;
+}
+
+.fundraising-tier p {
+  color: var(--fundraising-muted);
+  font-size: 0.92rem;
+}
+
+.fundraising-center-action {
+  margin-top: 38px;
+  display: flex;
+  justify-content: center;
+}
+
+.fundraising-purpose {
+  background: #f1ede4;
+}
+
+.fundraising-purpose-grid {
+  margin-top: 42px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.fundraising-purpose-card {
+  padding: 32px;
+  border-radius: 26px;
+  background: #fffdf8;
+  border: 1px solid rgba(20, 33, 43, 0.08);
+}
+
+.fundraising-purpose-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: rgba(59, 182, 177, 0.1);
+  color: var(--fundraising-teal);
+}
+
+.fundraising-purpose-card h3 {
+  margin-top: 22px;
+}
+
+.fundraising-purpose-card p {
+  color: var(--fundraising-muted);
+}
+
+.fundraising-budget-section {
+  background: #fff;
+}
+
+.fundraising-budget {
+  max-width: 840px;
+  margin-top: 44px;
+  border-top: 1px solid rgba(20, 33, 43, 0.15);
+}
+
+.fundraising-budget-row,
+.fundraising-budget-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 4px;
+  border-bottom: 1px solid rgba(20, 33, 43, 0.12);
+}
+
+.fundraising-budget-row span {
+  color: var(--fundraising-muted);
+}
+
+.fundraising-budget-total {
+  color: var(--fundraising-ink);
+  font-size: 1.25rem;
+}
+
+.fundraising-proof {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: clamp(30px, 7vw, 90px);
+  background: #14212b;
+  color: white;
+}
+
+.fundraising-proof .foundation-eyebrow {
+  color: var(--fundraising-gold);
+}
+
+.fundraising-proof p {
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 1.05rem;
+}
+
+.fundraising-business {
+  background: var(--fundraising-paper);
+}
+
+.fundraising-business-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 28px;
+  align-items: center;
+  padding: 38px;
+  border-radius: 28px;
+  background: #fff;
+  border: 1px solid rgba(20, 33, 43, 0.09);
+}
+
+.fundraising-business-card > svg {
+  color: var(--fundraising-teal);
+}
+
+.fundraising-business-card h2 {
+  font-size: clamp(2rem, 4vw, 3.4rem);
+}
+
+.fundraising-business-card p {
+  color: var(--fundraising-muted);
+}
+
+.fundraising-transparency {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 24px;
+  align-items: flex-start;
+  background: #fff;
+}
+
+.fundraising-transparency > svg {
+  margin-top: 8px;
+  color: var(--fundraising-teal);
+}
+
+.fundraising-transparency > div {
+  max-width: 850px;
+}
+
+.fundraising-transparency h2 {
+  font-size: clamp(2rem, 4vw, 3.5rem);
+}
+
+.fundraising-transparency p {
+  color: var(--fundraising-muted);
+}
+
+.fundraising-disclaimer {
+  padding: 18px 20px;
+  border-left: 4px solid var(--fundraising-gold);
+  background: rgba(255, 192, 14, 0.08);
+}
+
+.fundraising-final-cta {
+  padding: 110px max(20px, calc((100% - 900px) / 2));
+  text-align: center;
+  background: #14212b;
+  color: white;
+}
+
+.fundraising-final-cta .foundation-eyebrow {
+  color: var(--fundraising-gold);
+}
+
+.fundraising-final-cta p:not(.foundation-eyebrow) {
+  max-width: 670px;
+  margin: 0 auto 30px;
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 1.05rem;
+}
+
+.fundraising-final-cta .foundation-button {
+  margin-top: 8px;
+}
+
+.fundraising-footer {
+  border-top: 0;
+}
+
+@media (max-width: 980px) {
+  .fundraising-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .fundraising-goal-card {
+    max-width: 650px;
+  }
+
+  .fundraising-tier-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fundraising-tier.featured {
+    transform: none;
+  }
+
+  .fundraising-purpose-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fundraising-business-card {
+    grid-template-columns: auto 1fr;
+  }
+
+  .fundraising-business-card .foundation-button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 700px) {
+  .fundraising-hero {
+    width: min(100% - 28px, 1160px);
+    padding-top: 56px;
+    padding-bottom: 60px;
+  }
+
+  .fundraising-hero-copy h1 {
+    font-size: clamp(2.8rem, 14vw, 4.7rem);
+  }
+
+  .fundraising-hero-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .fundraising-hero-actions .foundation-button {
+    width: 100%;
+  }
+
+  .fundraising-section {
+    padding-top: 72px;
+    padding-bottom: 72px;
+  }
+
+  .fundraising-tier-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fundraising-tier {
+    min-height: 0;
+  }
+
+  .fundraising-proof {
+    grid-template-columns: 1fr;
+  }
+
+  .fundraising-business-card {
+    grid-template-columns: 1fr;
+  }
+
+  .fundraising-business-card .foundation-button {
+    width: 100%;
+  }
+
+  .fundraising-transparency {
+    grid-template-columns: 1fr;
+  }
+
+  .fundraising-budget-row,
+  .fundraising-budget-total {
+    align-items: flex-start;
+  }
+}
