@@ -1,8 +1,5 @@
 import { Link } from "react-router-dom";
 
-const SUPPORT_URL =
-  "https://buy.stripe.com/fZudR897C0DL9II8wm6oo00";
-
 const LIT_CHAIN_URL = "https://litchain.org";
 
 export default function FoundationHeader() {
@@ -32,14 +29,12 @@ export default function FoundationHeader() {
           Lit Chain
         </a>
 
-        <a
-          href={SUPPORT_URL}
-          target="_blank"
-          rel="noopener noreferrer"
+        <Link
+          to="/support"
           className="foundation-support-link"
         >
           Support Us
-        </a>
+        </Link>
       </nav>
     </header>
   );
