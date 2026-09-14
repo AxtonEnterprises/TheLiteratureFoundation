@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import FoundationHome from "./pages/FoundationHome";
+import Fundraising from "./pages/Fundraising.jsx";
 import Privacy from "./pages/Privacy.jsx";
 import Terms from "./pages/Terms.jsx";
 import NotFound from "./pages/NotFound.jsx";
@@ -12,6 +13,7 @@ export default function App() {
     <main className="foundation-app">
       <Routes>
         <Route path="/" element={<FoundationHome />} />
+        <Route path="/support" element={<Fundraising />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
 
