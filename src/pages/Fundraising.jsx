@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
@@ -17,9 +17,7 @@ import "./Fundraising.css";
 const SUPPORT_URL = "#founding-50";
 
 const GOAL = 5000;
-const RAISED = 0;
 const FIRST_MILESTONE = 1500;
-const FOUNDING_50_FILLED = 0;
 
 const money = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -29,9 +27,79 @@ const money = new Intl.NumberFormat("en-US", {
 
 export default function Fundraising() {
   const [selectedTier, setSelectedTier] = useState("founding_50");
+  const [supportStats, setSupportStats] = useState({
+    raisedCents: 0,
+    founding50Filled: 0
+  });
 
-  const percent = Math.min(100, Math.round((RAISED / GOAL) * 100));
-  const spotsRemaining = Math.max(0, 50 - FOUNDING_50_FILLED);
+  useEffect(() => {
+    let active = true;
+
+    async function loadSupportStats() {
+      try {
+        const response = await fetch("/api/support-stats", {
+          headers: { Accept: "application/json" },
+          cache: "no-store"
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = await response.json();
+
+        if (!active) {
+          return;
+        }
+
+        setSupportStats({
+          raisedCents: Number(data?.raisedCents) || 0,
+          founding50Filled: Number(data?.founding50Filled) || 0
+        });
+      } catch {
+        // Keep the last known values if Stripe stats are temporarily unavailable.
+      }
+    }
+
+    loadSupportStats();
+
+    const intervalId = window.setInterval(
+      loadSupportStats,
+      30000
+    );
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        loadSupportStats();
+      }
+    };
+
+    window.addEventListener("focus", loadSupportStats);
+    document.addEventListener(
+      "visibilitychange",
+      refreshWhenVisible
+    );
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", loadSupportStats);
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible
+      );
+    };
+  }, []);
+
+  const raised = supportStats.raisedCents / 100;
+  const percent = Math.min(
+    100,
+    Math.round((raised / GOAL) * 100)
+  );
+  const spotsRemaining = Math.max(
+    0,
+    50 - supportStats.founding50Filled
+  );
 
   function chooseTier(tier) {
     setSelectedTier(tier);
@@ -93,17 +161,17 @@ export default function Fundraising() {
           </div>
 
           <div className="fundraising-amount">
-            {money.format(RAISED)}{" "}
+            {money.format(raised)}{" "}
             <span>of {money.format(GOAL)}</span>
           </div>
 
           <div
             className="fundraising-progress"
             role="progressbar"
-            aria-valuenow={RAISED}
+            aria-valuenow={raised}
             aria-valuemin="0"
             aria-valuemax={GOAL}
-            aria-label={`${money.format(RAISED)} raised of ${money.format(GOAL)}`}
+            aria-label={`${money.format(raised)} raised of ${money.format(GOAL)}`}
           >
             <span style={{ width: `${percent}%` }} />
           </div>
