@@ -1,107 +1,95 @@
-.foundation-checkout-section {
-  padding: 96px max(20px, calc((100% - 1160px) / 2));
-  background: #fffdf8;
-  color: #14212b;
-  scroll-margin-top: 110px;
-}
-
-.foundation-checkout-heading {
-  max-width: 780px;
-}
-
-.foundation-checkout-heading h2,
-.foundation-checkout-thanks h2 {
-  margin: 10px 0 18px;
-  font-size: clamp(2.3rem, 5vw, 4.4rem);
-  line-height: 1.05;
-}
-
-.foundation-checkout-heading > p:last-child,
-.foundation-checkout-thanks > p:not(.foundation-eyebrow) {
-  color: #61717c;
-  font-size: 1.05rem;
-  line-height: 1.7;
-}
-
-.foundation-checkout-tier-grid {
-  margin-top: 44px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.foundation-checkout-tier {
-  position: relative;
-  min-height: 230px;
-  padding: 27px 23px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
-  border: 1px solid rgba(20, 33, 43, 0.12);
-  border-radius: 24px;
-  background: #fff;
-  color: #14212b;
+.fundraising-page .fundraising-tier.fundraising-tier-selectable {
+  width: 100%;
+  color: inherit;
+  font: inherit;
   text-align: left;
-  box-shadow: 0 12px 32px rgba(20, 33, 43, 0.04);
+  cursor: pointer;
+  appearance: none;
   transition:
     transform 160ms ease,
     border-color 160ms ease,
     box-shadow 160ms ease;
 }
 
-.foundation-checkout-tier:hover {
-  transform: translateY(-2px);
-  border-color: rgba(59, 182, 177, 0.45);
+.fundraising-page .fundraising-tier.fundraising-tier-selectable:hover {
+  border-color: rgba(59, 182, 177, 0.55);
+  box-shadow: 0 16px 38px rgba(20, 33, 43, 0.08);
 }
 
-.foundation-checkout-tier.selected {
-  border: 2px solid var(--fundraising-gold, #ffc00e);
+.fundraising-page
+  .fundraising-tier.fundraising-tier-selectable.selected {
+  border-color: var(--fundraising-gold, #ffc00e);
   box-shadow:
-    0 0 0 4px rgba(255, 192, 14, 0.09),
+    0 0 0 4px rgba(255, 192, 14, 0.1),
     0 18px 42px rgba(20, 33, 43, 0.08);
 }
 
-.foundation-checkout-tier.featured:not(.selected) {
-  border-color: var(--fundraising-teal, #3bb6b1);
+.fundraising-page
+  .fundraising-tier.fundraising-tier-selectable.featured.selected {
+  border-color: var(--fundraising-gold, #ffc00e);
 }
 
-.foundation-checkout-badge {
-  position: absolute;
-  top: -12px;
-  right: 18px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: var(--fundraising-teal, #3bb6b1);
-  color: #fff;
-  font-size: 0.68rem;
+.fundraising-tier-action {
+  display: inline-flex;
+  margin-top: 14px;
+  color: var(--fundraising-teal, #3bb6b1);
+  font-size: 0.78rem;
   font-weight: 900;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
-.foundation-checkout-tier-name {
-  font-size: 0.95rem;
-  font-weight: 900;
+.foundation-checkout-inline {
+  max-width: 900px;
+  margin: 42px auto 0;
+  padding: clamp(24px, 4vw, 38px);
+  border: 1px solid rgba(20, 33, 43, 0.11);
+  border-radius: 26px;
+  background: #fffdf8;
+  box-shadow: 0 18px 48px rgba(20, 33, 43, 0.07);
+  scroll-margin-top: 110px;
 }
 
-.foundation-checkout-tier strong {
-  display: block;
-  color: #06345a;
+.foundation-checkout-inline-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.foundation-checkout-inline h3,
+.foundation-checkout-thanks h3 {
+  margin: 6px 0 8px;
+  color: #14212b;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(2rem, 4vw, 2.6rem);
-  line-height: 1.05;
+  font-size: clamp(1.7rem, 4vw, 2.5rem);
+  line-height: 1.08;
 }
 
-.foundation-checkout-tier-copy {
-  margin-top: auto;
+.foundation-checkout-inline-top p:not(.foundation-eyebrow),
+.foundation-checkout-thanks > p:not(.foundation-eyebrow) {
+  margin: 0;
   color: #61717c;
-  line-height: 1.55;
+  line-height: 1.65;
+}
+
+.foundation-checkout-custom-toggle {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgba(20, 33, 43, 0.16);
+  border-radius: 999px;
+  background: #fff;
+  color: #14212b;
+  font-weight: 800;
+}
+
+.foundation-checkout-custom-toggle:hover {
+  border-color: var(--fundraising-teal, #3bb6b1);
 }
 
 .foundation-checkout-amount {
   width: min(100%, 520px);
-  margin-top: 28px;
+  margin-top: 24px;
   display: grid;
   gap: 9px;
   font-weight: 900;
@@ -120,7 +108,7 @@
 }
 
 .foundation-checkout-action-row {
-  margin-top: 30px;
+  margin-top: 26px;
 }
 
 .foundation-checkout-button {
@@ -136,7 +124,7 @@
 
 .foundation-checkout-error {
   max-width: 760px;
-  margin: 24px 0 0;
+  margin: 22px 0 0;
   color: #a62f2f;
   font-weight: 800;
   line-height: 1.55;
@@ -144,7 +132,7 @@
 
 .foundation-checkout-note {
   max-width: 760px;
-  margin: 28px 0 0;
+  margin: 24px 0 0;
   color: #717b82;
   font-size: 0.9rem;
   line-height: 1.65;
@@ -157,48 +145,42 @@
 }
 
 .foundation-checkout-embed.open {
-  margin-top: 38px;
-  padding-top: 28px;
+  margin-top: 34px;
+  padding-top: 26px;
   border-top: 1px solid rgba(20, 33, 43, 0.1);
 }
 
 .foundation-checkout-thanks {
-  min-height: 68vh;
+  min-height: 280px;
   display: grid;
   align-content: center;
   justify-items: start;
 }
 
-.foundation-checkout-thanks > p:not(.foundation-eyebrow) {
-  max-width: 720px;
-}
-
 .foundation-checkout-thanks .foundation-button {
-  margin-top: 12px;
+  margin-top: 16px;
 }
 
-@media (max-width: 900px) {
-  .foundation-checkout-tier-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 650px) {
-  .foundation-checkout-section {
-    padding-top: 72px;
-    padding-bottom: 72px;
+@media (max-width: 700px) {
+  .foundation-checkout-inline {
+    margin-top: 34px;
+    padding: 22px 18px;
+    border-radius: 22px;
   }
 
-  .foundation-checkout-tier-grid {
-    grid-template-columns: 1fr;
+  .foundation-checkout-inline-top {
+    display: grid;
+    gap: 18px;
   }
 
-  .foundation-checkout-tier {
-    min-height: 205px;
-  }
-
+  .foundation-checkout-custom-toggle,
   .foundation-checkout-action-row,
   .foundation-checkout-button {
     width: 100%;
+  }
+
+  .fundraising-page
+    .fundraising-tier.fundraising-tier-selectable.featured {
+    transform: none;
   }
 }

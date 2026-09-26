@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   ArrowRight,
   BookOpen,
@@ -13,7 +14,7 @@ import SEO from "../components/SEO.jsx";
 import SupportCheckout from "./SupportCheckout.jsx";
 import "./Fundraising.css";
 
-const SUPPORT_URL = "#contribute";
+const SUPPORT_URL = "#founding-50";
 
 const GOAL = 5000;
 const RAISED = 0;
@@ -27,8 +28,21 @@ const money = new Intl.NumberFormat("en-US", {
 });
 
 export default function Fundraising() {
+  const [selectedTier, setSelectedTier] = useState("founding_50");
+
   const percent = Math.min(100, Math.round((RAISED / GOAL) * 100));
   const spotsRemaining = Math.max(0, 50 - FOUNDING_50_FILLED);
+
+  function chooseTier(tier) {
+    setSelectedTier(tier);
+
+    requestAnimationFrame(() => {
+      document.getElementById("contribute")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    });
+  }
 
   return (
     <div className="foundation-site fundraising-page">
@@ -128,46 +142,58 @@ export default function Fundraising() {
           </p>
         </div>
 
-        <div className="fundraising-tier-grid">
+        <div
+          className="fundraising-tier-grid"
+          aria-label="Contribution levels"
+        >
           <Tier
+            tierKey="founding_reader"
+            selected={selectedTier === "founding_reader"}
+            onSelect={chooseTier}
             amount="$25"
             title="Founding Reader"
             text="Help put another brick in the foundation."
           />
           <Tier
+            tierKey="founding_supporter"
+            selected={selectedTier === "founding_supporter"}
+            onSelect={chooseTier}
             amount="$50"
             title="Founding Supporter"
             text="Support free literature and educational tools."
           />
           <Tier
+            tierKey="founding_50"
+            selected={selectedTier === "founding_50"}
+            onSelect={chooseTier}
             featured
             amount="$100"
             title="Founding 50"
             text="Become one of the first 50 people to help officially launch the Foundation."
           />
           <Tier
+            tierKey="founding_patron"
+            selected={selectedTier === "founding_patron"}
+            onSelect={chooseTier}
             amount="$250"
             title="Founding Patron"
             text="Provide substantial support toward our launch and technology."
           />
           <Tier
+            tierKey="founding_sponsor"
+            selected={selectedTier === "founding_sponsor"}
+            onSelect={chooseTier}
             amount="$500"
             title="Founding Sponsor"
             text="For individuals, families, and businesses making a major early contribution."
           />
         </div>
 
-        <div className="fundraising-center-action">
-          <a
-            className="foundation-button gold"
-            href={SUPPORT_URL}
-          >
-            Support the Foundation <ArrowRight size={18} />
-          </a>
-        </div>
+        <SupportCheckout
+          selectedTier={selectedTier}
+          onSelectTier={setSelectedTier}
+        />
       </section>
-
-      <SupportCheckout />
 
       <section className="fundraising-section fundraising-purpose">
         <div className="fundraising-section-heading">
@@ -271,12 +297,13 @@ export default function Fundraising() {
             </p>
           </div>
 
-          <a
+          <button
             className="foundation-button secondary"
-            href={SUPPORT_URL}
+            type="button"
+            onClick={() => chooseTier("founding_sponsor")}
           >
             Sponsor the Foundation
-          </a>
+          </button>
         </div>
       </section>
 
@@ -348,16 +375,34 @@ export default function Fundraising() {
   );
 }
 
-function Tier({ amount, title, text, featured = false }) {
+function Tier({
+  tierKey,
+  amount,
+  title,
+  text,
+  featured = false,
+  selected = false,
+  onSelect
+}) {
   return (
-    <article className={`fundraising-tier ${featured ? "featured" : ""}`}>
+    <button
+      type="button"
+      className={`fundraising-tier fundraising-tier-selectable ${
+        featured ? "featured" : ""
+      } ${selected ? "selected" : ""}`}
+      onClick={() => onSelect(tierKey)}
+      aria-pressed={selected}
+    >
       {featured && (
         <span className="fundraising-tier-badge">The Founding 50</span>
       )}
       <div className="fundraising-tier-amount">{amount}</div>
       <h3>{title}</h3>
       <p>{text}</p>
-    </article>
+      <span className="fundraising-tier-action">
+        {selected ? "Selected" : "Choose this level"}
+      </span>
+    </button>
   );
 }
 

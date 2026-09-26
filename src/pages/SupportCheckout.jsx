@@ -1,38 +1,28 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./SupportCheckout.css";
 
-const TIERS = [
-  {
-    key: "founding_reader",
+const TIER_DETAILS = {
+  founding_reader: {
     name: "Founding Reader",
-    amount: 25,
-    blurb: "Help put another brick in the foundation."
+    amount: 25
   },
-  {
-    key: "founding_supporter",
+  founding_supporter: {
     name: "Founding Supporter",
-    amount: 50,
-    blurb: "Support free literature and educational tools."
+    amount: 50
   },
-  {
-    key: "founding_50",
+  founding_50: {
     name: "Founding 50",
-    amount: 100,
-    blurb: "Become one of the first 50 people to help officially launch the Foundation."
+    amount: 100
   },
-  {
-    key: "founding_patron",
+  founding_patron: {
     name: "Founding Patron",
-    amount: 250,
-    blurb: "Provide substantial support toward our launch and technology."
+    amount: 250
   },
-  {
-    key: "founding_sponsor",
+  founding_sponsor: {
     name: "Founding Sponsor",
-    amount: 500,
-    blurb: "For individuals, families, and businesses making a major early contribution."
+    amount: 500
   }
-];
+};
 
 function loadStripeJs() {
   if (window.Stripe) return Promise.resolve();
@@ -75,8 +65,10 @@ async function readApiResponse(response) {
   }
 }
 
-export default function SupportCheckout() {
-  const [selected, setSelected] = useState("founding_50");
+export default function SupportCheckout({
+  selectedTier,
+  onSelectTier
+}) {
   const [customAmount, setCustomAmount] = useState(25);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -86,11 +78,27 @@ export default function SupportCheckout() {
   const complete =
     new URLSearchParams(window.location.search).get("complete") === "1";
 
+  const selectedDetail = useMemo(
+    () => TIER_DETAILS[selectedTier] || null,
+    [selectedTier]
+  );
+
   useEffect(() => {
     return () => {
       checkoutRef.current?.destroy?.();
     };
   }, []);
+
+  useEffect(() => {
+    setError("");
+
+    if (checkoutRef.current) {
+      checkoutRef.current.destroy?.();
+      checkoutRef.current = null;
+    }
+
+    setCheckoutOpen(false);
+  }, [selectedTier]);
 
   async function beginCheckout() {
     setError("");
@@ -106,6 +114,17 @@ export default function SupportCheckout() {
         );
       }
 
+      if (
+        selectedTier === "custom" &&
+        (!Number.isFinite(Number(customAmount)) ||
+          Number(customAmount) < 5 ||
+          Number(customAmount) > 10000)
+      ) {
+        throw new Error(
+          "Enter a contribution between $5 and $10,000."
+        );
+      }
+
       await loadStripeJs();
 
       if (!window.Stripe) {
@@ -115,12 +134,12 @@ export default function SupportCheckout() {
       const stripe = window.Stripe(publishableKey);
 
       const body =
-        selected === "custom"
+        selectedTier === "custom"
           ? {
               tier: "custom",
               amount: Number(customAmount)
             }
-          : { tier: selected };
+          : { tier: selectedTier };
 
       const response = await fetch("/api/create-support-session", {
         method: "POST",
@@ -170,12 +189,12 @@ export default function SupportCheckout() {
 
   if (complete) {
     return (
-      <section
+      <div
         id="contribute"
-        className="foundation-checkout-section foundation-checkout-thanks"
+        className="foundation-checkout-inline foundation-checkout-thanks"
       >
         <p className="foundation-eyebrow">Thank you</p>
-        <h2>Your support helps carry literature forward.</h2>
+        <h3>Your support helps carry literature forward.</h3>
         <p>
           Your payment was submitted through Stripe. Thank you for
           supporting The Literature Foundation and its work in access,
@@ -184,77 +203,60 @@ export default function SupportCheckout() {
         <a className="foundation-button primary" href="/">
           Return to The Literature Foundation
         </a>
-      </section>
+      </div>
     );
   }
 
   return (
-    <section
+    <div
       id="contribute"
-      className="foundation-checkout-section"
-      aria-labelledby="foundation-checkout-heading"
+      className="foundation-checkout-inline"
+      aria-label="Secure contribution payment"
     >
-      <div className="foundation-checkout-heading">
-        <p className="foundation-eyebrow">
-          Make your contribution
-        </p>
-        <h2 id="foundation-checkout-heading">
-          Choose your founding level.
-        </h2>
-        <p>
-          Select a level or enter your own amount. Payment is securely
-          processed by Stripe without leaving The Literature Foundation.
-        </p>
-      </div>
+      <div className="foundation-checkout-inline-top">
+        <div>
+          <p className="foundation-eyebrow">Secure contribution</p>
 
-      <div
-        className="foundation-checkout-tier-grid"
-        aria-label="Contribution levels"
-      >
-        {TIERS.map((tier) => (
-          <button
-            key={tier.key}
-            type="button"
-            className={`foundation-checkout-tier ${
-              selected === tier.key ? "selected" : ""
-            } ${tier.key === "founding_50" ? "featured" : ""}`}
-            onClick={() => setSelected(tier.key)}
-            aria-pressed={selected === tier.key}
-          >
-            {tier.key === "founding_50" && (
-              <span className="foundation-checkout-badge">
-                Founding 50
-              </span>
-            )}
-            <span className="foundation-checkout-tier-name">
-              {tier.name}
-            </span>
-            <strong>${tier.amount}</strong>
-            <span className="foundation-checkout-tier-copy">
-              {tier.blurb}
-            </span>
-          </button>
-        ))}
+          {selectedTier === "custom" ? (
+            <>
+              <h3>Custom contribution</h3>
+              <p>
+                Enter the amount you would like to contribute.
+              </p>
+            </>
+          ) : (
+            <>
+              <h3>
+                {selectedDetail?.name || "Choose a contribution level"}
+              </h3>
+              {selectedDetail && (
+                <p>
+                  Your selected contribution is{" "}
+                  <strong>${selectedDetail.amount}</strong>.
+                </p>
+              )}
+            </>
+          )}
+        </div>
 
         <button
+          className="foundation-checkout-custom-toggle"
           type="button"
-          className={`foundation-checkout-tier ${
-            selected === "custom" ? "selected" : ""
-          }`}
-          onClick={() => setSelected("custom")}
-          aria-pressed={selected === "custom"}
+          onClick={() =>
+            onSelectTier(
+              selectedTier === "custom"
+                ? "founding_50"
+                : "custom"
+            )
+          }
         >
-          <span className="foundation-checkout-tier-name">
-            Custom Contribution
-          </span>
-          <strong>Your amount</strong>
-          <span className="foundation-checkout-tier-copy">
-            Choose an amount that works for you.
-          </span>
+          {selectedTier === "custom"
+            ? "Use a founding level"
+            : "Choose a custom amount"}
         </button>
       </div>
 
-      {selected === "custom" && (
+      {selectedTier === "custom" && (
         <label className="foundation-checkout-amount">
           <span>Amount (USD)</span>
           <input
@@ -280,7 +282,9 @@ export default function SupportCheckout() {
         >
           {loading
             ? "Opening secure payment…"
-            : "Continue to secure payment"}
+            : selectedTier === "custom"
+              ? `Continue with $${Number(customAmount) || 0}`
+              : `Continue with $${selectedDetail?.amount || ""}`}
         </button>
       </div>
 
@@ -291,9 +295,10 @@ export default function SupportCheckout() {
       )}
 
       <p className="foundation-checkout-note">
-        The Literature Foundation does not store your card information.
-        Stripe handles payment details securely. Contributions are not
-        currently represented as tax-deductible.
+        Payment is securely processed by Stripe without leaving this
+        page. The Literature Foundation does not store your card
+        information. Contributions are not currently represented as
+        tax-deductible.
       </p>
 
       <div
@@ -302,6 +307,6 @@ export default function SupportCheckout() {
           checkoutOpen ? "open" : ""
         }`}
       />
-    </section>
+    </div>
   );
 }
