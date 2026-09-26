@@ -10,8 +10,7 @@ import {
 import FoundationHeader from "../components/FoundationHeader.jsx";
 import SEO from "../components/SEO.jsx";
 
-const SUPPORT_URL =
-  "https://buy.stripe.com/fZudR897C0DL9II8wm6oo00";
+const SUPPORT_URL = "/support";
 
 const LIT_CHAIN_URL = "https://litchain.org";
 
@@ -55,8 +54,6 @@ export default function FoundationHome() {
             <a
               className="foundation-button secondary"
               href={SUPPORT_URL}
-              target="_blank"
-              rel="noopener noreferrer"
             >
               Support the Foundation
             </a>
@@ -278,8 +275,6 @@ export default function FoundationHome() {
         <a
           className="foundation-button gold"
           href={SUPPORT_URL}
-          target="_blank"
-          rel="noopener noreferrer"
         >
           <Heart size={19} />
           Support the Foundation
@@ -313,11 +308,7 @@ export default function FoundationHome() {
 
           <a href="#about-foundation">About</a>
 
-          <a
-            href={SUPPORT_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <a href={SUPPORT_URL}>
             Support
           </a>
 

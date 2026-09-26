@@ -10,10 +10,10 @@ import {
 
 import FoundationHeader from "../components/FoundationHeader.jsx";
 import SEO from "../components/SEO.jsx";
+import SupportCheckout from "./SupportCheckout.jsx";
 import "./Fundraising.css";
 
-const SUPPORT_URL =
-  "https://buy.stripe.com/fZudR897C0DL9II8wm6oo00";
+const SUPPORT_URL = "#contribute";
 
 const GOAL = 5000;
 const RAISED = 0;
@@ -58,8 +58,6 @@ export default function Fundraising() {
             <a
               className="foundation-button primary"
               href={SUPPORT_URL}
-              target="_blank"
-              rel="noopener noreferrer"
             >
               <Heart size={19} />
               Become a founding supporter
@@ -163,13 +161,13 @@ export default function Fundraising() {
           <a
             className="foundation-button gold"
             href={SUPPORT_URL}
-            target="_blank"
-            rel="noopener noreferrer"
           >
             Support the Foundation <ArrowRight size={18} />
           </a>
         </div>
       </section>
+
+      <SupportCheckout />
 
       <section className="fundraising-section fundraising-purpose">
         <div className="fundraising-section-heading">
@@ -276,8 +274,6 @@ export default function Fundraising() {
           <a
             className="foundation-button secondary"
             href={SUPPORT_URL}
-            target="_blank"
-            rel="noopener noreferrer"
           >
             Sponsor the Foundation
           </a>
@@ -313,8 +309,6 @@ export default function Fundraising() {
         <a
           className="foundation-button gold"
           href={SUPPORT_URL}
-          target="_blank"
-          rel="noopener noreferrer"
         >
           <Heart size={19} />
           Become a founding supporter
